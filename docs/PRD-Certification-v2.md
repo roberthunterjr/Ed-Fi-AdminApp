@@ -349,6 +349,31 @@ flowchart TD
 
 **Review-in-progress indicator:** While a submission is in the "Under Review" state, the platform should display a status indicator to the vendor (e.g., on their certification dashboard) showing review is underway. This does **not** need to be a separate notification event — it's a persistent status indicator, not a point-in-time alert.
 
+**Notification Trigger Diagram:** The seven events above are independent triggers — from the Vendor, the Reviewer, or the platform's own validation execution — that all resolve through the platform to the same "notify associated users" action, rather than a fixed sequence of steps:
+
+```mermaid
+sequenceDiagram
+    actor Vendor as "Vendor (Artifact Owner)"
+    participant Platform
+    actor Reviewer as "Reviewer (Decision Maker)"
+    participant Notified as All Associated Users
+
+    Platform->>Notified: Validation completes
+    Platform->>Notified: Validation fails
+    Reviewer->>Platform: Leaves a comment
+    Platform->>Notified: Reviewer comments
+    Reviewer->>Platform: Requests artifact updates
+    Platform->>Notified: Artifact updates are requested
+    Vendor->>Platform: Replaces or updates an artifact
+    Platform->>Notified: Artifact Change
+    Reviewer->>Platform: Approves certification
+    Platform->>Notified: Certification is approved
+    Reviewer->>Platform: Rejects certification
+    Platform->>Notified: Certification is rejected
+
+    Note over Platform,Notified: "All Associated Users" includes the vendor,<br/>assigned reviewer(s), and relevant platform admins for that certification run.
+```
+
 ## 7.9 FT9: Audit History
 
 **Goal:** Retain a complete, reviewable audit trail for every certification run.
