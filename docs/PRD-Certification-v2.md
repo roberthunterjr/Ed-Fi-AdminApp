@@ -174,6 +174,12 @@ Future deployment patterns may support:
 - Environment created automatically
 - Credentials generated automatically
 - Vendor access assigned automatically
+  
+  NOTES: 
+  - Is it populated or not
+  - What ed-org / other permissions are needed
+  - Version of the Data Store (ODS/DMS)
+  - Single Tenant Env used.
 
 ---
 
@@ -223,6 +229,12 @@ Future deployment patterns may support:
 - Reduced back-and-forth communication
 - Faster review cycles
 
+Note: Call out specifically what needs to be submitted
+- Mapping
+- Sample Data
+- Score Report (Assessment) / Sample report (Domain)
+- Lets inform the user of the report so that they can review / resubmit if necessary.
+
 ---
 
 ## JTBD 5: Review Certification Submission
@@ -238,6 +250,10 @@ Future deployment patterns may support:
 - Reduced manual investigation
 - Standardized review process
 - Faster certification decisions
+
+NOTE: The expectation is to review a report similart to what the Certification Agent outputs. JTBD 4 could be the input to a simlar agent system.
+
+Also, we wand vendors to have a view of this so that they understand what has been submitted in addition to understanding where in the process they have landed. Empowers them to be proactive and even resubmit if necessary. 
 
 ---
 
