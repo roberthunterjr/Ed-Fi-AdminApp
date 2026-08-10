@@ -387,6 +387,51 @@ This is the same three-artifact set (Certification Mapping, Score Report, Sample
 
 **"Decision Requiring Documentation" — Reporting granularity:** Per §5.6, Domain Certification validation results must show pass/fail status by **domain, resource, and element**, not only at the endpoint/resource level.
 
+**Validation Sequence:** Test suite loading through the reviewer's disposition of the automated run:
+
+```mermaid
+sequenceDiagram
+    actor Vendor as "Vendor (Artifact Owner)"
+    participant Platform
+    actor Reviewer as "Reviewer (Decision Maker)"
+
+    Vendor->>Platform: Select workflow to test against - Domains or SIS
+    Note over Platform: Load test suite in dependency order - sequence, parallel, fan-out as needed
+
+    loop For each test in suite
+        Vendor->>Platform: Make request using client id and secret
+        alt SIS workflow
+            Note over Platform: Includes writes and updates - POST and PUT
+        else Domain workflow
+            Note over Platform: Automated portion uses GET requests
+        end
+        Platform->>Platform: Compare response to expected response in report artifact, based on sample data
+        Platform->>Platform: Verify required fields present and types match
+    end
+
+    Note over Platform: Automated workflow completes
+    Note over Platform: Status switches to Under Review
+
+    Platform->>Platform: Generate Run Report - summary of every request the vendor app completed during the run
+    Platform->>Reviewer: Provide Run Report
+
+    Reviewer->>Platform: Match each response against what was expected from artifacts
+
+    alt Changes needed
+        Reviewer->>Vendor: Request changes
+    else Certification denied
+        Reviewer->>Vendor: Deny certification
+    else Schedule live session
+        Reviewer->>Vendor: Schedule live session
+        Note over Reviewer: See OQ12 - possible new Pending Live Review state
+        Reviewer->>Vendor: Approve certification after live session
+    end
+```
+
+The Run Report is a new, distinct artifact: a platform-generated record of what the vendor app actually did during the automated run (every request made and its result), separate from the vendor-provided artifacts it's compared against (score report, sample data, mapping — §5.5). It gives the reviewer a tangible, comprehensive basis for comparison rather than relying on the live run state or scattered logs, and is retained under §7.9's Audit History requirements.
+
+Validation here is primarily field-presence and type-matching against the sample data/report artifacts, not deep semantic checks (semantic alignment remains a manual reviewer activity per §5.4/§7.6). The three reviewer dispositions shown — Changes Requested, Rejected, or scheduling a live session before Approved — sharpen OQ12: a "schedule live session" action implies a *waiting* period between Under Review and Approved that isn't well represented by either state today, reinforcing the case for a distinct **Pending Live Review** (or similarly named) state rather than treating live verification as instantaneous within Under Review.
+
 ## 7.6 FT6: Reviewer Workbench
 
 **Goal:** Support certification review workflows.
@@ -555,6 +600,7 @@ sequenceDiagram
 - Reviewer identity
 - Reviewer decision date
 - Approval/rejection history
+- **Run Report** — added 2026-08-10: the platform-generated summary of every request the vendor app completed during an automated validation run (§7.5), handed to the reviewer at the start of Under Review. Distinct from "Validation execution history" above (which is the raw execution log); the Run Report is the reviewer-facing comparison artifact and should be retained alongside it, not folded into it.
 
 ---
 
@@ -709,7 +755,7 @@ Vendors should also have visibility into what's been submitted and where they st
 | 9 | What should the entry/exit criteria be for each workflow state (In Progress, Submission Incomplete, Ready for Review, Under Review, Changes Requested, Approved, Rejected)? | **Resolved 2026-08-10** — see state diagram in §7.7. |
 | 10 | Should "artifact replaced/updated by vendor during review" be added as an explicit 7th event in the Notification Requirements list (§7.8), or is it already covered by the general Artifact Updates notification rule? | **Resolved 2026-08-10** — added as a distinct "Artifact Change" event, separate from "Artifact updates are requested" (§7.8): the requested-update event fires when the reviewer asks for changes; the Artifact Change event fires when the vendor actually makes a change. A persistent "review in progress" status indicator is also required but does not need its own notification event. |
 | 11 | Is "Renewal workflows" out of scope permanently, or deferred to a future release (tracked as "Automated Re-Certification," §13)? | **Resolved 2026-08-10** — deferred, not excluded (§12/§13); expected to closely resemble the original certification workflow. |
-| 12 | Should the workflow state model (§7.7) have a distinct "Live Review" state for the reviewer's live inspection/verification step (§7.2's live inspection, §7.3's live PUT/POST verification), separate from the general "Under Review" state? | Open — raised 2026-08-10 while diagramming §7.2's SIS certification sequence; recurs in §7.3's domain certification sequence. |
+| 12 | Should the workflow state model (§7.7) have a distinct "Live Review" or "Pending Live Review" state for the reviewer's live inspection/verification step (§7.2's live inspection, §7.3's live PUT/POST verification, §7.5's "schedule live session" disposition), separate from the general "Under Review" state? | Open — raised 2026-08-10 while diagramming §7.2's SIS certification sequence; recurs in §7.3's domain certification sequence and §7.5's validation engine sequence, where scheduling a live session implies a waiting period not currently modeled by any state. |
 
 **Still open beyond this table:**
 - FT3's sub-question on whether resources, endpoints, or sample data (or a combination) should drive Domain API certification requirements.
