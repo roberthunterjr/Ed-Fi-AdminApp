@@ -522,6 +522,13 @@ stateDiagram-v2
     ChangesRequested --> UnderReview : vendor updates artifacts; reviewer resumes evaluation
     Approved --> [*]
     Rejected --> [*]
+
+    note right of UnderReview
+        Live inspection/verification steps (§7.2, §7.3, §7.5)
+        currently occur inside this state.
+        OQ12 (§15): open question on whether a distinct
+        Live Review / Pending Live Review state is needed.
+    end note
 ```
 
 Note the diagram enforces that **both** paths into "Ready for Review" require all required artifact types to be present — there is no transition that lets a vendor enter review early.
@@ -532,7 +539,7 @@ A vendor cannot transition a product into "Ready for Review" until all required 
 
 ```mermaid
 flowchart TD
-    A[Vendor starts certification run] --> B["Platform displays required artifact checklist for the selected certification type / domain-s"]
+    A[Vendor starts certification run] --> B["Platform displays required artifact checklist for the selected certification type / domain(s)"]
     B --> C[Platform shows format and content guidance per artifact type]
     C --> D[Vendor uploads an artifact]
     D --> E{Artifact type recognized and required?}
