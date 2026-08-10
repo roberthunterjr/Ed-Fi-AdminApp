@@ -1,557 +1,557 @@
-# PRD: Ed-Fi Certification Automation Platform
+# Certification Automation Platform PRD
 
-**Owner:** Robert H on behalf of Nathan G  
-**Status:** Draft  
-**Last Updated:** 2026-07-29
+**Owner:** Robert H on behalf of Nathan G
+**Status:** Draft — Revision 3 (restructured around first-round feedback)
+**Last Updated:** August 10, 2026
+
+> **Revision note:** Revision 2 incorporated feedback content additively, in place, inside the original PRD structure. Revision 3 restructures the document so the feedback's own logic drives the outline: Scope → **Confirmed Product Decisions** → **Certification Decision Ownership** → **Feature Requirements** (organized so each "Decision Requiring Documentation" is traceable to a specific feature) → **Workflow Assumptions** → **Nice to Have** → **Out of Scope**. No content from Revision 2 was dropped — supporting context (Personas, JTBD, NFRs, Architecture) is retained but now sits around this policy spine rather than alongside it as parallel structure.
+>
+> **Fidelity note:** Everything in §5 (Confirmed Product Decisions), §6 (Ownership Matrix), and the feedback-sourced bullet lists throughout §7/§10/§11/§12 is a direct transcription of the first-round feedback — treated as authoritative and not reworded for substance. A small number of places in §7.7, §7.8, and §12 extended the feedback's literal wording to make the PRD internally consistent (e.g., giving workflow states entry/exit criteria, since the feedback only named the labels). Those gaps were resolved on 2026-08-10 (workflow state diagram and gating logic, §7.7/§7.7.1; notification event consolidation, §7.8; renewal-workflow deferral, §12/§13) and are marked "confirmed 2026-08-10" inline, tracked in §15 (OQ8–OQ11) for traceability back to the original feedback.
 
 ---
 
-# Overview
+# 1. Overview
 
 The Ed-Fi Certification Automation Platform is a hosted platform designed to modernize and automate Ed-Fi certification workflows while replacing operational processes currently supported through the legacy Sandbox Admin experience.
 
 The platform provides a unified experience for:
 
-- Vendor onboarding
-- Certification environment provisioning
-- Credential management
-- SIS certification workflows
-- Domain API certification workflows
-- Validation and reporting
-- Reviewer approval workflows
+| Feature | Details |
+| --- | --- |
+| Vendor onboarding | |
+| Certification environment provisioning | |
+| Credential management | |
+| SIS certification workflows | |
+| Domain API certification workflows | |
+| Validation and reporting | |
+| Reviewer approval workflows | |
 
 The platform builds upon the Admin App and Admin API foundation, extending administrative capabilities into certification lifecycle management.
 
+**Governing principle:** The platform *implements* certification requirements; it does not *govern* them. See §5.1 for the confirmed decision behind this.
+
 ---
 
-# Purpose and Strategic Alignment
+# 2. Purpose and Strategic Alignment
 
 ## Strategic Goals
-
-The Certification Automation Platform supports the following objectives:
-
-- Reduce certification onboarding time
-- Reduce operational effort required by Ed-Fi staff
-- Improve vendor certification experience
-- Accelerate certification completion
-- Improve consistency of certification validation
-- Enable certification expansion into new domains and standards versions
+| Objective | Description |
+| --- | --- |
+| Reduce certification onboarding time | |
+| Reduce operational effort required by Ed-Fi staff | |
+| Improve vendor certification experience | |
+| Accelerate certification completion | |
+| Improve consistency of certification validation | |
+| Enable certification expansion into new domains and standards versions | |
 
 ## Administrative Tooling Alignment
-
-The platform extends ongoing investments in:
-
-- Admin App
-- Admin API
-- Credential Management
-- Environment Provisioning
-- Hosted Ed-Fi Infrastructure
+| Tooling | Details |
+| --- | --- |
+| Admin App | |
+| Admin API | |
+| Credential Management | |
+| Environment Provisioning | |
+| Hosted Ed-Fi Infrastructure | |
 
 Rather than operating as a standalone certification tool, certification becomes an extension of Ed-Fi administrative tooling.
 
 ## Market-Led Growth Alignment
-
-Improving certification supports broader Ed-Fi adoption goals by:
-
-- Reducing vendor integration costs
-- Shortening implementation timelines
-- Improving certification scalability
-- Increasing partner satisfaction
+| Benefit | Description |
+| --- | --- |
+| Reducing vendor integration costs | |
+| Shortening implementation timelines | |
+| Improving certification scalability | |
+| Increasing partner satisfaction | |
 
 ---
 
-# Target Market
+# 3. Target Market
 
 ## Primary Audience
 
 ### Certified Vendors
-
 Organizations seeking certification against Ed-Fi APIs.
 
 ### Vendor Engineering Teams
-
 Engineers implementing and validating Ed-Fi integrations.
 
 ### Ed-Fi Certification Staff
-
-Staff responsible for:
-
-- Certification management
-- Validation
-- Review
-- Approval
+| Responsibility | Details |
+| --- | --- |
+| Certification management | |
+| Validation | |
+| Review | |
+| Approval | |
 
 ## Future Audiences
-
-Future deployment patterns may support:
-
-- State Education Agencies (SEAs)
-- Education Service Agencies (ESAs)
-- Managed Service Providers (MSPs)
-- Data Hub operators
+| Audience | Details |
+| --- | --- |
+| State Education Agencies (SEAs) | |
+| Education Service Agencies (ESAs) | |
+| Managed Service Providers (MSPs) | |
+| Data Hub operators | |
 
 ---
 
-# Personas
+# 4. Personas
 
 ## Vendor Certification Administrator
-
-### Primary Motivations
-
-- Register products
-- Manage certification submissions
-- Monitor certification progress
-
-### Success Looks Like
-
-- Minimal waiting on Ed-Fi staff
-- Clear certification status
-- Self-service management
-
----
+**Primary Motivations:** Register products; manage certification submissions; monitor certification progress.
+**Success Looks Like:** Minimal waiting on Ed-Fi staff; clear certification status; self-service management.
 
 ## Vendor Integration Engineer
-
-### Primary Motivations
-
-- Validate Ed-Fi integrations
-- Understand certification requirements
-- Resolve certification issues quickly
-
-### Success Looks Like
-
-- Immediate feedback
-- Clear validation failures
-- Guided certification workflow
-
----
+**Primary Motivations:** Validate Ed-Fi integrations; understand certification requirements; resolve certification issues quickly.
+**Success Looks Like:** Immediate feedback; clear validation failures; guided certification workflow.
 
 ## Certification Reviewer
-
-### Primary Motivations
-
-- Validate submissions
-- Ensure certification quality
-- Reduce manual effort
-
-### Success Looks Like
-
-- Standardized evidence
-- Efficient review process
-- Consistent certification decisions
-
----
+**Primary Motivations:** Validate submissions; ensure certification quality; reduce manual effort.
+**Success Looks Like:** Standardized evidence; efficient review process; consistent certification decisions.
 
 ## Ed-Fi Platform Administrator
-
-### Primary Motivations
-
-- Provision environments
-- Manage tenants
-- Manage credentials
-- Support certification infrastructure
-
-### Success Looks Like
-
-- Automated provisioning
-- Reduced operational overhead
-- Repeatable deployment processes
+**Primary Motivations:** Provision environments; manage tenants; manage credentials; support certification infrastructure.
+**Success Looks Like:** Automated provisioning; reduced operational overhead; repeatable deployment processes.
 
 ---
 
-# Jobs To Be Done
+# 5. Confirmed Product Decisions
 
-## JTBD 1: Obtain Certification Environment
+*(This section mirrors "Decisions Confirmed" from the first round of PRD feedback verbatim. It is the canonical policy layer — Sections 7 (Feature Requirements) and 10 (Workflow Assumptions) implement these decisions; they do not redefine them.)*
 
-**When** a vendor begins certification,
+## 5.1 Certification Governance
+- Published certification requirements are the authoritative source of truth.
+- Certification requirements are owned by the Product Owner.
+- The platform implements certification requirements but does not govern them.
 
-**I want** a certification environment provisioned automatically,
+*(Resolves PRD Open Question #3 — see §15.)*
 
-**So that** I can immediately begin testing.
+## 5.2 Certification Model
+- Certifications are granted to **products**, not vendors.
+- A vendor may have multiple products.
+- Only one active certification run may exist per product at a given time.
+- SIS Certification and Domain Certification are distinct certification models.
+- A SIS must complete SIS certification scenarios and does not qualify through domain certification.
 
-### Signals of Success
+## 5.3 Platform Responsibilities
+The platform is responsible for:
+- Environment provisioning
+- Credential management
+- Certification workflow execution
+- Validation execution
+- Artifact collection and storage
+- Status tracking
+- Reviewer workflow support
+- Audit history
 
-- Environment created automatically
-- Credentials generated automatically
-- Vendor access assigned automatically
-  
-  NOTES: 
-  - Is it populated or not
-  - What ed-org / other permissions are needed
-  - Version of the Data Store (ODS/DMS)
-  - Single Tenant Env used.
+*(Implemented in §7, FT1–FT9.)*
 
----
+## 5.4 Reviewer Responsibilities
+The reviewer remains the certification decision-maker and is responsible for:
+- Reviewing certification artifacts
+- Spot-checking validation results
+- Reviewing mapping documentation
+- Evaluating semantic alignment
+- Approving or rejecting certification submissions
 
-## JTBD 2: Complete SIS Certification
+*(Implemented in §7.6, FT6: Reviewer Workbench.)*
 
-**When** I am certifying my product,
+## 5.5 Artifact Ownership
+- Certification artifacts are vendor-owned.
+- Vendors create and upload mappings, reports, documentation, and sample data.
+- The platform stores and presents artifacts.
+- The platform does not generate certification artifacts.
 
-**I want** a guided certification workflow,
+*(See also §12 Out of Scope: Artifact Generation.)*
 
-**So that** I understand exactly what must be completed.
+## 5.6 Domain Certification
+- Vendors may certify one domain or multiple domains in a single submission.
+- Validation results should show pass/fail status by domain, resource, and element.
+- Certification remains at reviewer discretion based on submitted evidence.
 
-### Signals of Success
-
-- Scenario status tracking
-- Automated validation
-- Certification progress visibility
-
----
-
-## JTBD 3: Complete Domain API Certification
-
-**When** I select one or more domains to certify,
-
-**I want** the platform to identify required resources and endpoints,
-
-**So that** I understand my certification scope.
-
-### Signals of Success
-
-- Endpoint coverage identified
-- Required resources identified
-- Certification readiness visible
-
----
-
-## JTBD 4: Submit Certification Evidence
-
-**When** I complete validation activities,
-
-**I want** to submit certification artifacts in a standardized format,
-
-**So that** reviewers can efficiently evaluate my certification.
-
-### Signals of Success
-
-- Consistent evidence structure
-- Reduced back-and-forth communication
-- Faster review cycles
-
-Note: Call out specifically what needs to be submitted
-- Mapping
-- Sample Data
-- Score Report (Assessment) / Sample report (Domain)
-- Lets inform the user of the report so that they can review / resubmit if necessary.
+*(Implemented in §7.3, FT3, and §7.5, FT5.)*
 
 ---
 
-## JTBD 5: Review Certification Submission
+# 6. Certification Decision Ownership
 
-**When** a vendor submits certification,
+*(This is the feedback's Ownership Matrix, transcribed as-given and positioned here — immediately after Confirmed Decisions §5.3–5.4 — because it is the single-glance summary of the platform/reviewer split that governs every feature below. This is the section to point to whenever scope discussions drift toward "should the platform decide this?")*
 
-**I want** a consistent set of artifacts and validation results,
+The platform is responsible for workflow orchestration, validation execution, evidence collection, and reporting. Reviewers remain responsible for certification judgment.
 
-**So that** I can confidently approve or reject certification.
-
-### Signals of Success
-
-- Reduced manual investigation
-- Standardized review process
-- Faster certification decisions
-
-NOTE: The expectation is to review a report similart to what the Certification Agent outputs. JTBD 4 could be the input to a simlar agent system.
-
-Also, we wand vendors to have a view of this so that they understand what has been submitted in addition to understanding where in the process they have landed. Empowers them to be proactive and even resubmit if necessary. 
-
----
-
-# Scope
-
-## SIS Certification
-
-### SIS v5
-
-Migration of SIS v4 certification scenarios to Data Standard v5.
-
-### SIS v6
-
-Next-generation SIS certification scenarios aligned with Data Standard v6.
+| Activity | Platform | Reviewer |
+| --- | :---: | :---: |
+| Provision environment | ✅ | |
+| Manage credentials | ✅ | |
+| Execute validation | ✅ | |
+| Track certification workflow | ✅ | |
+| Store artifacts | ✅ | |
+| Report validation outcomes | ✅ | |
+| Identify missing artifacts | ✅ | |
+| Review artifacts | | ✅ |
+| Spot-check validation results | | ✅ |
+| Review mapping documentation | | ✅ |
+| Evaluate semantic alignment | | ✅ |
+| Determine if re-validation is needed | | ✅ |
+| Approve/reject certification | | ✅ |
 
 ---
 
-## Domain API Certification
+# 7. Feature Requirements (Must Have)
 
-### Domain API v5
+*(This section mirrors "Decisions Requiring Documentation" from feedback: each item in that list is called out below at the feature it belongs to, so the traceability from feedback → PRD is explicit rather than implied.)*
 
-Certification of resources and endpoints within Data Standard v5 domains.
+## 7.1 FT1: Automated Environment Provisioning
 
-### Domain API v6
+**Goal:** Automatically provision vendors, tenants, ODS instances, applications, and credentials.
 
-Certification of resources and endpoints within Data Standard v6 domains.
-
----
-
-# Must Have Features
-
-## FT1: Automated Environment Provisioning
-
-### Goal
-
-Automatically provision:
-
-- Vendors
-- Tenants
-- ODS Instances
-- Applications
-- Credentials
-
-### Conditions of Satisfaction
-
+**Conditions of Satisfaction:**
 - Vendor can begin testing immediately
 - Credentials are generated automatically
 - Reviewer can assign environments
 
----
+## 7.2 FT2: SIS Certification Workflow
 
-## FT2: SIS Certification Workflow
+**Goal:** Provide guided execution of SIS certification scenarios.
 
-### Goal
-
-Provide guided execution of SIS certification scenarios.
-
-### Conditions of Satisfaction
-
+**Conditions of Satisfaction:**
 - Workflow progression tracked
 - Validation performed automatically
 - Progress status visible
+- A SIS must complete SIS certification scenarios; domain certification does not substitute (§5.2)
 
----
+## 7.3 FT3: Domain API Certification Workflow
 
-## FT3: Domain API Certification Workflow
+**Goal:** Enable certification against selected domains.
 
-### Goal
-
-Enable certification against selected domains.
-
-### Conditions of Satisfaction
-
+**Conditions of Satisfaction:**
 - Required resources identified
 - Required endpoints identified
 - Certification requirements visible
+- A single submission may cover one or multiple domains (§5.6)
 
-### Open Questions
+**Open Questions:** Whether certification should be driven by domain resources, endpoint coverage, or sample data remains open (§15). §5.6 confirms the certification *decision* stays with the reviewer regardless of which technical signal drives validation — but not which signal(s) the validation engine should use.
 
-- Should certification be driven by domain resources?
-- Should certification be driven by endpoint coverage?
-- Should certification be driven by sample data?
+## 7.4 FT4: Certification Artifact Management
 
----
+**Goal:** Provide management of product mappings, reports, sample data, and validation results, so reviewers can compare mappings, sample data, reports, and API responses using a common structure.
 
-## FT4: Certification Artifact Management
+**Ownership and generation boundary** (§5.5): Certification artifacts are vendor-owned. The platform stores and presents but does not generate them.
 
-### Goal
+**"Decision Requiring Documentation" — Artifact Updates During Review** (feedback verbatim):
+- Vendors may replace artifacts during review.
+- Reviewers are notified when artifacts change (§7.8, FT8: Notifications).
+- Reviewers decide whether a change requires re-validation.
+- Reviewers do not upload artifacts on behalf of vendors.
 
-Provide management of:
+## 7.5 FT5: Validation Engine
 
-- Product mappings
-- Reports
-- Sample data
-- Validation results
+**Goal:** Validate endpoints, resources, data structures, required fields, and data types, such that results are actionable and understandable.
 
-### Conditions of Satisfaction
+**"Decision Requiring Documentation" — Reporting granularity:** Per §5.6, Domain Certification validation results must show pass/fail status by **domain, resource, and element**, not only at the endpoint/resource level.
 
-Reviewers can compare:
+## 7.6 FT6: Reviewer Workbench
 
-- Mappings
-- Sample data
-- Reports
-- API responses
+**Goal:** Support certification review workflows.
 
-using a common structure.
-
----
-
-## FT5: Validation Engine
-
-### Goal
-
-Validate:
-
-- Endpoints
-- Resources
-- Data structures
-- Required fields
-- Data types
-
-### Conditions of Satisfaction
-
-Validation results are actionable and understandable.
-
----
-
-## FT6: Reviewer Workbench
-
-### Goal
-
-Support certification review workflows.
-
-### Conditions of Satisfaction
-
-Reviewers can:
-
-- Review artifacts
-- Execute spot checks
+**"Decision Requiring Documentation" — Reviewer Approval Criteria** (implements §5.4 in full — feedback's "Reviewer Approval Criteria" list merged with the "Approving/rejecting" and "leave feedback" items from Reviewer Responsibilities; no wording changed): Reviewers can:
+- Review submitted artifacts
+- Spot-check validation results
+- Review mapping documentation
+- Evaluate semantic alignment
+- Exercise final certification judgment
 - Leave feedback
-- Approve certifications
+- Approve or reject certifications
+
+**"Decision Requiring Documentation" — Reviewer Landing Page** (feedback verbatim): The reviewer homepage must prominently display, per certification run:
+- Certification Type (SIS or Domain)
+- Product Name
+- Vendor Name
+- Submission Date
+- Validation Status
+- Scenario Completion Status
+- Artifact Checklist
+- Missing Artifacts
+
+## 7.7 FT7: Certification Status Tracking
+
+**Goal:** Provide end-to-end certification visibility — current status, failed validations, pending actions, reviewer feedback.
+
+**"Decision Requiring Documentation" — Workflow States** (state labels are feedback verbatim; entry/exit criteria below are **confirmed 2026-08-10** — the feedback named the states but did not define their gating logic, so this is where that logic was decided):
+
+| State | Entry / Exit Criteria |
+| --- | --- |
+| In Progress | Vendor is actively working the certification scenarios/environment |
+| Submission Incomplete | One or more required artifact types are missing |
+| Ready for Review | All required artifact types are present (even if individually incomplete) — vendor cannot force this transition manually; see §7.7.1 |
+| Under Review | Reviewer has begun evaluation |
+| Changes Requested | Reviewer has requested artifact updates or clarification |
+| Approved | Reviewer has approved the certification |
+| Rejected | Reviewer has rejected the certification |
+
+**Workflow State Diagram:**
+
+```mermaid
+stateDiagram-v2
+    state "In Progress" as InProgress
+    state "Submission Incomplete" as SubmissionIncomplete
+    state "Ready for Review" as ReadyForReview
+    state "Under Review" as UnderReview
+    state "Changes Requested" as ChangesRequested
+    state "Approved" as Approved
+    state "Rejected" as Rejected
+
+    [*] --> InProgress
+    InProgress --> SubmissionIncomplete : vendor submits with required artifact type(s) missing
+    InProgress --> ReadyForReview : all required artifact types present
+    SubmissionIncomplete --> ReadyForReview : remaining required artifact type(s) added
+    ReadyForReview --> UnderReview : reviewer begins evaluation
+    UnderReview --> ChangesRequested : reviewer requests updates or clarification
+    UnderReview --> Approved : reviewer approves
+    UnderReview --> Rejected : reviewer rejects
+    ChangesRequested --> UnderReview : vendor updates artifacts; reviewer resumes evaluation
+    Approved --> [*]
+    Rejected --> [*]
+```
+
+Note the diagram enforces that **both** paths into "Ready for Review" require all required artifact types to be present — there is no transition that lets a vendor enter review early.
+
+## 7.7.1 Submission Readiness Flow (resolves OQ8)
+
+A vendor cannot transition a product into "Ready for Review" until all required artifact types have been added. The path leading up to that gate is a guided flow that prepares the vendor to submit artifacts correctly, rather than a bare pass/fail check at the end:
+
+```mermaid
+flowchart TD
+    A[Vendor starts certification run] --> B[Platform displays required artifact checklist\nfor the selected certification type / domain(s)]
+    B --> C[Platform shows format and content guidance per artifact type]
+    C --> D[Vendor uploads an artifact]
+    D --> E{Artifact type recognized and required?}
+    E -- No --> F[Platform flags artifact as unrecognized or extra; vendor corrects]
+    F --> D
+    E -- Yes --> G[Platform marks artifact type as present on checklist]
+    G --> H{All required artifact types present?}
+    H -- No --> I[Status: Submission Incomplete\nmissing artifacts listed]
+    I --> D
+    H -- Yes --> J[Status automatically transitions to Ready for Review]
+    J --> K[Reviewers notified; vendor cannot manually\nforce this transition early]
+```
+
+## 7.8 FT8: Notifications
+
+**Goal:** Notify all users associated with a certification run of status-relevant events.
+
+**"Decision Requiring Documentation" — Notification Requirements** (**confirmed 2026-08-10**): Notify all associated users when:
+- Validation completes
+- Validation fails
+- Reviewer comments
+- Artifact updates are requested
+- Certification is approved
+- Certification is rejected
+- **Artifact Change event:** covers both directions — a reviewer requesting artifact updates, and a vendor replacing/updating an artifact during review. This is a single generalized event rather than two separate notification types, so the vendor-replaces-artifact case (raised in §7.4/§10.2) is wrapped into it rather than added as a distinct 7th item.
+
+**Review-in-progress indicator:** While a submission is in the "Under Review" state, the platform should display a status indicator to the vendor (e.g., on their certification dashboard) showing review is underway. This does **not** need to be a separate notification event — it's a persistent status indicator, not a point-in-time alert.
+
+## 7.9 FT9: Audit History
+
+**Goal:** Retain a complete, reviewable audit trail for every certification run.
+
+**"Decision Requiring Documentation" — Audit History Requirements** (feedback verbatim, implements §5.3's "audit history" platform responsibility): Retain:
+- Certification submission date
+- Validation results
+- Validation execution history
+- Uploaded artifacts
+- Artifact version history
+- Reviewer comments
+- Reviewer identity
+- Reviewer decision date
+- Approval/rejection history
 
 ---
 
-## FT7: Certification Status Tracking
+# 8. Jobs To Be Done
 
-### Goal
+*(Retained as supporting rationale for Section 7's features — each JTBD explains the "why" behind one or more FTs above.)*
 
-Provide end-to-end certification visibility.
+## JTBD 1: Obtain Certification Environment → supports FT1
+**When** a vendor begins certification, **I want** a certification environment provisioned automatically, **so that** I can immediately begin testing.
+Signals: environment created automatically; credentials generated automatically; vendor access assigned automatically.
+Notes: population state, ed-org/permissions needed, ODS/DMS version, single-tenant environment used.
 
-### Conditions of Satisfaction
+## JTBD 2: Complete SIS Certification → supports FT2
+**When** I am certifying my product, **I want** a guided certification workflow, **so that** I understand exactly what must be completed.
+Signals: scenario status tracking; automated validation; certification progress visibility.
 
-Users can identify:
+## JTBD 3: Complete Domain API Certification → supports FT3
+**When** I select one or more domains to certify, **I want** the platform to identify required resources and endpoints, **so that** I understand my certification scope.
+Signals: endpoint coverage identified; required resources identified; certification readiness visible.
 
-- Current status
-- Failed validations
-- Pending actions
-- Reviewer feedback
+## JTBD 4: Submit Certification Evidence → supports FT4, FT7
+**When** I complete validation activities, **I want** to submit certification artifacts in a standardized format, **so that** reviewers can efficiently evaluate my certification.
+Signals: consistent evidence structure; reduced back-and-forth; faster review cycles.
+Artifacts to submit: mapping; sample data; score report (assessment) / sample report (domain). Vendors should be informed of the report so they can review/resubmit if necessary.
 
----
+## JTBD 5: Review Certification Submission → supports FT6, FT9
+**When** a vendor submits certification, **I want** a consistent set of artifacts and validation results, **so that** I can confidently approve or reject certification.
+Signals: reduced manual investigation; standardized review process; faster certification decisions.
 
-# Future Enhancements
+The expectation is to review a report similar to what the **Certification Agent** outputs (JTBD 4 could feed this system). *Confirmed terminology:* "Certification Agent" refers to a structured report-formatting/aggregation tool — not an AI recommendation or decision system. It compiles submitted evidence into a standard reviewer-facing report and does not evaluate, score, or recommend a certification outcome (kept consistent with §12 Out of Scope: AI-generated recommendations).
 
-## Certification Registry Integration
-
-Automated publication of certification results.
-
-## Vendor Self-Service Registration
-
-Allow vendors to create and manage certification accounts.
-
-## Automated Re-Certification
-
-Support certification renewal workflows.
-
-## Certification APIs
-
-Provide Admin API endpoints for certification operations.
-
-## Deployable Certification Packages
-
-Support deployment by:
-
-- Data Hubs
-- SEAs
-- ESAs
-- MSPs
-
-## State-Specific Certification Programs
-
-Enable state-level certification extensions.
+Vendors should also have visibility into what's been submitted and where they stand in the process, so they can be proactive and resubmit if necessary.
 
 ---
 
-# Non-Functional Requirements
+# 9. Scope
+
+## SIS Certification
+- **SIS v5:** Migration of SIS v4 certification scenarios to Data Standard v5.
+- **SIS v6:** Next-generation SIS certification scenarios aligned with Data Standard v6.
+
+## Domain API Certification
+- **Domain API v5:** Certification of resources and endpoints within Data Standard v5 domains.
+- **Domain API v6:** Certification of resources and endpoints within Data Standard v6 domains.
+
+*(Certification model rules governing this scope — products vs. vendors, one active run per product, SIS/Domain non-substitutability — are defined once, in §5.2, rather than repeated here.)*
+
+---
+
+# 10. Workflow Assumptions
+
+*(These mirror the feedback's "Workflow Assumptions" section verbatim. They are cross-cutting ground rules that recur across JTBD 4, JTBD 5, and FT4/FT7 above; they're stated once here rather than repeated at each occurrence.)*
+
+## 10.1 Submission Model
+- Vendors may submit incomplete certification packages.
+- Missing artifacts should be clearly identified.
+- Documentation must be present before review activities begin. **[Rev 3 interpretation — unconfirmed, see §15 OQ8]**: operationalized in §7.7 as "all required artifact types must be present, even if individually incomplete" before entering "Ready for Review" — but the feedback's Artifact Ownership section lists "documentation" as one specific artifact type among several (mappings, reports, sample data), so this gate may need to mean only the documentation artifact, not every artifact type collectively. Needs Nathan's confirmation.
+
+## 10.2 Artifact Updates
+- Vendors may replace artifacts during review.
+- Reviewers are notified when artifacts change.
+- Reviewers do not upload artifacts on behalf of vendors.
+
+*(Full detail at §7.4, FT4.)*
+
+## 10.3 Review Process
+- Reviewers review artifacts.
+- Reviewers spot-check validation results.
+- Reviewers then approve or reject.
+
+*(Full detail at §5.4 and §7.6, FT6.)*
+
+---
+
+# 11. Nice to Have
+
+- **Mapping review automation** — would assist, not replace, reviewer judgment (per confirmed reviewer decision authority, §5.4/§6).
+- **Semantic validation automation** — would assist, not replace, reviewer judgment. Relates to Open Question on semantic automation extent (§15).
+
+---
+
+# 12. Out of Scope
+
+*(Feedback verbatim list; §15 OQ11 flags the one place Rev 3 added a characterization not stated by the feedback.)*
+
+- **Artifact generation.** Vendors are solely responsible for creating certification artifacts. Neither the platform nor reviewers generate artifacts on a vendor's behalf (§5.5).
+- **AI-generated recommendations.** The platform does not produce AI-generated certification recommendations. The "Certification Agent" in JTBD 5 is a non-AI report-formatting tool and is not affected by this boundary.
+- **Certification confidence/risk scoring.** The platform does not produce a computed confidence or risk score for a submission.
+- **Renewal workflows.** Out of scope for the current release, **deferred** (confirmed 2026-08-10) — not a permanent exclusion. Tracked separately under "Automated Re-Certification" in Future Enhancements (§13). Renewal is expected to closely resemble the original certification workflow, so the deferral is a sequencing decision rather than a signal that a materially different workflow needs to be designed later.
+- **Certification governance/version management workflows.** Governance of certification requirements remains owned by the Product Owner outside the platform (§5.1); the platform implements but does not govern.
+
+---
+
+# 13. Future Enhancements
+
+| Enhancement | Details |
+| --- | --- |
+| Certification Registry Integration | Automated publication of certification results. |
+| Vendor Self-Service Registration | Allow vendors to create and manage certification accounts. |
+| Automated Re-Certification | Support certification renewal workflows. Deferred, not excluded (§12) — expected to closely resemble the original certification workflow rather than requiring a distinct design. |
+| Certification APIs | Provide Admin API endpoints for certification operations. |
+| Deployable Certification Packages | Support deployment to Data Hubs, SEAs, ESAs, MSPs. |
+| State-Specific Certification Programs | Enable state-level certification extensions. |
+
+*(See also §11, Nice to Have, for mapping/semantic validation automation.)*
+
+---
+
+# 14. Non-Functional Requirements
 
 ## Security
-
-- Secure credential generation
-- Audit logging
-- Role-based authorization
-- Tenant isolation
+| Requirement | Details |
+| --- | --- |
+| Secure credential generation | |
+| Audit logging | See §7.9, FT9: Audit History, for the specific retained data set. |
+| Role-based authorization | |
+| Tenant isolation | |
 
 ## Scalability
-
-- Support concurrent certification activities
-- Support multiple active environments
+| Requirement | Details |
+| --- | --- |
+| Support concurrent certification activities | |
+| Support multiple active environments | |
 
 ## Extensibility
-
-- Additional certification types
-- Additional Data Standard versions
-- Domain expansion
+| Requirement | Details |
+| --- | --- |
+| Additional certification types | |
+| Additional Data Standard versions | |
+| Domain expansion | |
 
 ## Maintainability
-
-- Scenario updates should not require code changes where possible
-- Validation rules should be versioned
+| Requirement | Details |
+| --- | --- |
+| Scenario updates should not require code changes where possible | |
+| Validation rules should be versioned | |
 
 ---
 
-# Enterprise Architecture
+# 15. Open Questions
+
+| ID | Question | Answers / Notes |
+| --- | --- | --- |
+| 1 | Should Domain API automation be driven by sample data? | Open. |
+| 2 | Do Admin and Security databases require isolated environments? | Open. |
+| 3 | What is the authoritative source of certification definitions? | **Resolved** — see §5.1. |
+| 4 | Can certification definitions be generated from Data Standard metadata? | Open. |
+| 5 | Should vendors self-register? | Open (see §13, Vendor Self-Service Registration). |
+| 6 | How much semantic validation can be automated? | **Partially resolved** — baseline is manual reviewer evaluation (§5.4); automation is Nice to Have only (§11), assisting rather than replacing judgment. |
+| 7 | What is the standard format for mappings, reports, and sample data? | Open. |
+| 8 | Does "documentation must be present before review activities begin" (feedback, Submission Model) mean the specific "documentation" artifact type, or all required artifact types collectively? | **Resolved 2026-08-10** — means all required artifact types collectively; a vendor cannot enter "Ready for Review" until every required artifact type is present. See §7.7.1 flowchart. |
+| 9 | What should the entry/exit criteria be for each workflow state (In Progress, Submission Incomplete, Ready for Review, Under Review, Changes Requested, Approved, Rejected)? | **Resolved 2026-08-10** — see state diagram in §7.7. |
+| 10 | Should "artifact replaced/updated by vendor during review" be added as an explicit 7th event in the Notification Requirements list (§7.8), or is it already covered by the general Artifact Updates notification rule? | **Resolved 2026-08-10** — generalized into a single "Artifact Change" event covering both reviewer-requested and vendor-initiated changes (§7.8). A persistent "review in progress" status indicator is also required but does not need its own notification event. |
+| 11 | Is "Renewal workflows" out of scope permanently, or deferred to a future release (tracked as "Automated Re-Certification," §13)? | **Resolved 2026-08-10** — deferred, not excluded (§12/§13); expected to closely resemble the original certification workflow. |
+
+**Still open beyond this table:**
+- FT3's sub-question on whether resources, endpoints, or sample data (or a combination) should drive Domain API certification requirements.
+- Whether Vendor Self-Service Registration intersects with the vendor/product/certification-run model in §5.2.
+
+---
+
+# 16. Enterprise Architecture
 
 ## Core Components
-
-### Admin App
-
-Provides administrative interface and provisioning workflows.
-
-### Admin API
-
-Provides automation and platform integration.
-
-### Certification Platform
-
-Coordinates certification workflows.
-
-### Validation Engine
-
-Executes automated validations.
-
-### Artifact Store
-
-Stores:
-
-- Mappings
-- Reports
-- Sample Data
-- Validation Results
-
-### Hosted Certification Infrastructure
-
-Provides certification-specific environments.
+- **Admin App** — administrative interface and provisioning workflows.
+- **Admin API** — automation and platform integration.
+- **Certification Platform** — coordinates certification workflows.
+- **Validation Engine** — executes automated validations.
+- **Artifact Store** — stores mappings, reports, sample data, validation results.
+- **Hosted Certification Infrastructure** — certification-specific environments.
 
 ---
 
-# Open Questions
-
-| ID | Question |
-|------|------|
-| OQ1 | Should Domain API automation be driven by sample data? |
-| OQ2 | Do Admin and Security databases require isolated environments? |
-| OQ3 | What is the authoritative source of certification definitions? |
-| OQ4 | Can certification definitions be generated from Data Standard metadata? |
-| OQ5 | Should vendors self-register? |
-| OQ6 | How much semantic validation can be automated? |
-| OQ7 | What is the standard format for mappings, reports, and sample data? |
-| OQ8 | Should certification artifacts support CSV, JSON, or both? |
-
----
-
-# Success Metrics
+# 17. Success Metrics
 
 ## Operational Metrics
-
-- Reduction in certification provisioning time
-- Reduction in reviewer effort
-- Reduction in certification support requests
+Reduction in certification provisioning time; reduction in reviewer effort; reduction in certification support requests.
 
 ## Vendor Metrics
-
-- Faster certification completion
-- Improved vendor satisfaction
-- Reduced certification remediation cycles
+Faster certification completion; improved vendor satisfaction; reduced certification remediation cycles.
 
 ## Platform Metrics
-
-- Increased certification throughput
-- Reduced dependency on Sandbox Admin
-- Increased automation coverage
+Increased certification throughput; reduced dependency on Sandbox Admin; increased automation coverage.
 
 ---
 
 # Appendix A: Potential Architecture Decisions
 
-The following decisions require further investigation:
-
-1. Certification Artifact Model
+1. Certification Artifact Model — must account for artifacts belonging to products (not vendors directly), with a vendor able to own multiple products, and only one active certification run per product (§5.2).
 2. Scenario Definition Framework
 3. Domain Metadata Management
 4. Certification Registry Integration
@@ -563,9 +563,11 @@ The following decisions require further investigation:
 # Appendix B: Glossary
 
 | Term | Description |
-|--------|-------------|
-| Certification Run | A single vendor certification attempt. |
-| Certification Artifact | Mapping, report, sample data, or validation result submitted during certification. |
-| Domain Certification | Certification against one or more Ed-Fi domains. |
-| SIS Certification | Certification against SIS workflows and scenarios. |
+| --- | --- |
+| Certification Run | A single certification attempt for a **product** (not a vendor). Only one active run per product at a given time (§5.2). |
+| Certification Artifact | Mapping, report, sample data, or validation result submitted during certification. Vendor-owned (§5.5). |
+| Domain Certification | Certification against one or more Ed-Fi domains; may cover a single domain or multiple domains in one submission. |
+| SIS Certification | Certification against SIS workflows and scenarios. Distinct from Domain Certification — not substitutable (§5.2). |
 | Validation Engine | Component responsible for executing automated certification checks. |
+| Certification Agent | Structured report-formatting/aggregation tool referenced in JTBD 5. Not an AI recommendation or decision system. |
+| MTSS / Interventions | |
