@@ -349,6 +349,38 @@ The artifact upload loop is now explicit in the diagram, rather than assumed: a 
 - Reviewers decide whether a change requires re-validation.
 - Reviewers do not upload artifacts on behalf of vendors.
 
+**Artifact Submission Sequence:** Environment/application selection through the Ready for Review gate:
+
+```mermaid
+sequenceDiagram
+    actor Vendor as "Vendor (Artifact Owner)"
+    participant Platform
+
+    Vendor->>Platform: Select environment and application to certify against
+    Note over Platform: Certification status switches to In Progress
+
+    Vendor->>Platform: Select certification type - SIS or Domain API
+
+    alt Domain API selected
+        Vendor->>Platform: Select one or more domains - starting with Assessments
+        Note over Platform: Corresponding resources and endpoints for the selected domains become available to verify against
+    end
+
+    Platform->>Vendor: Display three artifact fields - Certification Mapping, Score Report, Sample Data
+
+    loop Until all three artifacts are uploaded
+        Vendor->>Platform: Upload an artifact
+        Platform->>Vendor: Indicate upload success for that field
+        Note over Platform: Status switches to Submission Incomplete
+    end
+
+    Note over Platform: All three artifacts uploaded - indicated green
+    Note over Platform: Status switches to Ready for Review
+    Platform->>Vendor: Enable Begin Automation Workflow option
+```
+
+This is the same three-artifact set (Certification Mapping, Score Report, Sample Data) referenced generically in §5.5/§7.7.1 — here shown as the specific fields the vendor sees on screen. The "Domain API selected" branch is the entry point into §7.3's domain-selection step; Assessments is called out as the first domain available, with other domains following the same resource/endpoint pattern.
+
 ## 7.5 FT5: Validation Engine
 
 **Goal:** Validate endpoints, resources, data structures, required fields, and data types, such that results are actionable and understandable.
