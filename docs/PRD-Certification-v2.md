@@ -296,6 +296,47 @@ sequenceDiagram
 
 **Open Questions:** Whether certification should be driven by domain resources, endpoint coverage, or sample data remains open (§15). §5.6 confirms the certification *decision* stays with the reviewer regardless of which technical signal drives validation — but not which signal(s) the validation engine should use.
 
+**Domain API Certification Sequence:** Domain selection through automated GET-shape verification and live write verification:
+
+```mermaid
+sequenceDiagram
+    actor Vendor as "Vendor (Artifact Owner)"
+    participant Platform
+    actor Reviewer as "Reviewer (Decision Maker)"
+
+    loop Until all required artifacts are present
+        Vendor->>Platform: Upload an artifact - score report, sample data, data mapping
+        Platform->>Vendor: Status - Submission Incomplete, missing artifacts listed
+    end
+
+    Note over Platform: All required artifacts present
+    Note over Platform: Status switches to Ready for Review
+
+    Vendor->>Platform: Select one or more domains to certify against
+    Note over Platform: Identify required element resources and endpoints for the selected domains
+
+    loop For each required resource
+        Platform->>Platform: Perform GET request against the resource
+        Platform->>Platform: Compare response shape to expected shape from uploaded artifacts
+    end
+
+    alt Response shapes match expectations
+        Note over Platform: Status switches to Under Review
+    else Response shapes do not match
+        Note over Platform: Flag mismatch for vendor correction
+    end
+
+    Note over Reviewer: Perform live verification of endpoints, including writes - PUT and POST
+
+    alt Changes needed
+        Reviewer->>Vendor: Transition to Changes Requested
+    else Results meet expectations
+        Reviewer->>Vendor: Approve certification
+    end
+```
+
+The artifact upload loop is now explicit in the diagram, rather than assumed: a vendor must successfully add the required artifacts (score report, sample data, data mapping) and reach "Ready for Review" *before* domain selection begins — domain selection is not a substitute path around the artifact gate in §7.7.1. The GET-shape verification loop that follows domain selection is a distinct, later automated check against the resources/endpoints for the *selected domains*, not a re-check of artifact presence. The live PUT/POST verification step also raises the same question flagged in §15 OQ12 for §7.2: whether "live verification" of write endpoints should be its own workflow state distinct from "Under Review."
+
 ## 7.4 FT4: Certification Artifact Management
 
 **Goal:** Provide management of product mappings, reports, sample data, and validation results, so reviewers can compare mappings, sample data, reports, and API responses using a common structure.
@@ -636,7 +677,7 @@ Vendors should also have visibility into what's been submitted and where they st
 | 9 | What should the entry/exit criteria be for each workflow state (In Progress, Submission Incomplete, Ready for Review, Under Review, Changes Requested, Approved, Rejected)? | **Resolved 2026-08-10** — see state diagram in §7.7. |
 | 10 | Should "artifact replaced/updated by vendor during review" be added as an explicit 7th event in the Notification Requirements list (§7.8), or is it already covered by the general Artifact Updates notification rule? | **Resolved 2026-08-10** — added as a distinct "Artifact Change" event, separate from "Artifact updates are requested" (§7.8): the requested-update event fires when the reviewer asks for changes; the Artifact Change event fires when the vendor actually makes a change. A persistent "review in progress" status indicator is also required but does not need its own notification event. |
 | 11 | Is "Renewal workflows" out of scope permanently, or deferred to a future release (tracked as "Automated Re-Certification," §13)? | **Resolved 2026-08-10** — deferred, not excluded (§12/§13); expected to closely resemble the original certification workflow. |
-| 12 | Should the workflow state model (§7.7) have a distinct "Live Review" state for the reviewer's live inspection step (§7.2), separate from the general "Under Review" state? | Open — raised 2026-08-10 while diagramming §7.2's SIS certification sequence. |
+| 12 | Should the workflow state model (§7.7) have a distinct "Live Review" state for the reviewer's live inspection/verification step (§7.2's live inspection, §7.3's live PUT/POST verification), separate from the general "Under Review" state? | Open — raised 2026-08-10 while diagramming §7.2's SIS certification sequence; recurs in §7.3's domain certification sequence. |
 
 **Still open beyond this table:**
 - FT3's sub-question on whether resources, endpoints, or sample data (or a combination) should drive Domain API certification requirements.
