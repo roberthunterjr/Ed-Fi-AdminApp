@@ -271,6 +271,34 @@ The platform is responsible for workflow orchestration, validation execution, ev
 - Artifact Checklist
 - Missing Artifacts
 
+**Review Activity Diagram:** Converts the Reviewer Approval Criteria above into discrete activities per actor, showing the loop back to the vendor when changes are requested rather than a straight-through approval path:
+
+```mermaid
+sequenceDiagram
+    actor Vendor as "Vendor (Artifact Owner)"
+    actor Reviewer as "Reviewer (Decision Maker)"
+
+    Vendor->>Reviewer: Submit certification artifacts
+
+    Note over Reviewer: Review submitted artifacts
+    Note over Reviewer: Spot-check validation results
+    Note over Reviewer: Review mapping documentation
+    Note over Reviewer: Evaluate semantic alignment
+    Note over Reviewer: Exercise final certification judgment
+
+    alt Changes needed
+        Reviewer->>Vendor: Leave feedback and request changes
+        Vendor->>Reviewer: Update and resubmit artifacts
+        Note over Reviewer: Repeats review activities above
+    else Approve
+        Reviewer->>Vendor: Approve certification
+    else Reject
+        Reviewer->>Vendor: Reject certification
+    end
+```
+
+Every note in the Reviewer lane maps directly to a bullet in the Reviewer Approval Criteria list above, and the "Changes needed" branch is the only path that hands control back to the Vendor — consistent with §6's ownership split (reviewers judge, vendors act on that judgment).
+
 ## 7.7 FT7: Certification Status Tracking
 
 **Goal:** Provide end-to-end certification visibility — current status, failed validations, pending actions, reviewer feedback.
