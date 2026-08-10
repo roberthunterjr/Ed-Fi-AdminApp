@@ -320,18 +320,18 @@ A vendor cannot transition a product into "Ready for Review" until all required 
 
 ```mermaid
 flowchart TD
-    A[Vendor starts certification run] --> B[Platform displays required artifact checklist\nfor the selected certification type / domain(s)]
+    A[Vendor starts certification run] --> B["Platform displays required artifact checklist for the selected certification type / domain-s"]
     B --> C[Platform shows format and content guidance per artifact type]
     C --> D[Vendor uploads an artifact]
     D --> E{Artifact type recognized and required?}
-    E -- No --> F[Platform flags artifact as unrecognized or extra; vendor corrects]
+    E -- No --> F["Platform flags artifact as unrecognized or extra - vendor corrects"]
     F --> D
     E -- Yes --> G[Platform marks artifact type as present on checklist]
     G --> H{All required artifact types present?}
-    H -- No --> I[Status: Submission Incomplete\nmissing artifacts listed]
+    H -- No --> I["Status - Submission Incomplete, missing artifacts listed"]
     I --> D
     H -- Yes --> J[Status automatically transitions to Ready for Review]
-    J --> K[Reviewers notified; vendor cannot manually\nforce this transition early]
+    J --> K["Reviewers notified - vendor cannot manually force this transition early"]
 ```
 
 ## 7.8 FT8: Notifications
@@ -342,10 +342,10 @@ flowchart TD
 - Validation completes
 - Validation fails
 - Reviewer comments
-- Artifact updates are requested
+- Artifact updates are requested — reviewer requests changes/clarification from the vendor
 - Certification is approved
 - Certification is rejected
-- **Artifact Change event:** covers both directions — a reviewer requesting artifact updates, and a vendor replacing/updating an artifact during review. This is a single generalized event rather than two separate notification types, so the vendor-replaces-artifact case (raised in §7.4/§10.2) is wrapped into it rather than added as a distinct 7th item.
+- **Artifact Change** — distinct from the above: fires when a vendor actually replaces/updates an artifact during review (§7.4/§10.2). "Artifact updates are requested" and "Artifact Change" are two separate events, not a single generalized one — the former is the reviewer asking, the latter is the vendor acting.
 
 **Review-in-progress indicator:** While a submission is in the "Under Review" state, the platform should display a status indicator to the vendor (e.g., on their certification dashboard) showing review is underway. This does **not** need to be a separate notification event — it's a persistent status indicator, not a point-in-time alert.
 
@@ -515,7 +515,7 @@ Vendors should also have visibility into what's been submitted and where they st
 | 7 | What is the standard format for mappings, reports, and sample data? | Open. |
 | 8 | Does "documentation must be present before review activities begin" (feedback, Submission Model) mean the specific "documentation" artifact type, or all required artifact types collectively? | **Resolved 2026-08-10** — means all required artifact types collectively; a vendor cannot enter "Ready for Review" until every required artifact type is present. See §7.7.1 flowchart. |
 | 9 | What should the entry/exit criteria be for each workflow state (In Progress, Submission Incomplete, Ready for Review, Under Review, Changes Requested, Approved, Rejected)? | **Resolved 2026-08-10** — see state diagram in §7.7. |
-| 10 | Should "artifact replaced/updated by vendor during review" be added as an explicit 7th event in the Notification Requirements list (§7.8), or is it already covered by the general Artifact Updates notification rule? | **Resolved 2026-08-10** — generalized into a single "Artifact Change" event covering both reviewer-requested and vendor-initiated changes (§7.8). A persistent "review in progress" status indicator is also required but does not need its own notification event. |
+| 10 | Should "artifact replaced/updated by vendor during review" be added as an explicit 7th event in the Notification Requirements list (§7.8), or is it already covered by the general Artifact Updates notification rule? | **Resolved 2026-08-10** — added as a distinct "Artifact Change" event, separate from "Artifact updates are requested" (§7.8): the requested-update event fires when the reviewer asks for changes; the Artifact Change event fires when the vendor actually makes a change. A persistent "review in progress" status indicator is also required but does not need its own notification event. |
 | 11 | Is "Renewal workflows" out of scope permanently, or deferred to a future release (tracked as "Automated Re-Certification," §13)? | **Resolved 2026-08-10** — deferred, not excluded (§12/§13); expected to closely resemble the original certification workflow. |
 
 **Still open beyond this table:**
