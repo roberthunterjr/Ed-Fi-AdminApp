@@ -208,6 +208,24 @@ The platform is responsible for workflow orchestration, validation execution, ev
 - Credentials are generated automatically
 - Reviewer can assign environments
 
+**Provisioning Flow:** Steps from external certification request through a testable vendor environment:
+
+```mermaid
+sequenceDiagram
+    actor PA as "Platform Admin"
+    participant Platform
+
+    Note over PA: Receives request to certify externally
+    PA->>Platform: Create new tenant under the Certification Team
+    PA->>Platform: Add a new single-tenant environment to the team
+    PA->>Platform: Add a user to the environment
+    PA->>Platform: Create a vendor identity
+    PA->>Platform: Create a new claim set for the SIS to use
+    PA->>Platform: Create an application mapping linking the tenant, environment, user, vendor identity, and claim set
+    Platform->>Platform: Generate credentials automatically
+    Note over Platform: Notify vendor - credentials ready, vendor can begin testing immediately
+```
+
 ## 7.2 FT2: SIS Certification Workflow
 
 **Goal:** Provide guided execution of SIS certification scenarios.
@@ -217,6 +235,54 @@ The platform is responsible for workflow orchestration, validation execution, ev
 - Validation performed automatically
 - Progress status visible
 - A SIS must complete SIS certification scenarios; domain certification does not substitute (§5.2)
+
+**SIS Certification Sequence:** Application selection through approval/rejection, spanning Vendor, Platform, and Reviewer:
+
+```mermaid
+sequenceDiagram
+    actor Vendor as "Vendor (Artifact Owner)"
+    participant Platform
+    actor Reviewer as "Reviewer (Decision Maker)"
+
+    Vendor->>Platform: Select application to certify
+    Platform->>Vendor: Display API version for the application - v5 or v6
+
+    loop Until all required artifacts are present
+        Vendor->>Platform: Upload an artifact
+        Platform->>Vendor: Status - Submission Incomplete, missing artifacts listed
+    end
+
+    Note over Platform: All required artifacts present
+    Note over Platform: Status switches to Ready for Review
+
+    Note over Platform: Certification suite runs, covering required elements
+    Platform->>Vendor: Display progress per element
+
+    loop For each required element
+        alt Endpoint runs successfully
+            Note over Platform: Mark element as checked
+        else Endpoint fails
+            Note over Platform: Flag element as failed
+        end
+    end
+
+    Note over Platform: Scenarios complete, or a dependency fails
+    Note over Platform: Status switches to Under Review
+
+    Platform->>Reviewer: Present report - element status vs expectations
+    Platform->>Vendor: Present report - element status vs expectations
+
+    alt Results do not match expectations
+        Reviewer->>Vendor: Request changes
+    else Certification rejected outright
+        Reviewer->>Vendor: Reject certification
+    else Results match expectations
+        Note over Reviewer: Perform live inspection - see note on possible Live Review state
+        Reviewer->>Vendor: Approve certification
+    end
+```
+
+**Note — possible "Live Review" state:** The description above calls for a reviewer "live inspection" step once automated results match expectations, before final approval. The diagram currently places this inside "Under Review" rather than as its own workflow state. Whether §7.7's state model needs a distinct **Live Review** state (between Under Review and Approved) — e.g., to give the reviewer a scheduling/tracking hook for a live session with the vendor, separate from asynchronous artifact review — is an open question; see §15 OQ12.
 
 ## 7.3 FT3: Domain API Certification Workflow
 
@@ -570,6 +636,7 @@ Vendors should also have visibility into what's been submitted and where they st
 | 9 | What should the entry/exit criteria be for each workflow state (In Progress, Submission Incomplete, Ready for Review, Under Review, Changes Requested, Approved, Rejected)? | **Resolved 2026-08-10** — see state diagram in §7.7. |
 | 10 | Should "artifact replaced/updated by vendor during review" be added as an explicit 7th event in the Notification Requirements list (§7.8), or is it already covered by the general Artifact Updates notification rule? | **Resolved 2026-08-10** — added as a distinct "Artifact Change" event, separate from "Artifact updates are requested" (§7.8): the requested-update event fires when the reviewer asks for changes; the Artifact Change event fires when the vendor actually makes a change. A persistent "review in progress" status indicator is also required but does not need its own notification event. |
 | 11 | Is "Renewal workflows" out of scope permanently, or deferred to a future release (tracked as "Automated Re-Certification," §13)? | **Resolved 2026-08-10** — deferred, not excluded (§12/§13); expected to closely resemble the original certification workflow. |
+| 12 | Should the workflow state model (§7.7) have a distinct "Live Review" state for the reviewer's live inspection step (§7.2), separate from the general "Under Review" state? | Open — raised 2026-08-10 while diagramming §7.2's SIS certification sequence. |
 
 **Still open beyond this table:**
 - FT3's sub-question on whether resources, endpoints, or sample data (or a combination) should drive Domain API certification requirements.
