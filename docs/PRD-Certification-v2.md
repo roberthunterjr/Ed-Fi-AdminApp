@@ -568,29 +568,43 @@ flowchart TD
 
 **Review-in-progress indicator:** While a submission is in the "Under Review" state, the platform should display a status indicator to the vendor (e.g., on their certification dashboard) showing review is underway. This does **not** need to be a separate notification event — it's a persistent status indicator, not a point-in-time alert.
 
-**Notification Trigger Diagram:** The seven events above are independent triggers — from the Vendor, the Reviewer, or the platform's own validation execution — that all resolve through the platform to the same "notify associated users" action, rather than a fixed sequence of steps:
+**Notification Trigger Diagram:** The seven events above are independent triggers — from the Vendor, the Reviewer, or the platform's own validation execution — that all resolve through the platform to the same "notify associated users" action, rather than a fixed sequence of steps. Shown as a use case view: actors as stadium nodes, each trigger as a use-case ellipse inside the "Notification System" boundary, and every one including a shared "Notify Associated Users" use case (Mermaid has no native UML use-case shape, so this is approximated with `flowchart`):
 
 ```mermaid
-sequenceDiagram
-    actor Vendor as "Vendor (Artifact Owner)"
-    participant Platform
-    actor Reviewer as "Reviewer (Decision Maker)"
-    participant Notified as All Associated Users
+flowchart LR
+    Vendor(["Vendor (Artifact Owner)"])
+    Reviewer(["Reviewer (Decision Maker)"])
+    Engine(["Validation Engine"])
+    Users(["All Associated Users"])
 
-    Platform->>Notified: Validation completes
-    Platform->>Notified: Validation fails
-    Reviewer->>Platform: Leaves a comment
-    Platform->>Notified: Reviewer comments
-    Reviewer->>Platform: Requests artifact updates
-    Platform->>Notified: Artifact updates are requested
-    Vendor->>Platform: Replaces or updates an artifact
-    Platform->>Notified: Artifact Change
-    Reviewer->>Platform: Approves certification
-    Platform->>Notified: Certification is approved
-    Reviewer->>Platform: Rejects certification
-    Platform->>Notified: Certification is rejected
+    subgraph System["Notification System"]
+        UC1((Validation Completes))
+        UC2((Validation Fails))
+        UC3((Reviewer Comments))
+        UC4((Request Artifact Updates))
+        UC5((Artifact Change))
+        UC6((Approve Certification))
+        UC7((Reject Certification))
+        UC8((Notify Associated Users))
+    end
 
-    Note over Platform,Notified: "All Associated Users" includes the vendor,<br/>assigned reviewer(s), and relevant platform admins for that certification run.
+    Engine --> UC1
+    Engine --> UC2
+    Reviewer --> UC3
+    Reviewer --> UC4
+    Reviewer --> UC6
+    Reviewer --> UC7
+    Vendor --> UC5
+
+    UC1 -.include.-> UC8
+    UC2 -.include.-> UC8
+    UC3 -.include.-> UC8
+    UC4 -.include.-> UC8
+    UC5 -.include.-> UC8
+    UC6 -.include.-> UC8
+    UC7 -.include.-> UC8
+
+    UC8 --> Users
 ```
 
 ## 7.9 FT9: Audit History
@@ -664,7 +678,7 @@ Vendors should also have visibility into what's been submitted and where they st
 ## 10.1 Submission Model
 - Vendors may submit incomplete certification packages.
 - Missing artifacts should be clearly identified.
-- Documentation must be present before review activities begin. **[Rev 3 interpretation — unconfirmed, see §15 OQ8]**: operationalized in §7.7 as "all required artifact types must be present, even if individually incomplete" before entering "Ready for Review" — but the feedback's Artifact Ownership section lists "documentation" as one specific artifact type among several (mappings, reports, sample data), so this gate may need to mean only the documentation artifact, not every artifact type collectively. Needs Nathan's confirmation.
+- Documentation must be present before review activities begin. **Resolved 2026-08-10 (§15 OQ8):** means all required artifact types collectively, not just the specific "documentation" artifact — operationalized in §7.7 as "all required artifact types must be present, even if individually incomplete" before entering "Ready for Review." See §7.7.1's flowchart for the guided path to that gate.
 
 ## 10.2 Artifact Updates
 - Vendors may replace artifacts during review.
@@ -679,6 +693,34 @@ Vendors should also have visibility into what's been submitted and where they st
 - Reviewers then approve or reject.
 
 *(Full detail at §5.4 and §7.6, FT6.)*
+
+## 10.4 Vendor Visibility
+
+*(Added from JTBD 5, §8: "Vendors should also have visibility into what's been submitted and where they stand in the process, so they can be proactive and resubmit if necessary." §10.1–10.3 state the rules from the platform/reviewer side; this states the corresponding rule from the vendor's side.)*
+
+- Vendors can see submission and review status at any time — this is not a one-time confirmation but a persistent, checkable state (§7.7's status tracking; §7.8's review-in-progress indicator).
+- Vendors are notified of the events that change their required actions (artifact updates requested, approval, rejection — §7.8), so they can act proactively rather than polling for status.
+- Vendors are not blocked from resubmitting once a status change gives them something to act on — the "Changes Requested" and "Submission Incomplete" states above are for the vendor to close, not the platform.
+
+**Vendor-Visible Submission-to-Resolution Loop:** §10.1–10.3's rules described independently, in one loop, from the vendor's point of view:
+
+```mermaid
+flowchart TD
+    A[Vendor submits/updates artifacts - 10.1] --> B{All required artifact types present? - 10.1}
+    B -- No --> C["Status visible to vendor: Submission Incomplete, missing artifacts listed"]
+    C --> A
+    B -- Yes --> D["Status visible to vendor: Ready for Review"]
+    D --> E[Reviewer reviews artifacts and spot-checks validation results - 10.3]
+    E --> F{Reviewer decision}
+    F -- Requests changes/clarification --> G["Status visible to vendor: Changes Requested"]
+    G --> H[Vendor replaces/updates artifacts - 10.2]
+    H --> I[Reviewer notified of Artifact Change - 10.2]
+    I --> E
+    F -- Approves --> J["Status visible to vendor: Approved"]
+    F -- Rejects --> K["Status visible to vendor: Rejected"]
+```
+
+*(This is the same state model as §7.7's diagram and the same gate as §7.7.1's flowchart, redrawn here to make the vendor-visibility rule in this section concrete rather than abstract.)*
 
 ---
 
@@ -758,7 +800,7 @@ Vendors should also have visibility into what's been submitted and where they st
 | 5 | Should vendors self-register? | Open (see §13, Vendor Self-Service Registration). |
 | 6 | How much semantic validation can be automated? | **Partially resolved** — baseline is manual reviewer evaluation (§5.4); automation is Nice to Have only (§11), assisting rather than replacing judgment. |
 | 7 | What is the standard format for mappings, reports, and sample data? | Open. |
-| 8 | Does "documentation must be present before review activities begin" (feedback, Submission Model) mean the specific "documentation" artifact type, or all required artifact types collectively? | **Resolved 2026-08-10** — means all required artifact types collectively; a vendor cannot enter "Ready for Review" until every required artifact type is present. See §7.7.1 flowchart. |
+| 8 | Does "documentation must be present before review activities begin" (feedback, Submission Model) mean the specific "documentation" artifact type, or all required artifact types collectively? | **Resolved 2026-08-10** — means all required artifact types collectively; a vendor cannot enter "Ready for Review" until every required artifact type is present. See §7.7.1 flowchart. §10.1 carried an "unconfirmed" note past this resolution date; corrected 2026-08-11 to match. |
 | 9 | What should the entry/exit criteria be for each workflow state (In Progress, Submission Incomplete, Ready for Review, Under Review, Changes Requested, Approved, Rejected)? | **Resolved 2026-08-10** — see state diagram in §7.7. |
 | 10 | Should "artifact replaced/updated by vendor during review" be added as an explicit 7th event in the Notification Requirements list (§7.8), or is it already covered by the general Artifact Updates notification rule? | **Resolved 2026-08-10** — added as a distinct "Artifact Change" event, separate from "Artifact updates are requested" (§7.8): the requested-update event fires when the reviewer asks for changes; the Artifact Change event fires when the vendor actually makes a change. A persistent "review in progress" status indicator is also required but does not need its own notification event. |
 | 11 | Is "Renewal workflows" out of scope permanently, or deferred to a future release (tracked as "Automated Re-Certification," §13)? | **Resolved 2026-08-10** — deferred, not excluded (§12/§13); expected to closely resemble the original certification workflow. |
