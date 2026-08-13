@@ -1,10 +1,10 @@
 # Certification Automation Platform PRD
 
 **Owner:** Robert H on behalf of Nathan G
-**Status:** Draft — Revision 3 (restructured around first-round feedback)
-**Last Updated:** August 10, 2026
+**Status:** Draft — Revision 4
+**Last Updated:** August 13, 2026
 
-> **Revision note:** Revision 2 incorporated feedback content additively, in place, inside the original PRD structure. Revision 3 restructures the document so the feedback's own logic drives the outline: Scope → **Confirmed Product Decisions** → **Certification Decision Ownership** → **Feature Requirements** (organized so each "Decision Requiring Documentation" is traceable to a specific feature) → **Workflow Assumptions** → **Nice to Have** → **Out of Scope**. No content from Revision 2 was dropped — supporting context (Personas, JTBD, NFRs, Architecture) is retained but now sits around this policy spine rather than alongside it as parallel structure.
+> **Revision note:** Revision 2 incorporated feedback content additively, in place, inside the original PRD structure. Revision 3 restructures the document so the feedback's own logic drives the outline: Scope → **Confirmed Product Decisions** → **Certification Decision Ownership** → **Feature Requirements** (organized so each "Decision Requiring Documentation" is traceable to a specific feature) → **Workflow Assumptions** → **Nice to Have** → **Out of Scope**. No content from Revision 2 was dropped — supporting context (Personas, JTBD, NFRs, Architecture) is retained but now sits around this policy spine rather than alongside it as parallel structure. Revision 4 (2026-08-13) adds three things without changing that spine: **Intervention/MTSS Certification** as a third certification model (§5.2, §7.10, §9); the **Certifying Agent** pre-review determination gate and Run Report structure, derived from a real agent output (§7.5, §7.7.2, §15 OQ13); and a terminology/consistency pass reconciling "Certification Agent" → "Certifying Agent," "deny" → "reject," and the Ready for Review → Under Review transition across all sequence diagrams.
 >
 > **Fidelity note:** Everything in §5 (Confirmed Product Decisions), §6 (Ownership Matrix), and the feedback-sourced bullet lists throughout §7/§10/§11/§12 is a direct transcription of the first-round feedback — treated as authoritative and not reworded for substance. A small number of places in §7.7, §7.8, and §12 extended the feedback's literal wording to make the PRD internally consistent (e.g., giving workflow states entry/exit criteria, since the feedback only named the labels). Those gaps were resolved on 2026-08-10 (workflow state diagram and gating logic, §7.7/§7.7.1; notification event consolidation, §7.8; renewal-workflow deferral, §12/§13) and are marked "confirmed 2026-08-10" inline, tracked in §15 (OQ8–OQ11) for traceability back to the original feedback.
 
@@ -23,6 +23,7 @@ The platform provides a unified experience for:
 | Credential management | Automatic generation of application credentials as part of provisioning; credential lifecycle managed by the platform (§5.3, §7.1). |
 | SIS certification workflows | Guided execution of SIS certification scenarios with tracked progress and automated validation; SIS scenarios cannot be substituted by domain certification (§5.2, §7.2). |
 | Domain API certification workflows | Certification against one or more selected Ed-Fi domains, with required resources/endpoints identified and validated per domain (§5.6, §7.3). |
+| Intervention/MTSS certification workflows | Baseline interoperability certification against the Ed-Fi Intervention Domain — intervention definitions, student assignments, participation/dosage data, and a recovery scenario (§5.2, §7.10). Provisional; see §7.10. |
 | Validation and reporting | Automated validation of endpoints, resources, and data structures, with pass/fail reporting by domain, resource, and element, plus a reviewer-facing Run Report (§7.5). |
 | Reviewer approval workflows | Reviewer workbench for artifact review, spot-checking, and final certification judgment, with approve/reject/request-changes dispositions (§5.4, §7.6). |
 
@@ -69,8 +70,8 @@ Rather than operating as a standalone certification tool, certification becomes 
 
 ## Primary Audience
 
-### Certified Vendors
-Organizations seeking certification against Ed-Fi APIs.
+### Certifying Vendors
+Organizations seeking certification against Ed-Fi APIs. ("Certified" describes the post-approval state; this audience is the set of vendors pursuing it.)
 
 ### Vendor Engineering Teams
 Engineers implementing and validating Ed-Fi integrations.
@@ -143,7 +144,7 @@ The platform is responsible for:
 - Reviewer workflow support
 - Audit history
 
-*(Implemented in §7, FT1–FT9.)*
+*(Implemented in §7, FT1–FT10.)*
 
 ## 5.4 Reviewer Responsibilities
 The reviewer remains the certification decision-maker and is responsible for:
@@ -228,6 +229,8 @@ sequenceDiagram
     Note over Platform: Notify vendor - credentials ready, vendor can begin testing immediately
 ```
 
+The steps shown in the Platform Admin lane are the *current* manual sequence, captured here as the baseline this feature automates. The target state is that a certification request triggers these steps as a single platform-executed operation, with the Platform Admin approving or overriding rather than performing each step by hand — that is what "automatically provision" in the Goal above means.
+
 ## 7.2 FT2: SIS Certification Workflow
 
 **Goal:** Provide guided execution of SIS certification scenarios.
@@ -269,10 +272,13 @@ sequenceDiagram
     end
 
     Note over Platform: Scenarios complete, or a dependency fails
-    Note over Platform: Status switches to Under Review
+    Note over Platform: Certifying Agent gate runs (§7.7.2) - status stays Ready for Review
 
-    Platform->>Reviewer: Present report - element status vs expectations
-    Platform->>Vendor: Present report - element status vs expectations
+    Platform->>Reviewer: Present Run Report - element status vs expectations
+    Platform->>Vendor: Present Run Report - element status vs expectations
+
+    Reviewer->>Platform: Begin evaluation
+    Note over Platform: Status switches to Under Review
 
     alt Results do not match expectations
         Reviewer->>Vendor: Request changes
@@ -323,6 +329,9 @@ sequenceDiagram
     end
 
     alt Response shapes match expectations
+        Note over Platform: Certifying Agent gate runs (§7.7.2) - status stays Ready for Review
+        Platform->>Reviewer: Notify - submission ready for review, Run Report attached
+        Reviewer->>Platform: Begin evaluation
         Note over Platform: Status switches to Under Review
     else Response shapes do not match
         Note over Platform: Flag mismatch for vendor correction
@@ -331,7 +340,7 @@ sequenceDiagram
     Note over Reviewer: Perform live verification of endpoints, including writes - PUT and POST
 
     alt Changes needed
-        Reviewer->>Vendor: Transition to Changes Requested
+        Reviewer->>Vendor: Request changes
     else Results meet expectations
         Reviewer->>Vendor: Approve certification
     end
@@ -361,7 +370,7 @@ sequenceDiagram
     Vendor->>Platform: Select environment and application to certify against
     Note over Platform: Certification status switches to In Progress
 
-    Vendor->>Platform: Select certification type - SIS or Domain API
+    Vendor->>Platform: Select certification type - SIS, Domain API, or Intervention/MTSS
 
     alt Domain API selected
         Vendor->>Platform: Select one or more domains - starting with Assessments
@@ -398,12 +407,12 @@ sequenceDiagram
     participant Agent as "Certifying Agent"
     actor Reviewer as "Reviewer (Decision Maker)"
 
-    Vendor->>Platform: Select workflow to test against - Domains or SIS
+    Vendor->>Platform: Select workflow to test against - SIS, Domains, or Intervention/MTSS
     Note over Platform: Load test suite in dependency order - sequence, parallel, fan-out as needed
 
     loop For each test in suite
         Vendor->>Platform: Make request using client id and secret
-        alt SIS workflow
+        alt SIS or Intervention/MTSS workflow
             Note over Platform: Includes writes and updates - POST and PUT
         else Domain workflow
             Note over Platform: Automated portion uses GET requests
@@ -430,8 +439,8 @@ sequenceDiagram
 
         alt Changes needed
             Reviewer->>Vendor: Request changes
-        else Certification denied
-            Reviewer->>Vendor: Deny certification
+        else Certification rejected
+            Reviewer->>Vendor: Reject certification
         else Schedule live session
             Reviewer->>Vendor: Schedule live session
             Note over Reviewer: See OQ12 - possible new Pending Live Review state
@@ -465,7 +474,7 @@ Validation here is primarily field-presence and type-matching against the sample
 - Approve or reject certifications
 
 **"Decision Requiring Documentation" — Reviewer Landing Page** (feedback verbatim): The reviewer homepage must prominently display, per certification run:
-- Certification Type (SIS or Domain)
+- Certification Type (SIS, Domain, or Intervention/MTSS — the feedback named the first two; the third follows from §5.2)
 - Product Name
 - Vendor Name
 - Submission Date
@@ -730,10 +739,13 @@ sequenceDiagram
     Platform->>Platform: Verify relationships and data remain consistent after recovery
 
     Note over Platform: Scenarios complete, or a dependency fails
-    Note over Platform: Status switches to Under Review
+    Note over Platform: Certifying Agent gate runs (§7.7.2) - status stays Ready for Review
 
-    Platform->>Reviewer: Present report - use case status vs expectations
-    Platform->>Vendor: Present report - use case status vs expectations
+    Platform->>Reviewer: Present Run Report - use case status vs expectations
+    Platform->>Vendor: Present Run Report - use case status vs expectations
+
+    Reviewer->>Platform: Begin evaluation
+    Note over Platform: Status switches to Under Review
 
     alt Results do not match expectations
         Reviewer->>Vendor: Request changes
@@ -777,6 +789,11 @@ Signals: reduced manual investigation; standardized review process; faster certi
 The expectation is to review a report similar to what the **Certifying Agent** outputs (JTBD 4 could feed this system). *Terminology reconciled 2026-08-13* (previously "Certification Agent" — renamed to match a real example output, §7.5/§7.7.2/§15 OQ13): the Certifying Agent compiles submitted evidence (mapping, report, sample data, endpoint responses) into a structured, per-area PASS/FAIL/PASS WITH CLARIFICATION determination and a readiness-to-proceed recommendation. It is rules-based evidence checking, not an AI recommendation or decision system, and it does not decide the certification outcome — that remains the reviewer's call (§5.4, §6, §7.7.2). This distinction is what keeps it consistent with §12 Out of Scope: AI-generated recommendations, despite producing something labeled a "recommendation."
 
 Vendors should also have visibility into what's been submitted and where they stand in the process, so they can be proactive and resubmit if necessary.
+
+## JTBD 6: Complete Intervention/MTSS Certification → supports FT10
+*(Added 2026-08-13 alongside §7.10; numbered last because it postdates JTBD 1–5 rather than because it is lower priority.)*
+**When** I am certifying an intervention/MTSS product, **I want** the platform to validate that I can publish and maintain intervention definitions, assignments, and participation data, **so that** I can demonstrate baseline interoperability against the Ed-Fi Intervention Domain.
+Signals: required use cases tracked and validated; assigned-vs-delivered dosage comparison visible; recovery/resubmission scenario passes with identifiers and relationships preserved.
 
 ---
 
@@ -853,7 +870,7 @@ flowchart TD
 # 11. Nice to Have
 
 - **Mapping review automation** — would assist, not replace, reviewer judgment (per confirmed reviewer decision authority, §5.4/§6).
-- **Semantic validation automation** — would assist, not replace, reviewer judgment. Relates to Open Question on semantic automation extent (§15).
+- **Semantic validation automation** — would assist, not replace, reviewer judgment. Relates to §15 OQ6 (how much semantic validation can be automated).
 
 ---
 
@@ -903,7 +920,7 @@ flowchart TD
 ## Extensibility
 | Requirement | Details |
 | --- | --- |
-| Additional certification types | The workflow model (§7.7) and validation engine (§7.5) should accommodate certification types beyond SIS and Domain API without redesign. |
+| Additional certification types | The workflow model (§7.7) and validation engine (§7.5) should accommodate certification types beyond SIS, Domain API, and Intervention/MTSS without redesign. Intervention/MTSS (§7.10) is the first test of this — it was added as a third model reusing the same states, gates, and Run Report structure. |
 | Additional Data Standard versions | Scope already spans v5 and v6 (§9); the platform should support future Data Standard versions through configuration rather than rework. |
 | Domain expansion | New domains beyond the initial set (starting with Assessments, §7.4) should be addable without changing the underlying certification workflow. |
 
@@ -933,10 +950,11 @@ flowchart TD
 | 12 | Should the workflow state model (§7.7) have a distinct "Live Review" or "Pending Live Review" state for the reviewer's live inspection/verification step (§7.2's live inspection, §7.3's live PUT/POST verification, §7.5's "schedule live session" disposition), separate from the general "Under Review" state? | Open — raised 2026-08-10 while diagramming §7.2's SIS certification sequence; recurs in §7.3's domain certification sequence and §7.5's validation engine sequence, where scheduling a live session implies a waiting period not currently modeled by any state. |
 | 13 | Is "Certifying Agent" the right permanent name for this capability, and does "blocking deficiencies" need its own vocabulary distinct from workflow states? Also: should the "no blocking deficiencies" gate (§7.7.2) ever be allowed to notify/queue the reviewer automatically for *some* certification types, or should it always require this same manual-pull model? | Open — raised 2026-08-13 after reviewing a real Certifying Agent output (a Tomorrow Today Domain API v5 "Certification Reviewer Determination" report for `studentCTEProgramAssociations`). §7.5/§7.7.2 now model "Ready for Review" as a single state throughout: the Certifying Agent gate only controls whether the reviewer is notified/queued; the reviewer still decides when to begin evaluation, which is what triggers "Under Review" — consistent with the original feedback-verbatim state list and with §5.4/§6's reviewer-authority model. Not yet confirmed against the source Confluence process the sample came from. |
 
-**Still open beyond this table:**
-- FT3's sub-question on whether resources, endpoints, or sample data (or a combination) should drive Domain API certification requirements.
-- Whether Vendor Self-Service Registration intersects with the vendor/product/certification-run model in §5.2.
-- OQ13: whether dependency reconciliation (e.g., validating a referenced `Program` resource alongside `studentCTEProgramAssociations`) should be formalized as a general pattern for every domain resource with references, not just documented ad hoc per resource.
+**Still open beyond this table** (sub-questions not yet promoted to their own IDs):
+- **From OQ1/§7.3** — whether resources, endpoints, or sample data (or a combination) should drive Domain API certification requirements.
+- **From OQ5/§13** — whether Vendor Self-Service Registration intersects with the vendor/product/certification-run model in §5.2.
+- **From OQ13/§7.5** — whether dependency reconciliation (e.g., validating a referenced `Program` resource alongside `studentCTEProgramAssociations`) should be formalized as a general pattern for every domain resource with references, rather than documented ad hoc per resource.
+- **From §7.10** — Intervention/MTSS scope is provisional; the source Confluence page is still "Draft for Feedback," so the v1 in-scope/deferred split needs re-confirmation once that page is finalized.
 
 ---
 
@@ -948,7 +966,7 @@ flowchart TD
 - **Certification Platform** — coordinates certification workflows.
 - **Validation Engine** — executes automated validations.
 - **Artifact Store** — stores mappings, reports, sample data, validation results.
-- **Hosted Certification Infrastructure** — certification-specific environments.
+- **Hosted Certification Infrastructure** — the single-tenant certification environments (§7.1), provisioned on the same hosted Ed-Fi infrastructure used by other tenants rather than on separate certification-specific infrastructure (§2, Administrative Tooling Alignment).
 
 ---
 
@@ -987,4 +1005,6 @@ Increased certification throughput; reduced dependency on Sandbox Admin; increas
 | Validation Engine | Component responsible for executing automated certification checks. |
 | Certifying Agent | Platform capability (renamed 2026-08-13 from "Certification Agent") that compiles submitted evidence into a structured, per-area PASS/FAIL/PASS WITH CLARIFICATION determination and readiness-to-proceed recommendation. Rules-based, not AI; does not decide certification outcome (§5.4, §7.5, §7.7.2). |
 | Run Report | The Certifying Agent's output artifact: per-area determination, blocking deficiencies, recommended reviewer note, clarification questions, and readiness decision (§7.5). Retained under Audit History (§7.9). |
+| Blocking Deficiency | A content-level problem found by the Certifying Agent that keeps a submission from being surfaced to a reviewer. It is *not* a workflow state — the submission stays in "Ready for Review" and is visible only to the vendor until the deficiency list is empty (§7.7.2). Naming is open, §15 OQ13. |
+| Intervention/MTSS Certification | Third certification model (§7.10), scoped to the existing Ed-Fi Intervention Domain. Provisional pending finalization of its source requirements (§5.2). |
 | MTSS / Interventions | Multi-Tiered System of Supports. Refers to Intervention/MTSS Certification, a third certification model scoped to the existing Ed-Fi Intervention Domain, covering intervention definitions, student assignments, and attendance/participation data (§5.2, §7.10). |
