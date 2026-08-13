@@ -18,13 +18,13 @@ The platform provides a unified experience for:
 
 | Feature | Details |
 | --- | --- |
-| Vendor onboarding | |
-| Certification environment provisioning | |
-| Credential management | |
-| SIS certification workflows | |
-| Domain API certification workflows | |
-| Validation and reporting | |
-| Reviewer approval workflows | |
+| Vendor onboarding | Automated tenant, environment, and vendor identity setup so a vendor can begin testing immediately upon a certification request (§7.1). |
+| Certification environment provisioning | Automatic provisioning of tenants, single-tenant environments, and ODS instances per certification run (§7.1). |
+| Credential management | Automatic generation of application credentials as part of provisioning; credential lifecycle managed by the platform (§5.3, §7.1). |
+| SIS certification workflows | Guided execution of SIS certification scenarios with tracked progress and automated validation; SIS scenarios cannot be substituted by domain certification (§5.2, §7.2). |
+| Domain API certification workflows | Certification against one or more selected Ed-Fi domains, with required resources/endpoints identified and validated per domain (§5.6, §7.3). |
+| Validation and reporting | Automated validation of endpoints, resources, and data structures, with pass/fail reporting by domain, resource, and element, plus a reviewer-facing Run Report (§7.5). |
+| Reviewer approval workflows | Reviewer workbench for artifact review, spot-checking, and final certification judgment, with approve/reject/request-changes dispositions (§5.4, §7.6). |
 
 The platform builds upon the Admin App and Admin API foundation, extending administrative capabilities into certification lifecycle management.
 
@@ -37,31 +37,31 @@ The platform builds upon the Admin App and Admin API foundation, extending admin
 ## Strategic Goals
 | Objective | Description |
 | --- | --- |
-| Reduce certification onboarding time | |
-| Reduce operational effort required by Ed-Fi staff | |
-| Improve vendor certification experience | |
-| Accelerate certification completion | |
-| Improve consistency of certification validation | |
-| Enable certification expansion into new domains and standards versions | |
+| Reduce certification onboarding time | Automated provisioning (§7.1) eliminates manual tenant/environment setup, letting vendors begin testing immediately. |
+| Reduce operational effort required by Ed-Fi staff | Automated provisioning, validation execution, and artifact management (§5.3) remove manual administrative work from certification staff. |
+| Improve vendor certification experience | Guided workflows (§7.2, §7.3), visible progress/status (§7.7, §10.4), and proactive notifications (§7.8) replace opaque, staff-mediated processes. |
+| Accelerate certification completion | Automated validation (§7.5) and a guided artifact submission gate (§7.7.1) reduce back-and-forth cycles between vendor and reviewer. |
+| Improve consistency of certification validation | A standardized validation engine (§7.5) and reporting by domain/resource/element (§5.6) replace ad hoc manual checks. |
+| Enable certification expansion into new domains and standards versions | Extensible validation and scenario framework designed to support additional domains and Data Standard versions (§14 Extensibility; §9 Scope). |
 
 ## Administrative Tooling Alignment
 | Tooling | Details |
 | --- | --- |
-| Admin App | |
-| Admin API | |
-| Credential Management | |
-| Environment Provisioning | |
-| Hosted Ed-Fi Infrastructure | |
+| Admin App | Certification workflows surface within the Admin App as an extension of existing administrative UI, not a separate tool. |
+| Admin API | Certification operations (provisioning, credentials) build on Admin API automation; dedicated Certification APIs are a future enhancement (§13). |
+| Credential Management | Certification reuses the platform's existing credential generation and management capabilities (§5.3, §7.1). |
+| Environment Provisioning | Certification environments are provisioned through the same tenant/environment model used for other hosted Ed-Fi environments (§7.1). |
+| Hosted Ed-Fi Infrastructure | Certification runs on the same hosted infrastructure supporting other Ed-Fi tenants, rather than separate certification-specific infrastructure. |
 
 Rather than operating as a standalone certification tool, certification becomes an extension of Ed-Fi administrative tooling.
 
 ## Market-Led Growth Alignment
 | Benefit | Description |
 | --- | --- |
-| Reducing vendor integration costs | |
-| Shortening implementation timelines | |
-| Improving certification scalability | |
-| Increasing partner satisfaction | |
+| Reducing vendor integration costs | Automated provisioning and guided workflows reduce vendor effort and elapsed time to certify (§7.1, §7.2). |
+| Shortening implementation timelines | Faster onboarding and clearer validation feedback shorten the vendor's path to certification (§7.1, §7.5). |
+| Improving certification scalability | Automation reduces staff effort per certification run, enabling more concurrent certifications (§14 Scalability). |
+| Increasing partner satisfaction | Vendor visibility into status and proactive notifications (§10.4, §7.8) reduce uncertainty and support burden. |
 
 ---
 
@@ -78,18 +78,18 @@ Engineers implementing and validating Ed-Fi integrations.
 ### Ed-Fi Certification Staff
 | Responsibility | Details |
 | --- | --- |
-| Certification management | |
-| Validation | |
-| Review | |
-| Approval | |
+| Certification management | Oversee certification runs end-to-end — provisioning, status tracking, and coordinating with vendors (§5.3, §7.7). |
+| Validation | Configure and interpret automated validation results produced by the Validation Engine (§7.5). |
+| Review | Reviewer role — evaluate submitted artifacts, spot-check validation results, review mapping documentation (§5.4, §7.6). |
+| Approval | Exercise final certification judgment — approve, reject, or request changes (§5.4, §7.6). |
 
 ## Future Audiences
 | Audience | Details |
 | --- | --- |
-| State Education Agencies (SEAs) | |
-| Education Service Agencies (ESAs) | |
-| Managed Service Providers (MSPs) | |
-| Data Hub operators | |
+| State Education Agencies (SEAs) | Potential future consumers of certified products for state-level deployment, not part of current certification scope (§13 Deployable Certification Packages). |
+| Education Service Agencies (ESAs) | Regional service agencies that may deploy certified products on behalf of member districts (§13). |
+| Managed Service Providers (MSPs) | Third parties managing Ed-Fi deployments on behalf of districts/states — a future certification/deployment audience (§13). |
+| Data Hub operators | Operators of Data Hub infrastructure who may consume certification results for deployment decisions, and may also run their own self-hosted certification instance to support internal application development (§13). |
 
 ---
 
@@ -763,29 +763,29 @@ flowchart TD
 ## Security
 | Requirement | Details |
 | --- | --- |
-| Secure credential generation | |
+| Secure credential generation | Credentials are generated and stored following the same secure practices as existing Admin App/API credential issuance (§7.1, §5.3). |
 | Audit logging | See §7.9, FT9: Audit History, for the specific retained data set. |
-| Role-based authorization | |
-| Tenant isolation | |
+| Role-based authorization | Access to certification functions (vendor, reviewer, platform admin) is scoped by role, consistent with the platform/reviewer ownership split in §6. |
+| Tenant isolation | Each vendor's certification environment is isolated within its own single-tenant environment (§7.1), preventing cross-vendor data exposure. |
 
 ## Scalability
 | Requirement | Details |
 | --- | --- |
-| Support concurrent certification activities | |
-| Support multiple active environments | |
+| Support concurrent certification activities | Multiple certification runs across different vendors/products must execute in parallel without contention — only one active run per product is allowed, but many products may certify simultaneously (§5.2). |
+| Support multiple active environments | The platform must provision and manage many concurrent single-tenant environments (§7.1) as certification volume grows. |
 
 ## Extensibility
 | Requirement | Details |
 | --- | --- |
-| Additional certification types | |
-| Additional Data Standard versions | |
-| Domain expansion | |
+| Additional certification types | The workflow model (§7.7) and validation engine (§7.5) should accommodate certification types beyond SIS and Domain API without redesign. |
+| Additional Data Standard versions | Scope already spans v5 and v6 (§9); the platform should support future Data Standard versions through configuration rather than rework. |
+| Domain expansion | New domains beyond the initial set (starting with Assessments, §7.4) should be addable without changing the underlying certification workflow. |
 
 ## Maintainability
 | Requirement | Details |
 | --- | --- |
-| Scenario updates should not require code changes where possible | |
-| Validation rules should be versioned | |
+| Scenario updates should not require code changes where possible | Certification scenarios, required artifacts, and resource/endpoint requirements should be data/configuration-driven rather than hardcoded, so staff can update them without a deployment. |
+| Validation rules should be versioned | Validation rules must be versioned alongside Data Standard versions so results remain traceable to the rule set that produced them (§7.5). |
 
 ---
 
