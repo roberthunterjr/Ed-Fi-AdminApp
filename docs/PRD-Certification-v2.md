@@ -187,6 +187,7 @@ The platform is responsible for workflow orchestration, validation execution, ev
 | Store artifacts | ✅ | |
 | Report validation outcomes | ✅ | |
 | Identify missing artifacts | ✅ | |
+| Generate automated readiness determination (Certifying Agent, §7.5, §7.7.2) | ✅ | |
 | Review artifacts | | ✅ |
 | Spot-check validation results | | ✅ |
 | Review mapping documentation | | ✅ |
@@ -388,12 +389,13 @@ This is the same three-artifact set (Certification Mapping, Score Report, Sample
 
 **"Decision Requiring Documentation" — Reporting granularity:** Per §5.6, Domain Certification validation results must show pass/fail status by **domain, resource, and element**, not only at the endpoint/resource level.
 
-**Validation Sequence:** Test suite loading through the reviewer's disposition of the automated run:
+**Validation Sequence:** Test suite loading through the automated readiness gate to the reviewer's own decision to begin evaluation, and their disposition of the run:
 
 ```mermaid
 sequenceDiagram
     actor Vendor as "Vendor (Artifact Owner)"
     participant Platform
+    participant Agent as "Certifying Agent"
     actor Reviewer as "Reviewer (Decision Maker)"
 
     Vendor->>Platform: Select workflow to test against - Domains or SIS
@@ -411,25 +413,41 @@ sequenceDiagram
     end
 
     Note over Platform: Automated workflow completes
-    Note over Platform: Status switches to Under Review
 
-    Platform->>Platform: Generate Run Report - summary of every request the vendor app completed during the run
-    Platform->>Reviewer: Provide Run Report
+    Platform->>Agent: Compile mapping, report, sample data, and endpoint response evidence
+    Agent->>Agent: Run per-area checks - mapping review, optional-field treatment,<br/>JSON payload review, report-to-payload comparison, dependency reconciliation
+    Agent->>Platform: Return Run Report - per-area PASS / FAIL / PASS WITH CLARIFICATION,<br/>blocking deficiencies, recommended next steps, readiness decision
 
-    Reviewer->>Platform: Match each response against what was expected from artifacts
+    alt Blocking deficiencies identified
+        Platform->>Vendor: Notify of deficiencies - status remains Ready for Review, not yet visible to reviewer
+    else No blocking deficiencies
+        Note over Platform: Status remains Ready for Review
+        Platform->>Reviewer: Notify - submission ready for review, Run Report attached
 
-    alt Changes needed
-        Reviewer->>Vendor: Request changes
-    else Certification denied
-        Reviewer->>Vendor: Deny certification
-    else Schedule live session
-        Reviewer->>Vendor: Schedule live session
-        Note over Reviewer: See OQ12 - possible new Pending Live Review state
-        Reviewer->>Vendor: Approve certification after live session
+        Reviewer->>Platform: Begin evaluation
+        Note over Platform: Status switches to Under Review
+        Reviewer->>Platform: Match each response against what was expected from artifacts
+
+        alt Changes needed
+            Reviewer->>Vendor: Request changes
+        else Certification denied
+            Reviewer->>Vendor: Deny certification
+        else Schedule live session
+            Reviewer->>Vendor: Schedule live session
+            Note over Reviewer: See OQ12 - possible new Pending Live Review state
+            Reviewer->>Vendor: Approve certification after live session
+        end
     end
 ```
 
-The Run Report is a new, distinct artifact: a platform-generated record of what the vendor app actually did during the automated run (every request made and its result), separate from the vendor-provided artifacts it's compared against (score report, sample data, mapping — §5.5). It gives the reviewer a tangible, comprehensive basis for comparison rather than relying on the live run state or scattered logs, and is retained under §7.9's Audit History requirements.
+**Run Report structure** (revised 2026-08-13, based on a real Certifying Agent output — see §15 OQ13 for provenance): the Run Report is a platform-generated, per-area determination compiled by the **Certifying Agent** (renamed from "Certification Agent," §8/JTBD5 — same capability, name and description reconciled to match actual behavior). It is not simply a request/response log; it contains:
+- **Scope statement** — explicitly limited to the submitted evidence package; does not evaluate runtime behavior, source code, UI workflows, or connectivity configuration.
+- **Per-area results** — e.g., Mapping Review, Optional Field Treatment, JSON Payload Review, Report-to-Payload Comparison, dependency reconciliation (e.g., a referenced resource like `Program` exists and resolves correctly) — each scored PASS / FAIL / PASS WITH CLARIFICATION, at the domain/resource/element granularity required by §5.6.
+- **Blocking deficiencies** — if any are identified, the submission stays in "Ready for Review" and the vendor is notified; the reviewer is not notified or queued until this list is empty (§7.7's gate, formalized in §7.7.2). Even once clean, moving into "Under Review" itself remains the reviewer's own action, not an automatic transition.
+- **Recommended reviewer note, clarification questions, and next steps** — auxiliary guidance surfaced to the human reviewer, not a substitute for their judgment.
+- **Readiness decision** — e.g., "Ready for certification review" — this is a *readiness-to-proceed* determination, not a certification outcome; approve/reject remains exclusively the reviewer's call (§5.4, §6). See §12's Out of Scope note on AI-generated recommendations for why this distinction matters.
+
+The Run Report is separate from the vendor-provided artifacts it's compared against (score report, sample data, mapping — §5.5), gives the reviewer a tangible, comprehensive basis for comparison rather than relying on the live run state or scattered logs, and is retained under §7.9's Audit History requirements.
 
 Validation here is primarily field-presence and type-matching against the sample data/report artifacts, not deep semantic checks (semantic alignment remains a manual reviewer activity per §5.4/§7.6). The three reviewer dispositions shown — Changes Requested, Rejected, or scheduling a live session before Approved — sharpen OQ12: a "schedule live session" action implies a *waiting* period between Under Review and Approved that isn't well represented by either state today, reinforcing the case for a distinct **Pending Live Review** (or similarly named) state rather than treating live verification as instantaneous within Under Review.
 
@@ -517,12 +535,24 @@ stateDiagram-v2
     InProgress --> ReadyForReview : all required artifact types present
     SubmissionIncomplete --> ReadyForReview : remaining required artifact type(s) added
     ReadyForReview --> UnderReview : reviewer begins evaluation
+    ReadyForReview --> ReadyForReview : Certifying Agent identifies blocking deficiencies; vendor notified
     UnderReview --> ChangesRequested : reviewer requests updates or clarification
     UnderReview --> Approved : reviewer approves
     UnderReview --> Rejected : reviewer rejects
     ChangesRequested --> UnderReview : vendor updates artifacts; reviewer resumes evaluation
     Approved --> [*]
     Rejected --> [*]
+
+    note right of ReadyForReview
+        Within this state, the Certifying Agent runs
+        automatically (§7.7.2). Blocking deficiencies keep
+        the submission here, visible only to the vendor.
+        A clean result notifies/queues the reviewer with
+        the Run Report attached, but the state stays
+        "Ready for Review" - the reviewer still decides
+        when to begin evaluation (Under Review is a pull,
+        not an automatic transition).
+    end note
 
     note right of UnderReview
         Live inspection/verification steps (§7.2, §7.3, §7.5)
@@ -532,7 +562,7 @@ stateDiagram-v2
     end note
 ```
 
-Note the diagram enforces that **both** paths into "Ready for Review" require all required artifact types to be present — there is no transition that lets a vendor enter review early.
+Note the diagram enforces that **both** paths into "Ready for Review" require all required artifact types to be present — there is no transition that lets a vendor enter review early. The Certifying Agent's blocking-deficiency check (§7.7.2) is a finer-grained gate layered *within* "Ready for Review," not a separate state — it determines whether the reviewer is notified/queued, but the reviewer still decides when to actually begin evaluation, which is what triggers the move to "Under Review."
 
 ## 7.7.1 Submission Readiness Flow (resolves OQ8)
 
@@ -553,6 +583,28 @@ flowchart TD
     H -- Yes --> J[Status automatically transitions to Ready for Review]
     J --> K["Reviewers notified - vendor cannot manually force this transition early"]
 ```
+
+## 7.7.2 Automated Pre-Review Determination Gate (added 2026-08-13, resolves OQ13)
+
+*(Sourced from a real Certifying Agent output for a Domain API v5 submission — see §15 OQ13 for provenance and open scope questions. This gate is content-level and runs after §7.7.1's presence-level gate has already been satisfied.)*
+
+Reaching "Ready for Review" only confirms that all required artifact types are present (§7.7.1). It does not confirm the artifacts are internally consistent or that the vendor's endpoints actually match them. That second, content-level check is the Certifying Agent's job. It runs automatically while the submission is still "Ready for Review" and determines whether the reviewer is notified — it does **not** move the submission into "Under Review" itself; that transition is still the reviewer's own action (§7.7):
+
+```mermaid
+flowchart TD
+    A[Automated validation run completes - §7.5] --> B["Certifying Agent compiles evidence: mapping, report, sample data, endpoint responses"]
+    B --> C["Run per-area checks: mapping review, optional-field treatment, JSON payload review, report-to-payload comparison, dependency reconciliation"]
+    C --> D{Blocking deficiencies identified?}
+    D -- Yes --> E["Vendor notified of deficiencies; status remains Ready for Review, not yet visible to reviewer"]
+    E --> F[Vendor revises artifacts]
+    F --> A
+    D -- No --> G["Status remains Ready for Review; reviewer notified and Run Report attached to their queue"]
+    G --> H{Reviewer begins evaluation?}
+    H -- Not yet --> G
+    H -- Yes --> I["Status switches to Under Review (§7.7) - reviewer's own action, not automatic"]
+```
+
+This gate does not decide certification, and it does not decide when review starts either — it decides whether the submission is *fit to be shown to* a human reviewer at all. A "no blocking deficiencies" result surfaces the submission and its Run Report to the reviewer's queue; the reviewer still chooses when to begin evaluation, and still exercises full judgment once in "Under Review" (§5.4, §6, §7.7). This distinction is also what keeps the Certifying Agent's output from crossing into the "AI-generated recommendations" boundary in §12.
 
 ## 7.8 FT8: Notifications
 
@@ -622,7 +674,7 @@ flowchart LR
 - Reviewer identity
 - Reviewer decision date
 - Approval/rejection history
-- **Run Report** — added 2026-08-10: the platform-generated summary of every request the vendor app completed during an automated validation run (§7.5), handed to the reviewer at the start of Under Review. Distinct from "Validation execution history" above (which is the raw execution log); the Run Report is the reviewer-facing comparison artifact and should be retained alongside it, not folded into it.
+- **Run Report** — added 2026-08-10, structure revised 2026-08-13 (§7.5, §7.7.2): the Certifying Agent's structured determination for an automated validation run — per-area PASS/FAIL/PASS WITH CLARIFICATION results, blocking deficiencies (if any), recommended reviewer note, and readiness decision — handed to the reviewer at the start of Under Review. Distinct from "Validation execution history" above (which is the raw execution log); the Run Report is the reviewer-facing comparison artifact and should be retained alongside it, not folded into it.
 
 ## 7.10 FT10: Intervention / MTSS Certification Workflow
 
@@ -722,7 +774,7 @@ Artifacts to submit: mapping; sample data; score report (assessment) / sample re
 **When** a vendor submits certification, **I want** a consistent set of artifacts and validation results, **so that** I can confidently approve or reject certification.
 Signals: reduced manual investigation; standardized review process; faster certification decisions.
 
-The expectation is to review a report similar to what the **Certification Agent** outputs (JTBD 4 could feed this system). *Confirmed terminology:* "Certification Agent" refers to a structured report-formatting/aggregation tool — not an AI recommendation or decision system. It compiles submitted evidence into a standard reviewer-facing report and does not evaluate, score, or recommend a certification outcome (kept consistent with §12 Out of Scope: AI-generated recommendations).
+The expectation is to review a report similar to what the **Certifying Agent** outputs (JTBD 4 could feed this system). *Terminology reconciled 2026-08-13* (previously "Certification Agent" — renamed to match a real example output, §7.5/§7.7.2/§15 OQ13): the Certifying Agent compiles submitted evidence (mapping, report, sample data, endpoint responses) into a structured, per-area PASS/FAIL/PASS WITH CLARIFICATION determination and a readiness-to-proceed recommendation. It is rules-based evidence checking, not an AI recommendation or decision system, and it does not decide the certification outcome — that remains the reviewer's call (§5.4, §6, §7.7.2). This distinction is what keeps it consistent with §12 Out of Scope: AI-generated recommendations, despite producing something labeled a "recommendation."
 
 Vendors should also have visibility into what's been submitted and where they stand in the process, so they can be proactive and resubmit if necessary.
 
@@ -810,7 +862,7 @@ flowchart TD
 *(Feedback verbatim list; §15 OQ11 flags the one place Rev 3 added a characterization not stated by the feedback.)*
 
 - **Artifact generation.** Vendors are solely responsible for creating certification artifacts. Neither the platform nor reviewers generate artifacts on a vendor's behalf (§5.5).
-- **AI-generated recommendations.** The platform does not produce AI-generated certification recommendations. The "Certification Agent" in JTBD 5 is a non-AI report-formatting tool and is not affected by this boundary.
+- **AI-generated recommendations.** The platform does not produce AI-generated certification recommendations — i.e., no automated approve/reject judgment. The Certifying Agent (JTBD 5, §7.5, §7.7.2) is a non-AI, rules-based evidence checker; its "readiness to proceed" output is not a certification recommendation and is not affected by this boundary. See §15 OQ13 for the open question on how far this distinction can be pushed before it needs reviewer re-confirmation.
 - **Certification confidence/risk scoring.** The platform does not produce a computed confidence or risk score for a submission.
 - **Renewal workflows.** Out of scope for the current release, **deferred** (confirmed 2026-08-10) — not a permanent exclusion. Tracked separately under "Automated Re-Certification" in Future Enhancements (§13). Renewal is expected to closely resemble the original certification workflow, so the deferral is a sequencing decision rather than a signal that a materially different workflow needs to be designed later.
 - **Certification governance/version management workflows.** Governance of certification requirements remains owned by the Product Owner outside the platform (§5.1); the platform implements but does not govern.
@@ -879,10 +931,12 @@ flowchart TD
 | 10 | Should "artifact replaced/updated by vendor during review" be added as an explicit 7th event in the Notification Requirements list (§7.8), or is it already covered by the general Artifact Updates notification rule? | **Resolved 2026-08-10** — added as a distinct "Artifact Change" event, separate from "Artifact updates are requested" (§7.8): the requested-update event fires when the reviewer asks for changes; the Artifact Change event fires when the vendor actually makes a change. A persistent "review in progress" status indicator is also required but does not need its own notification event. |
 | 11 | Is "Renewal workflows" out of scope permanently, or deferred to a future release (tracked as "Automated Re-Certification," §13)? | **Resolved 2026-08-10** — deferred, not excluded (§12/§13); expected to closely resemble the original certification workflow. |
 | 12 | Should the workflow state model (§7.7) have a distinct "Live Review" or "Pending Live Review" state for the reviewer's live inspection/verification step (§7.2's live inspection, §7.3's live PUT/POST verification, §7.5's "schedule live session" disposition), separate from the general "Under Review" state? | Open — raised 2026-08-10 while diagramming §7.2's SIS certification sequence; recurs in §7.3's domain certification sequence and §7.5's validation engine sequence, where scheduling a live session implies a waiting period not currently modeled by any state. |
+| 13 | Is "Certifying Agent" the right permanent name for this capability, and does "blocking deficiencies" need its own vocabulary distinct from workflow states? Also: should the "no blocking deficiencies" gate (§7.7.2) ever be allowed to notify/queue the reviewer automatically for *some* certification types, or should it always require this same manual-pull model? | Open — raised 2026-08-13 after reviewing a real Certifying Agent output (a Tomorrow Today Domain API v5 "Certification Reviewer Determination" report for `studentCTEProgramAssociations`). §7.5/§7.7.2 now model "Ready for Review" as a single state throughout: the Certifying Agent gate only controls whether the reviewer is notified/queued; the reviewer still decides when to begin evaluation, which is what triggers "Under Review" — consistent with the original feedback-verbatim state list and with §5.4/§6's reviewer-authority model. Not yet confirmed against the source Confluence process the sample came from. |
 
 **Still open beyond this table:**
 - FT3's sub-question on whether resources, endpoints, or sample data (or a combination) should drive Domain API certification requirements.
 - Whether Vendor Self-Service Registration intersects with the vendor/product/certification-run model in §5.2.
+- OQ13: whether dependency reconciliation (e.g., validating a referenced `Program` resource alongside `studentCTEProgramAssociations`) should be formalized as a general pattern for every domain resource with references, not just documented ad hoc per resource.
 
 ---
 
@@ -931,5 +985,6 @@ Increased certification throughput; reduced dependency on Sandbox Admin; increas
 | Domain Certification | Certification against one or more Ed-Fi domains; may cover a single domain or multiple domains in one submission. |
 | SIS Certification | Certification against SIS workflows and scenarios. Distinct from Domain Certification — not substitutable (§5.2). |
 | Validation Engine | Component responsible for executing automated certification checks. |
-| Certification Agent | Structured report-formatting/aggregation tool referenced in JTBD 5. Not an AI recommendation or decision system. |
+| Certifying Agent | Platform capability (renamed 2026-08-13 from "Certification Agent") that compiles submitted evidence into a structured, per-area PASS/FAIL/PASS WITH CLARIFICATION determination and readiness-to-proceed recommendation. Rules-based, not AI; does not decide certification outcome (§5.4, §7.5, §7.7.2). |
+| Run Report | The Certifying Agent's output artifact: per-area determination, blocking deficiencies, recommended reviewer note, clarification questions, and readiness decision (§7.5). Retained under Audit History (§7.9). |
 | MTSS / Interventions | Multi-Tiered System of Supports. Refers to Intervention/MTSS Certification, a third certification model scoped to the existing Ed-Fi Intervention Domain, covering intervention definitions, student assignments, and attendance/participation data (§5.2, §7.10). |
