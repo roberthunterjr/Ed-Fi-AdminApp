@@ -130,6 +130,7 @@ Engineers implementing and validating Ed-Fi integrations.
 - Only one active certification run may exist per product at a given time.
 - SIS Certification and Domain Certification are distinct certification models.
 - A SIS must complete SIS certification scenarios and does not qualify through domain certification.
+- Intervention/MTSS Certification is a third, distinct certification model, scoped to the existing Ed-Fi Intervention Domain (§7.10). **Added 2026-08-13**, sourced from the [Intervention/MTSS Certification Draft Use Cases and Resource Elements](https://edfi.atlassian.net/wiki/spaces/EDFICERT/pages/2413428742) page — that page is itself marked "Draft for Feedback," so this model is provisional pending finalization there.
 
 ## 5.3 Platform Responsibilities
 The platform is responsible for:
@@ -623,6 +624,76 @@ flowchart LR
 - Approval/rejection history
 - **Run Report** — added 2026-08-10: the platform-generated summary of every request the vendor app completed during an automated validation run (§7.5), handed to the reviewer at the start of Under Review. Distinct from "Validation execution history" above (which is the raw execution log); the Run Report is the reviewer-facing comparison artifact and should be retained alongside it, not folded into it.
 
+## 7.10 FT10: Intervention / MTSS Certification Workflow
+
+*(Added 2026-08-13, sourced from the [Intervention/MTSS Certification Draft Use Cases and Resource Elements](https://edfi.atlassian.net/wiki/spaces/EDFICERT/pages/2413428742) Confluence page — that source is marked "Draft for Feedback," so scope here is provisional and should be revisited once it's finalized.)*
+
+**Goal:** Enable certification of Intervention/MTSS products against the existing Ed-Fi Intervention Domain, establishing a baseline level of interoperability for publishing intervention definitions, student assignments, and participation/dosage data. This is a third certification model, distinct from SIS Certification (§7.2) and Domain API Certification (§7.3) (§5.2).
+
+**Conditions of Satisfaction:**
+- Vendor can publish and maintain intervention definitions (identifiers, delivery parameters, class, diagnosis, delivery method)
+- Vendor can publish student intervention assignments, including assigned dosage and a diagnostic statement
+- Vendor can publish session-level attendance/participation events, including delivered duration
+- Platform can compare assigned dosage against delivered duration for fidelity tracking
+- Vendor can associate staff with intervention delivery
+- Vendor can recover from a simulated synchronization failure — restoring deleted records while preserving identifiers and relationships
+
+**Required resources:** `Intervention`, `StudentInterventionAssociation`, `StudentInterventionAttendanceEvent`, `Student`, `Staff`, `EducationOrganization` (`Student`, `Staff`, and `EducationOrganization` may be read-only references from an existing Ed-Fi ODS, consistent with §5.5's artifact-ownership boundary).
+
+**Not in scope for v1** (baseline interoperability only; deferred pending further Ed-Fi Intervention Domain/Data Standard support — same "deferred, not excluded" treatment as Renewal Workflows in §12/§13): intervention effectiveness/outcome measures, intervention goals/skills/progress-monitoring metrics, associations to assessments, MTSS tier data, exit reasons and lifecycle status beyond participation, engagement/fidelity indicators beyond attendance and duration, `InterventionPrescription`/`InterventionStudy` resources, and cohort-based assignment workflows (`Cohort`/`StudentCohortAssociation`).
+
+**Intervention/MTSS Certification Sequence:** Artifact submission through automated validation of the required use cases, including the recovery scenario, to reviewer disposition:
+
+```mermaid
+sequenceDiagram
+    actor Vendor as "Vendor (Artifact Owner)"
+    participant Platform
+    actor Reviewer as "Reviewer (Decision Maker)"
+
+    loop Until all required artifacts are present
+        Vendor->>Platform: Upload an artifact
+        Platform->>Vendor: Status - Submission Incomplete, missing artifacts listed
+    end
+
+    Note over Platform: All required artifacts present
+    Note over Platform: Status switches to Ready for Review
+
+    Vendor->>Platform: Publish Intervention definitions
+    Vendor->>Platform: Publish StudentInterventionAssociation records - assignment, dosage, diagnostic statement
+    Vendor->>Platform: Publish StudentInterventionAttendanceEvent records - delivered duration
+    Vendor->>Platform: Associate staff with intervention delivery
+
+    loop For each required use case
+        alt Use case validated successfully
+            Note over Platform: Mark use case as checked
+        else Use case fails
+            Note over Platform: Flag use case as failed
+        end
+    end
+
+    Note over Platform: Compare assigned dosage to delivered duration for fidelity tracking
+
+    Note over Platform: Recovery scenario - platform removes a subset of previously published records
+    Vendor->>Platform: Resubmit data, restore missing records, preserve identifiers
+    Platform->>Platform: Verify relationships and data remain consistent after recovery
+
+    Note over Platform: Scenarios complete, or a dependency fails
+    Note over Platform: Status switches to Under Review
+
+    Platform->>Reviewer: Present report - use case status vs expectations
+    Platform->>Vendor: Present report - use case status vs expectations
+
+    alt Results do not match expectations
+        Reviewer->>Vendor: Request changes
+    else Certification rejected outright
+        Reviewer->>Vendor: Reject certification
+    else Results match expectations
+        Reviewer->>Vendor: Approve certification
+    end
+```
+
+This mirrors §7.2's SIS sequence structure, with one addition specific to this certification model: a **recovery/resubmission check**, which validates that a vendor can restore deleted records and preserve identifier/relationship consistency after a simulated synchronization failure — a check not present in the SIS or Domain API flows.
+
 ---
 
 # 8. Jobs To Be Done
@@ -666,6 +737,9 @@ Vendors should also have visibility into what's been submitted and where they st
 ## Domain API Certification
 - **Domain API v5:** Certification of resources and endpoints within Data Standard v5 domains.
 - **Domain API v6:** Certification of resources and endpoints within Data Standard v6 domains.
+
+## Intervention / MTSS Certification
+- **Intervention/MTSS v1:** Baseline interoperability certification against the existing Ed-Fi Intervention Domain — intervention definitions, student assignments, attendance/participation events, and dosage fidelity tracking (§7.10). Effectiveness ratings, MTSS tier data, progress-monitoring, and cohort-based workflows are deferred pending future Data Standard enhancements.
 
 *(Certification model rules governing this scope — products vs. vendors, one active run per product, SIS/Domain non-substitutability — are defined once, in §5.2, rather than repeated here.)*
 
@@ -858,4 +932,4 @@ Increased certification throughput; reduced dependency on Sandbox Admin; increas
 | SIS Certification | Certification against SIS workflows and scenarios. Distinct from Domain Certification — not substitutable (§5.2). |
 | Validation Engine | Component responsible for executing automated certification checks. |
 | Certification Agent | Structured report-formatting/aggregation tool referenced in JTBD 5. Not an AI recommendation or decision system. |
-| MTSS / Interventions | |
+| MTSS / Interventions | Multi-Tiered System of Supports. Refers to Intervention/MTSS Certification, a third certification model scoped to the existing Ed-Fi Intervention Domain, covering intervention definitions, student assignments, and attendance/participation data (§5.2, §7.10). |
