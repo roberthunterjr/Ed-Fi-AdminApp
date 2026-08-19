@@ -118,7 +118,7 @@ services:
     container_name: edfiadminapp-yopass
     ports:
       - '127.0.0.1:8082:80'
-    command: '--memcached=memcached:11211 --port 80'
+    command: '--memcached=host.docker.internal:31527 --port 80'
     networks:
       - edfiadminapp-network
 

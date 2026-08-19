@@ -28,7 +28,7 @@ server {
     # AdminApp Frontend - use variable to resolve at request time
     location /adminapp/ {
         resolver 127.0.0.11 valid=30s;
-        set $adminapp_fe edfiadminapp-fe:4200;
+        set $adminapp_fe host.docker.internal:32430;
 
         # Strip /adminapp prefix and proxy to the container
         rewrite ^/adminapp/(.*)$ /$1 break;
@@ -61,14 +61,9 @@ server {
           return 301 https://$host/api/auth/login/1?$query_string;
     }
 
-    # AdminApp API - use variable to resolve at request time
+    # AdminApp API - trailing slash on proxy_pass strips /adminapp-api/ prefix automatically
     location /adminapp-api/ {
-        resolver 127.0.0.11 valid=30s;
-        set $adminapp_api edfiadminapp-api:3333;
-
-        # Remove /adminapp-api prefix, everything else passes through
-        rewrite ^/adminapp-api/(.*)$ /$1 break;
-        proxy_pass http://$adminapp_api;
+        proxy_pass http://host.docker.internal:3333/;
 
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -86,9 +81,7 @@ server {
 
     # Handle /adminapp-api without trailing slash - redirect to API root
     location = /adminapp-api {
-        resolver 127.0.0.11 valid=30s;
-        set $adminapp_api edfiadminapp-api:3333;
-        proxy_pass http://$adminapp_api/api;
+        proxy_pass http://host.docker.internal:3333/api;
 
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -103,7 +96,7 @@ server {
     # Handle hardcoded /api/ calls from React app
     location /api/ {
         resolver 127.0.0.11 valid=30s;
-        set $adminapp_api edfiadminapp-api:3333;
+        set $adminapp_api host.docker.internal:3333;
 
         # Proxy directly to the API container
         proxy_pass http://$adminapp_api;
@@ -236,7 +229,7 @@ server {
 
     # Supporting Services
     location /auth {
-        proxy_pass http://edfiadminapp-keycloak:8080;
+        proxy_pass http://host.docker.internal:32251;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
