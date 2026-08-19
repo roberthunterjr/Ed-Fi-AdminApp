@@ -18,16 +18,28 @@ export class RegisterOidcIdpsService {
     this.oidcRepo.find().then((oidcs) => {
       oidcs.forEach(async (oidcConfig) => {
         let client: BaseClient;
-        try {
-          const TrustIssuer = await Issuer.discover(
-            `${oidcConfig.issuer}/.well-known/openid-configuration`
-          );
-          client = new TrustIssuer.Client({
-            client_id: oidcConfig.clientId,
-            client_secret: oidcConfig.clientSecret,
-          });
-        } catch (err) {
-          Logger.error(`Error registering OIDC provider ${oidcConfig.issuer}: ${err}`);
+        const retryAttempts = config.OIDC_DISCOVERY_RETRY_ATTEMPTS;
+        const retryDelay = config.OIDC_DISCOVERY_RETRY_DELAY;
+        for (let attempt = 1; attempt <= retryAttempts; attempt++) {
+          try {
+            const TrustIssuer = await Issuer.discover(
+              `${oidcConfig.issuer}/.well-known/openid-configuration`
+            );
+            client = new TrustIssuer.Client({
+              client_id: oidcConfig.clientId,
+              client_secret: oidcConfig.clientSecret,
+            });
+            break;
+          } catch (err) {
+            if (attempt === retryAttempts) {
+              Logger.error(`Error registering OIDC provider ${oidcConfig.issuer}: ${err}`);
+            } else {
+              Logger.warn(
+                `OIDC provider ${oidcConfig.issuer} not reachable yet (attempt ${attempt}/${retryAttempts}), retrying in ${retryDelay}ms: ${err}`
+              );
+              await new Promise((r) => setTimeout(r, retryDelay));
+            }
+          }
         }
         if (client) {
           const strategy = new Strategy(

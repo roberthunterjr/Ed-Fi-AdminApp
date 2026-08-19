@@ -31,6 +31,10 @@ module.exports = {
   // TypeORM database resilience configuration
   TYPEORM_RETRY_ATTEMPTS: 3,
   TYPEORM_RETRY_DELAY: 3000,
+  // OIDC issuer discovery resilience (IdP may still be starting up when the API boots).
+  // Keycloak cold starts have been observed taking ~60-90s; keep enough headroom.
+  OIDC_DISCOVERY_RETRY_ATTEMPTS: 15,
+  OIDC_DISCOVERY_RETRY_DELAY: 8000,
   AUTH0_CONFIG_SECRET: defer(function () {
     if (this.AWS_AUTH0_CONFIG_SECRET) {
       return new Promise(async (r) => {
