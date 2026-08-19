@@ -189,6 +189,20 @@ function getLogLevel(): LogLevel[] {
 }
 
 async function bootstrap() {
+  // Must run before NestFactory.create(): AppModule's OIDC provider registration
+  // (dynamic Passport strategies, one per `oidc` DB row) happens during Nest's
+  // module init, via openid-client's own HTTP client - not axios, so the
+  // axios-only httpsAgent bypass further below (which also runs too late, after
+  // app.listen()) doesn't cover it. Against a self-signed cert (local dev), that
+  // registration throws "self-signed certificate" and the strategy never gets
+  // registered, so every subsequent login attempt fails with "Unknown
+  // authentication strategy" - a 404 from the user's perspective, with no
+  // indication the actual failure happened silently at startup.
+  // NODE_TLS_REJECT_UNAUTHORIZED covers all of Node's HTTPS clients globally.
+  if (config.SSL_VERIFICATION === 'false' || config.SSL_VERIFICATION === false) {
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+  }
+
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     logger: getLogLevel(),
   });
@@ -244,7 +258,7 @@ async function bootstrap() {
       },
     })
   );
-  app.enableCors({ origin: config.FE_URL, credentials: true });
+  app.enableCors({ origin: new URL(config.FE_URL).origin, credentials: true });
   app.useGlobalInterceptors(
     new ClassSerializerInterceptor(app.get(Reflector), {
       excludeExtraneousValues: true,
