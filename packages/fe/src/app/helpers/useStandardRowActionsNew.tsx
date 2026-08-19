@@ -18,7 +18,13 @@ export const useReadTeamEntity = (props: {
   const path = props.route.path!;
   const navigate = useNavigate();
   const { params, entity, privilege } = props;
-  const toOptions = generatePath(path, params);
+  const pathParams = Object.fromEntries(
+    Object.entries(params).map(([key, value]) => [
+      key,
+      value === undefined ? undefined : String(value),
+    ]),
+  );
+  const toOptions = generatePath(path, pathParams);
   return entity === undefined
     ? undefined
     : {
