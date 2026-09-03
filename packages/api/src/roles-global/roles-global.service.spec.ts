@@ -3,6 +3,8 @@ import { BadRequestException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getEntityManagerToken, getRepositoryToken } from '@nestjs/typeorm';
 import { Ownership, Role, User, UserTeamMembership } from '@edanalytics/models-server';
+import { GetUserDto, PostRoleDto, PutRoleDto } from '@edanalytics/models';
+import { CheckAbilityType } from '../auth/authorization';
 import { RolesGlobalService } from './roles-global.service';
 
 const mockRole = { id: 1, name: 'Admin', privilegeIds: ['me:read', 'role:read'], displayName: 'Admin' };
@@ -38,7 +40,7 @@ describe('RolesGlobalService', () => {
   });
 
   it('create() saves a new role with unique privilege ids', async () => {
-    const dto = { name: 'Editor', privilegeIds: ['me:read', 'role:read', 'me:read'], type: 'UserGlobal', teamId: null } as any;
+    const dto = { name: 'Editor', privilegeIds: ['me:read', 'role:read', 'me:read'], type: 'UserGlobal', teamId: null } as unknown as PostRoleDto;
     await service.create(dto);
     expect(mockRoleRepo.save).toHaveBeenCalledWith(
       expect.objectContaining({ privilegeIds: ['me:read', 'role:read'] })
@@ -46,7 +48,7 @@ describe('RolesGlobalService', () => {
   });
 
   it('create() throws BadRequestException for invalid privileges', async () => {
-    const dto = { name: 'Bad', privilegeIds: ['nonexistent:priv'], type: 'UserGlobal', teamId: null } as any;
+    const dto = { name: 'Bad', privilegeIds: ['nonexistent:priv'], type: 'UserGlobal', teamId: null } as unknown as PostRoleDto;
     await expect(service.create(dto)).rejects.toThrow(BadRequestException);
   });
 
@@ -56,18 +58,18 @@ describe('RolesGlobalService', () => {
   });
 
   it('update() saves with updated fields', async () => {
-    const dto = { name: 'Super Admin', privilegeIds: ['me:read'] } as any;
+    const dto = { name: 'Super Admin', privilegeIds: ['me:read'] } as unknown as PutRoleDto;
     await service.update(1, dto);
     expect(mockRoleRepo.save).toHaveBeenCalled();
   });
 
   it('remove() without force throws when role has memberships', async () => {
     mockUtmRepo.findBy.mockResolvedValueOnce([{ id: 10 }]);
-    await expect(service.remove(1, { id: 99 } as any, false)).rejects.toThrow();
+    await expect(service.remove(1, { id: 99 } as unknown as GetUserDto, false)).rejects.toThrow();
   });
 
   it('remove() without force deletes successfully when no related records exist', async () => {
-    const result = await service.remove(1, { id: 99 } as any, false);
+    const result = await service.remove(1, { id: 99 } as unknown as GetUserDto, false);
     expect(mockRoleRepo.remove).toHaveBeenCalled();
     expect(result).toBeUndefined();
   });
@@ -75,7 +77,7 @@ describe('RolesGlobalService', () => {
   it('remove() with force proceeds when checkAbility allows', async () => {
     mockUserRepo.findBy.mockResolvedValueOnce([{ id: 5 }]);
     const checkAbility = jest.fn(() => true);
-    const result = await service.remove(1, { id: 99 } as any, true, checkAbility as any);
+    const result = await service.remove(1, { id: 99 } as unknown as GetUserDto, true, checkAbility as unknown as CheckAbilityType);
     expect(mockRoleRepo.remove).toHaveBeenCalled();
     expect(result).toBeUndefined();
   });
@@ -83,6 +85,7 @@ describe('RolesGlobalService', () => {
   it('remove() with force throws when checkAbility denies user update', async () => {
     mockUserRepo.findBy.mockResolvedValueOnce([{ id: 5 }]);
     const checkAbility = jest.fn(() => false);
-    await expect(service.remove(1, { id: 99 } as any, true, checkAbility as any)).rejects.toThrow();
+    await expect(service.remove(1, { id: 99 } as unknown as GetUserDto, true, checkAbility as unknown as CheckAbilityType)).rejects.toThrow();
   });
 });
+

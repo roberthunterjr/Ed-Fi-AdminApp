@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import { HttpException } from '@nestjs/common';
+import { StatusResponse } from '@edanalytics/utils';
 import {
   isIAdminApiValidationError,
   CustomHttpException,
@@ -69,7 +70,7 @@ describe('ValidationHttpException', () => {
       { field: 'email', message: 'Invalid format' }
     );
     expect(ex.getStatus()).toBe(400);
-    const body = ex.getResponse() as any;
+    const body = ex.getResponse() as StatusResponse;
     expect(body.type).toBe('ValidationError');
   });
 

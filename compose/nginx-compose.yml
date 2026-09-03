@@ -19,7 +19,7 @@ services:
       # header in the `default.conf.template` file.
       EXTERNAL_PORT: 443
     ports:
-      - '127.0.0.1:443:443'
+      - '443:443'
     restart: always
     hostname: nginx
     container_name: nginx

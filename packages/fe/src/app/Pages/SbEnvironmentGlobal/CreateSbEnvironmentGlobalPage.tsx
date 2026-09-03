@@ -14,7 +14,7 @@ import {
 import { Icons, PageTemplate } from '@edanalytics/common-ui';
 import { PostSbEnvironmentDto, PostSbEnvironmentTenantDTO } from '@edanalytics/models';
 import { useForm } from 'react-hook-form';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { usePopBanner } from '../../Layout/FeedbackBanner';
 import { sbEnvironmentQueries } from '../../api';
 import { popSyncBanner, useNavToParent } from '../../helpers';
@@ -73,25 +73,49 @@ export const CreateSbEnvironmentGlobalPage = () => {
 
   const validateVersionAndTenantMode = (odsApiDiscoveryUrl: string) => {
     const errorMessage = 'Could not fetch version from API Discovery URL. Please check the URL and try again.';
-    if (!isStartingBlocks && odsApiDiscoveryUrl && odsApiDiscoveryUrl.trim() !== '') {
+    const adminApiUrl = getValues('adminApiUrl');
+    if (
+      !isStartingBlocks &&
+      odsApiDiscoveryUrl &&
+      odsApiDiscoveryUrl.trim() !== '' &&
+      adminApiUrl &&
+      adminApiUrl.trim() !== ''
+    ) {
       // To perform the version check
       checkEdFiVersionAndTenantMode.mutateAsync(
-        { entity: { odsApiDiscoveryUrl: odsApiDiscoveryUrl }, pathParams: null },
+        { entity: { odsApiDiscoveryUrl: odsApiDiscoveryUrl, adminApiUrl }, pathParams: null },
         {
           onSuccess: (result) => {
             if (result) {
               // Handle the new response structure with version and isMultiTenant
-              const response = result as { version: string; isMultiTenant: boolean };
+              const response = result as { version: string; isMultiTenant: boolean; odsVersion?: string };
               const version = response.version;
               const isMultiTenant = response.isMultiTenant;
 
-              if (version === 'v1' || version === 'v2') {
-                setValue('version', version as 'v1' | 'v2');
+              if (version === 'v1' || version === 'v2' || version === 'v3') {
+                setValue('version', version as 'v1' | 'v2' | 'v3');
                 setValue('isMultitenant', isMultiTenant);
                 clearErrors(['odsApiDiscoveryUrl']);
               } else {
                 setValue('version', undefined);
                 setError('odsApiDiscoveryUrl', { message: errorMessage });
+              }
+
+              /// Get major version from odsVersion if available and warn if it's less than 6, which is the minimum for Admin API support
+              const odsDetectedVersion = response.odsVersion || '';
+              const majorOdsDetectedVersion = parseInt(odsDetectedVersion.split('.')[0], 10);
+
+              const incompatibleWithOds =
+                (majorOdsDetectedVersion >= 7 && version === 'v1') ||
+                (majorOdsDetectedVersion < 7 && (version === 'v2' || version === 'v3'));
+
+              if (incompatibleWithOds) {
+                setValue('version', undefined);
+                setValue('isMultitenant', false);
+                setError('odsApiDiscoveryUrl', {
+                  message: `Detected ODS version ${odsDetectedVersion} is not compatible with Admin API version ${version}.`,
+                });
+                return;
               }
             }
           },
@@ -153,7 +177,8 @@ export const CreateSbEnvironmentGlobalPage = () => {
         isValid = false;
       }
       else {
-        if (!currentVersion) {
+        const adminApiUrl = data.adminApiUrl?.trim();
+        if (!currentVersion && adminApiUrl) {
             validateVersionAndTenantMode(data.odsApiDiscoveryUrl);
         }
       }
@@ -231,11 +256,12 @@ export const CreateSbEnvironmentGlobalPage = () => {
         {
           onSuccess: (result) => {
             navigate(`/sb-environments/${result.id}`);
-            result.syncQueue &&
+            if (result.syncQueue) {
               popSyncBanner({
                 popBanner,
                 syncQueue: result.syncQueue,
               });
+            }
           },
           ...mutationErrCallback({ setFormError: setError, popGlobalBanner: popBanner }),
         }
@@ -333,6 +359,11 @@ export const CreateSbEnvironmentGlobalPage = () => {
                     // Validate API URL if not Starting Blocks and value is present
                     if (!isStartingBlocks && value.trim() !== '') {
                       validateAdminApiUrl(value);
+
+                      const odsApiDiscoveryUrl = getValues('odsApiDiscoveryUrl');
+                      if (odsApiDiscoveryUrl?.trim()) {
+                        validateVersionAndTenantMode(odsApiDiscoveryUrl);
+                      }
                     }
                   }}
                 />

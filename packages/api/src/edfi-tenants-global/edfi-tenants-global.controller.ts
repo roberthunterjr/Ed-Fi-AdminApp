@@ -124,7 +124,7 @@ export class EdfiTenantsGlobalController {
     @Param('edfiTenantId', new ParseIntPipe()) edfiTenantId: number,
     @ReqEdfiTenant() edfiTenant: EdfiTenant,
     @ReqSbEnvironment() sbEnvironment: SbEnvironment,
-    @ReqUser() user: GetSessionDataDto
+    @ReqUser() _user: GetSessionDataDto
   ) {
     return this.edfiTenantService.delete(sbEnvironment, edfiTenant);
   }
@@ -205,8 +205,8 @@ export class EdfiTenantsGlobalController {
     @Param('edfiTenantId', new ParseIntPipe()) edfiTenantId: number,
     @ReqSbEnvironment() sbEnvironment: SbEnvironment,
     @ReqEdfiTenant() edfiTenant: EdfiTenant,
-    @Body() updateDto: Id,
-    @ReqUser() user: GetSessionDataDto
+    @Body() _updateDto: Id,
+    @ReqUser() _user: GetSessionDataDto
   ) {
     const result = await this.startingBlocksServiceV2.regenerateAdminApiCredentials(edfiTenant);
     switch (result.status) {

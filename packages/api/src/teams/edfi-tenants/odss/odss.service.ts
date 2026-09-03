@@ -1,11 +1,10 @@
-import { EducationOrganizationDto, PostOdsDto, PutOdsDto, SbV1MetaEdorg, toGetOdsDto } from '@edanalytics/models';
+import { PostOdsDto, PutOdsDto, toGetOdsDto } from '@edanalytics/models';
 import { EdfiTenant, Edorg, Ods, SbEnvironment, regarding } from '@edanalytics/models-server';
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { CustomHttpException, ValidationHttpException, buildEdOrgTree } from '../../../utils';
+import { CustomHttpException, ValidationHttpException } from '../../../utils';
 import { Repository } from 'typeorm';
-import { persistSyncOds, SyncableOds } from '../../../sb-sync/sync-ods';
-import { AdminApiServiceV2, StartingBlocksServiceV2 } from '../starting-blocks';
+import { StartingBlocksServiceV2 } from '../starting-blocks';
 
 @Injectable()
 export class OdssService {
@@ -14,8 +13,7 @@ export class OdssService {
     private odssRepository: Repository<Ods>,
     @InjectRepository(Edorg)
     private edorgsRepository: Repository<Edorg>,
-    private readonly startingBlocksServiceV2: StartingBlocksServiceV2,
-    private readonly adminApiServiceV2: AdminApiServiceV2
+    private readonly startingBlocksServiceV2: StartingBlocksServiceV2
   ) {}
 
   async findAll(edfiTenantId: number) {
@@ -27,6 +25,13 @@ export class OdssService {
   }
 
   async create(sbEnvironment: SbEnvironment, edfiTenant: EdfiTenant, dto: PostOdsDto) {
+    if (!dto.templateName) {
+      throw new ValidationHttpException({
+        field: 'templateName',
+        message: 'Template is required.',
+      });
+    }
+    
     const result = await this.startingBlocksServiceV2.createOds(
       sbEnvironment,
       edfiTenant,
@@ -119,41 +124,5 @@ export class OdssService {
     } else {
       throw new NotFoundException('Only v2 environments support row counting.');
     }
-  }
-
-  async syncEdOrgs(
-    sbEnvironment: SbEnvironment,
-    edfiTenant: EdfiTenant,
-    odsId: number
-  ): Promise<void> {
-    if (sbEnvironment.version !== 'v2') {
-      throw new NotFoundException('Only v2 environments support Ed-Org sync.');
-    }
-    const ods = await this.odssRepository.findOneBy({ id: odsId });
-    if (!ods) {
-      throw new NotFoundException('ODS not found');
-    }
-    if (ods.odsInstanceId === null) {
-      throw new BadRequestException('ODS does not have an Admin API instance ID');
-    }
-
-    const rawEdOrgs = await this.adminApiServiceV2.getEdOrgsForOdsInstance(
-      edfiTenant,
-      ods.odsInstanceId
-    );
-
-    // Build EdOrg tree from flat API response
-    const edorgRoots = buildEdOrgTree(rawEdOrgs);
-
-    const syncableOds: SyncableOds = {
-      id: ods.odsInstanceId,
-      name: ods.odsInstanceName,
-      dbName: ods.dbName,
-      edorgs: edorgRoots,
-    };
-
-    await this.odssRepository.manager.transaction(async (em) => {
-      await persistSyncOds({ em, edfiTenant, ods: syncableOds });
-    });
   }
 }

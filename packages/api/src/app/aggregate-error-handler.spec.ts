@@ -1,15 +1,15 @@
 import 'reflect-metadata';
 import { AggregateErrorHandler } from './aggregate-error-handler';
 
-function makeAggregateError(errors: Error[]): Error {
-  const err = new Error('aggregate') as any;
+function makeAggregateError(errors: unknown[]): Error {
+  const err = new Error('aggregate') as Error & { name: string; errors: unknown[] };
   err.name = 'AggregateError';
   err.errors = errors;
   return err;
 }
 
 function makeDbError(message: string, code?: string): Error {
-  const err = new Error(message) as any;
+  const err = new Error(message) as Error & { code?: string };
   if (code) err.code = code;
   return err;
 }
@@ -79,7 +79,7 @@ describe('AggregateErrorHandler.extractAllMessages', () => {
   });
 
   it('handles non-Error inner values by stringifying them', () => {
-    const err = makeAggregateError(['a string', 42] as any);
+    const err = makeAggregateError(['a string', 42]);
     const msgs = AggregateErrorHandler.extractAllMessages(err);
     expect(msgs).toContain('a string');
     expect(msgs).toContain('42');

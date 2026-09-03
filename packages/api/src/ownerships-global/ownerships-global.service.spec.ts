@@ -4,7 +4,12 @@ import { getEntityManagerToken, getRepositoryToken } from '@nestjs/typeorm';
 import { Ownership } from '@edanalytics/models-server';
 import { AuthService } from '../auth/auth.service';
 import { OwnershipsGlobalService } from './ownerships-global.service';
-import { OWNERSHIP_RESOURCE_TYPE } from '@edanalytics/models';
+import {
+  GetUserDto,
+  OWNERSHIP_RESOURCE_TYPE,
+  PostOwnershipDto,
+  PutOwnershipDto,
+} from '@edanalytics/models';
 
 const mockOwnership = { id: 1, teamId: 2, roleId: 3, edorgId: 10 };
 
@@ -40,7 +45,13 @@ describe('OwnershipsGlobalService', () => {
 
   it('create() throws when duplicate ownership exists', async () => {
     mockRepo.findBy.mockResolvedValueOnce([mockOwnership]);
-    const dto = { teamId: 2, edorgId: 10, type: OWNERSHIP_RESOURCE_TYPE.edorg, createdById: 1, roleId: 3 } as any;
+    const dto = {
+      teamId: 2,
+      edorgId: 10,
+      type: OWNERSHIP_RESOURCE_TYPE.edorg,
+      createdById: 1,
+      roleId: 3,
+    } as unknown as PostOwnershipDto;
     await expect(service.create(dto)).rejects.toThrow();
   });
 
@@ -55,7 +66,7 @@ describe('OwnershipsGlobalService', () => {
       edfiTenantId: undefined,
       sbEnvironmentId: undefined,
       integrationProviderId: undefined,
-    } as any;
+    } as unknown as PostOwnershipDto;
     await service.create(dto);
     expect(mockRepo.save).toHaveBeenCalled();
     expect(mockAuthService.reloadTeamOwnershipCache).toHaveBeenCalledWith(2);
@@ -67,14 +78,14 @@ describe('OwnershipsGlobalService', () => {
   });
 
   it('update() saves updated ownership and reloads cache', async () => {
-    const dto = { roleId: 5, modifiedById: 1 } as any;
+    const dto: PutOwnershipDto = { id: 1, roleId: 5, modifiedById: 1 };
     await service.update(1, dto);
     expect(mockRepo.save).toHaveBeenCalled();
     expect(mockAuthService.reloadTeamOwnershipCache).toHaveBeenCalledWith(2);
   });
 
   it('remove() removes ownership and reloads cache', async () => {
-    const result = await service.remove(1, { id: 99 } as any);
+    const result = await service.remove(1, { id: 99 } as unknown as GetUserDto);
     expect(mockRepo.remove).toHaveBeenCalled();
     expect(mockAuthService.reloadTeamOwnershipCache).toHaveBeenCalledWith(2);
     expect(result).toBeUndefined();
@@ -82,6 +93,6 @@ describe('OwnershipsGlobalService', () => {
 
   it('remove() throws NotFoundException when ownership not found', async () => {
     const { NotFoundException } = await import('@nestjs/common');
-    await expect(service.remove(999, { id: 1 } as any)).rejects.toThrow(NotFoundException);
+    await expect(service.remove(999, { id: 1 } as unknown as GetUserDto)).rejects.toThrow(NotFoundException);
   });
 });

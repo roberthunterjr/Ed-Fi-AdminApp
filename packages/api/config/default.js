@@ -1,4 +1,9 @@
-const defer = require('config/defer').deferConfig;
+let defer;
+try {
+  ({ deferConfig: defer } = require('config/defer'));
+} catch {
+  ({ deferConfig: defer } = require('config/lib/defer'));
+}
 const { SecretsManagerClient, GetSecretValueCommand } = require('@aws-sdk/client-secrets-manager');
 
 // Test secret retrieval locally if you want by adding creds to the client:
@@ -31,33 +36,27 @@ module.exports = {
   // TypeORM database resilience configuration
   TYPEORM_RETRY_ATTEMPTS: 3,
   TYPEORM_RETRY_DELAY: 3000,
-  // OIDC issuer discovery resilience (IdP may still be starting up when the API boots).
-  // Keycloak cold starts have been observed taking ~60-90s; keep enough headroom.
-  OIDC_DISCOVERY_RETRY_ATTEMPTS: 15,
-  OIDC_DISCOVERY_RETRY_DELAY: 8000,
-  AUTH0_CONFIG_SECRET: defer(function () {
+  AUTH0_CONFIG_SECRET: defer(async function () {
     if (this.AWS_AUTH0_CONFIG_SECRET) {
-      return new Promise(async (r) => {
-        const secretsClient = new SecretsManagerClient({
-          region: this.AWS_REGION,
-        });
-        const secretValueRaw = await secretsClient.send(
-          new GetSecretValueCommand({
-            SecretId: this.AWS_AUTH0_CONFIG_SECRET,
-          })
-        );
-        if (secretValueRaw.SecretString === undefined) {
-          throw new Error('No client config values defined for auth0 when requesting secrets');
-        }
-
-        const secret = JSON.parse(secretValueRaw.SecretString);
-        r({
-          ISSUER: secret.ISSUER,
-          CLIENT_ID: secret.CLIENT_ID,
-          CLIENT_SECRET: secret.CLIENT_SECRET,
-          MACHINE_AUDIENCE: secret.MACHINE_AUDIENCE,
-        });
+      const secretsClient = new SecretsManagerClient({
+        region: this.AWS_REGION,
       });
+      const secretValueRaw = await secretsClient.send(
+        new GetSecretValueCommand({
+          SecretId: this.AWS_AUTH0_CONFIG_SECRET,
+        })
+      );
+      if (secretValueRaw.SecretString === undefined) {
+        throw new Error('No client config values defined for auth0 when requesting secrets');
+      }
+
+      const secret = JSON.parse(secretValueRaw.SecretString);
+      return {
+        ISSUER: secret.ISSUER,
+        CLIENT_ID: secret.CLIENT_ID,
+        CLIENT_SECRET: secret.CLIENT_SECRET,
+        MACHINE_AUDIENCE: secret.MACHINE_AUDIENCE,
+      };
     } else {
       return { ...this.AUTH0_CONFIG_SECRET_VALUE };
     }
@@ -156,6 +155,9 @@ module.exports = {
   OPENAPI_TITLE: 'Starting Blocks Admin App',
   OPENAPI_DESCRIPTION: 'OpenAPI spec for the EA Starting Blocks admin application.',
   EDFI_URLS_TIMEOUT_MS: 5000, // 5 seconds
+  // Keycloak cold starts have been observed taking ~60-90s; keep enough headroom
+  // so OIDC discovery doesn't time out before the IdP is actually reachable.
+  OIDC_DISCOVERY_TIMEOUT_MS: 90000, // 90 seconds
 
   // The time to live in milliseconds
   RATE_LIMIT_TTL: 60000,

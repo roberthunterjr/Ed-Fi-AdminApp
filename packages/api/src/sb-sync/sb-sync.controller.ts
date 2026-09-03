@@ -101,7 +101,7 @@ export class ParseFilterQueryParamPipe implements PipeTransform {
     let parseResult: any;
     try {
       parseResult = JSON.parse(Buffer.from(value, 'base64').toString('utf-8'));
-    } catch (parseError) {
+    } catch (_parseError) {
       throw new BadRequestException(
         'Invalid filter query parameter. It should be a base64-encoded JSON string.'
       );
@@ -123,7 +123,7 @@ export class ParseFilterQueryParamPipe implements PipeTransform {
           value: item.v,
         };
       });
-    } catch (mapFailedError) {
+    } catch (_mapFailedError) {
       throw new BadRequestException(
         "Invalid filter query parameter. Each object should have 'i' and 'v' properties (shorthand for id and value)."
       );

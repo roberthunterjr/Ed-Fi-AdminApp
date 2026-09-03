@@ -1,6 +1,8 @@
 import {
-  EducationOrganizationDto,
+  ApplicationResetCredentialResponseDto,
+  GetApplicationDto,
   GetClaimsetDto,
+  GetVendorDto,
   ISbEnvironmentConfigPrivateV1,
   OdsInstanceDto,
   PostApplicationDto,
@@ -24,6 +26,24 @@ import NodeCache from 'node-cache';
 import { CustomHttpException } from '../../../../utils';
 import { failureBut200Response } from './admin-api-v1x-exception.filter';
 import { adminApiLoginStatusMsgs } from '../../adminApiLoginFailureMsgs';
+
+/**
+ * Error body shape returned by the Admin API on failed registration requests.
+ */
+interface AdminApiErrorResponseBody {
+  message?: string;
+  errors?: Record<string, string[]> | string[];
+}
+
+/**
+ * Raw ODS instance shape as returned by the v1 `odsInstances` endpoint.
+ */
+interface AdminApiV1OdsInstance {
+  id: number | null;
+  name?: string;
+  instanceType?: string | null;
+}
+
 /**
  * This service is used to interact with the Admin API. Each method is a single
  * API call (plus login if token is expired).
@@ -163,8 +183,7 @@ export class AdminApiServiceV1 {
           }
           return { credentials, status: 'SUCCESS' as const };
         })
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .catch((err: AxiosError<any>) => {
+        .catch((err: AxiosError<AdminApiErrorResponseBody>) => {
           if (err.response?.data?.errors) {
             Logger.warn(JSON.stringify(err.response.data.errors));
             return {
@@ -266,10 +285,9 @@ export class AdminApiServiceV1 {
   }
 
   async getVendors(edfiTenant: EdfiTenant) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return toGetVendorDto(
       await this.getAdminApiClient(edfiTenant)
-        .get<any, any[]>(`v1/vendors`)
+        .get<GetVendorDto[], GetVendorDto[]>(`v1/vendors`)
         .catch((err) => {
           Logger.error(`Error getting vendors for tenant ${edfiTenant.id}: ${err}`);
           throw err;
@@ -278,9 +296,8 @@ export class AdminApiServiceV1 {
   }
   async getVendor(edfiTenant: EdfiTenant, vendorId: number) {
     return toGetVendorDto(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await this.getAdminApiClient(edfiTenant)
-        .get<any, any>(`v1/vendors/${vendorId}`)
+        .get<GetVendorDto, GetVendorDto>(`v1/vendors/${vendorId}`)
         .catch((err) => {
           Logger.error(`Error getting vendor ${vendorId} for tenant ${edfiTenant.id}: ${err}`);
           throw err;
@@ -290,9 +307,8 @@ export class AdminApiServiceV1 {
   async putVendor(edfiTenant: EdfiTenant, vendorId: number, vendor: PutVendorDto) {
     vendor.vendorId = vendorId;
     return toGetVendorDto(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await this.getAdminApiClient(edfiTenant)
-        .put<any, any>(`v1/vendors/${vendorId}`, vendor)
+        .put<GetVendorDto, GetVendorDto>(`v1/vendors/${vendorId}`, vendor)
         .catch((err) => {
           Logger.error(`Error updating vendor ${vendorId} for tenant ${edfiTenant.id}: ${err}`);
           throw err;
@@ -301,9 +317,8 @@ export class AdminApiServiceV1 {
   }
   async postVendor(edfiTenant: EdfiTenant, vendor: PostVendorDto) {
     return toGetVendorDto(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await this.getAdminApiClient(edfiTenant)
-        .post<any, any>(`v1/vendors`, vendor)
+        .post<GetVendorDto, GetVendorDto>(`v1/vendors`, vendor)
         .catch((err) => {
           Logger.error(`Error creating vendor for tenant ${edfiTenant.id}: ${err}`);
           throw err;
@@ -311,9 +326,8 @@ export class AdminApiServiceV1 {
     );
   }
   async deleteVendor(edfiTenant: EdfiTenant, vendorId: number) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await this.getAdminApiClient(edfiTenant)
-      .delete<any, any>(`v1/vendors/${vendorId}`)
+      .delete<void, void>(`v1/vendors/${vendorId}`)
       .catch((err) => {
         Logger.error(`Error deleting vendor ${vendorId} for tenant ${edfiTenant.id}: ${err}`);
         throw err;
@@ -322,9 +336,8 @@ export class AdminApiServiceV1 {
   }
   async getVendorApplications(edfiTenant: EdfiTenant, vendorId: number) {
     return toGetApplicationDto(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await this.getAdminApiClient(edfiTenant)
-        .get<any, any[]>(`v1/vendors/${vendorId}/applications`)
+        .get<GetApplicationDto[], GetApplicationDto[]>(`v1/vendors/${vendorId}/applications`)
         .catch((err) => {
           Logger.error(`Error getting vendor applications for tenant ${edfiTenant.id}: ${err}`);
           throw err;
@@ -334,9 +347,8 @@ export class AdminApiServiceV1 {
 
   async getApplications(edfiTenant: EdfiTenant) {
     return toGetApplicationDto(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await this.getAdminApiClient(edfiTenant)
-        .get<any, any[]>(`v1/applications`)
+        .get<GetApplicationDto[], GetApplicationDto[]>(`v1/applications`)
         .catch((err) => {
           Logger.error(`Error getting applications for tenant ${edfiTenant.id}: ${err}`);
           throw err;
@@ -345,9 +357,8 @@ export class AdminApiServiceV1 {
   }
   async getApplication(edfiTenant: EdfiTenant, applicationId: number) {
     return toGetApplicationDto(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await this.getAdminApiClient(edfiTenant)
-        .get<any, any>(`v1/applications/${applicationId}`)
+        .get<GetApplicationDto, GetApplicationDto>(`v1/applications/${applicationId}`)
         .catch((err) => {
           Logger.error(
             `Error getting application ${applicationId} for tenant ${edfiTenant.id}: ${err}`
@@ -362,9 +373,11 @@ export class AdminApiServiceV1 {
     application: PutApplicationDto
   ) {
     return toGetApplicationDto(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await this.getAdminApiClient(edfiTenant)
-        .put<any, any>(`v1/applications/${applicationId}`, application)
+        .put<GetApplicationDto, GetApplicationDto>(
+          `v1/applications/${applicationId}`,
+          application
+        )
         .catch((err) => {
           Logger.error(
             `Error updating application ${applicationId} for tenant ${edfiTenant.id}: ${err}`
@@ -374,9 +387,11 @@ export class AdminApiServiceV1 {
     );
   }
   async postApplication(edfiTenant: EdfiTenant, application: PostApplicationDto) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return this.getAdminApiClient(edfiTenant)
-      .post<any, PostApplicationResponseDto>(`v1/applications`, application)
+      .post<PostApplicationResponseDto, PostApplicationResponseDto>(
+        `v1/applications`,
+        application
+      )
       .catch((err) => {
         Logger.error(`Error creating application for tenant ${edfiTenant.id}: ${err}`);
         throw err;
@@ -385,8 +400,7 @@ export class AdminApiServiceV1 {
   async deleteApplication(edfiTenant: EdfiTenant, applicationId: number) {
     return (
       this.getAdminApiClient(edfiTenant)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .delete<any, any>(`v1/applications/${applicationId}`)
+        .delete<void, void>(`v1/applications/${applicationId}`)
         .catch((err) => {
           Logger.error(
             `Error deleting application ${applicationId} for tenant ${edfiTenant.id}: ${err}`
@@ -397,9 +411,10 @@ export class AdminApiServiceV1 {
     );
   }
   async resetApplicationCredentials(edfiTenant: EdfiTenant, applicationId: number) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return this.getAdminApiClient(edfiTenant)
-      .put<any, any>(`v1/applications/${applicationId}/reset-credential`)
+      .put<ApplicationResetCredentialResponseDto, ApplicationResetCredentialResponseDto>(
+        `v1/applications/${applicationId}/reset-credential`
+      )
       .catch((err) => {
         Logger.error(
           `Error resetting application credentials for application ${applicationId} for tenant ${edfiTenant.id}: ${err}`
@@ -410,9 +425,8 @@ export class AdminApiServiceV1 {
 
   async getClaimsets(edfiTenant: EdfiTenant) {
     return toGetClaimsetDto(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await this.getAdminApiClient(edfiTenant)
-        .get<any, any[]>(`v1/claimsets`)
+        .get<GetClaimsetDto[], GetClaimsetDto[]>(`v1/claimsets`)
         .catch((err) => {
           Logger.error(`Error getting claimsets for tenant ${edfiTenant.id}: ${err}`);
           throw err;
@@ -420,11 +434,17 @@ export class AdminApiServiceV1 {
     );
   }
   async getClaimset(edfiTenant: EdfiTenant, claimsetId: number) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const safeClaimsetId = Number(claimsetId);
+    if (!Number.isSafeInteger(safeClaimsetId) || safeClaimsetId <= 0) {
+      throw new CustomHttpException({ title: 'Invalid claimsetId', type: 'Error' }, 400);
+    }
+
     const value: GetClaimsetDto = await this.getAdminApiClient(edfiTenant)
-      .get<any, any>(`v1/claimsets/${claimsetId}`)
+      .get<GetClaimsetDto, GetClaimsetDto>(`v1/claimsets/${safeClaimsetId}`)
       .catch((err) => {
-        Logger.error(`Error getting claimset ${claimsetId} for tenant ${edfiTenant.id}: ${err}`);
+        Logger.error(
+          `Error getting claimset ${safeClaimsetId} for tenant ${edfiTenant.id}: ${err}`
+        );
         throw err;
       });
     value.resourceClaims.forEach((rc, i) => {
@@ -445,9 +465,8 @@ export class AdminApiServiceV1 {
     return toGetClaimsetDto(value);
   }
   async getClaimsetRaw(edfiTenant: EdfiTenant, claimsetId: number) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return this.getAdminApiClient(edfiTenant)
-      .get<any, any>(`v1/claimsets/${claimsetId}`)
+      .get<GetClaimsetDto, GetClaimsetDto>(`v1/claimsets/${claimsetId}`)
       .catch((err) => {
         Logger.error(`Error getting claimset ${claimsetId} for tenant ${edfiTenant.id}: ${err}`);
         throw err;
@@ -455,9 +474,8 @@ export class AdminApiServiceV1 {
   }
   async putClaimset(edfiTenant: EdfiTenant, claimsetId: number, claimset: PutClaimsetDto) {
     return toGetClaimsetDto(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await this.getAdminApiClient(edfiTenant)
-        .put<any, any>(`v1/claimsets/${claimsetId}`, claimset)
+        .put<GetClaimsetDto, GetClaimsetDto>(`v1/claimsets/${claimsetId}`, claimset)
         .catch((err) => {
           Logger.error(`Error updating claimset ${claimsetId} for tenant ${edfiTenant.id}: ${err}`);
           throw err;
@@ -466,9 +484,8 @@ export class AdminApiServiceV1 {
   }
   async postClaimset(edfiTenant: EdfiTenant, claimset: PostClaimsetDto) {
     return toGetClaimsetDto(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await this.getAdminApiClient(edfiTenant)
-        .post<any, any>(`v1/claimsets`, claimset)
+        .post<GetClaimsetDto, GetClaimsetDto>(`v1/claimsets`, claimset)
         .catch((err) => {
           Logger.error(`Error creating claimset for tenant ${edfiTenant.id}: ${err}`);
           throw err;
@@ -478,8 +495,7 @@ export class AdminApiServiceV1 {
   async deleteClaimset(edfiTenant: EdfiTenant, claimsetId: number) {
     return (
       this.getAdminApiClient(edfiTenant)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .delete<any, any>(`v1/claimsets/${claimsetId}`)
+        .delete<void, void>(`v1/claimsets/${claimsetId}`)
         .catch((err) => {
           Logger.error(`Error deleting claimset ${claimsetId} for tenant ${edfiTenant.id}: ${err}`);
           throw err;
@@ -487,6 +503,20 @@ export class AdminApiServiceV1 {
         .then(() => undefined)
     );
   }
+
+  async triggerEdOrgRefresh(sbEnvironment: SbEnvironment): Promise<string | null> {
+    Logger.log(`Triggering EdOrg refresh for environment: ${sbEnvironment.name} v1 does not support this operation.`);
+    return null;
+  }
+
+  async pollJobStatus(
+    sbEnvironment: SbEnvironment,
+    _jobId: string
+  ): Promise<'completed' | 'failed' | 'timeout'> {
+    Logger.log(`PollJobStatus for environment: ${sbEnvironment.name} v1 does not support this operation.`);
+    return 'timeout';
+  }
+  
   /**
    * Retrieve tenants with their ODS instances.
    * V1 API is single-tenant, so returns a default tenant with ODS instances.
@@ -498,9 +528,8 @@ export class AdminApiServiceV1 {
     Logger.log(`Getting ODS instances for environment: ${environment.name}`);
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const odsInstances = await this.getAdminApiClientUsingEnv(environment)
-        .get<any, any[]>('v1/odsInstances')
+        .get<AdminApiV1OdsInstance[], AdminApiV1OdsInstance[]>('v1/odsInstances')
         .catch((err) => {
           Logger.error(`Error getting ODS instances for environment ${environment.name}: ${err}`);
           throw err;
@@ -525,10 +554,10 @@ export class AdminApiServiceV1 {
       );
 
       // Map ODS instances to the expected format
-      const mappedOdsInstances: OdsInstanceDto[] = odsInstances.map((instance: any) => ({
+      const mappedOdsInstances: OdsInstanceDto[] = odsInstances.map((instance) => ({
         id: instance.id ?? null,
         name: instance.name ?? 'Unknown',
-        instanceType: instance.instanceType,
+        instanceType: instance.instanceType ?? null,
         edOrgs: [], // EdOrgs are not available in V1 API yet
       }));
 

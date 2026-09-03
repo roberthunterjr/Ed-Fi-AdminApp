@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router';
 import { Heading, ScaleFade, Stack, Text } from '@chakra-ui/react';
 import { Attribute, PageContentCard } from './pageLayout';
 import { ApiClientResponseV2, ApplicationResponseV1, ApplicationResponseV2, SecretSharingMethod } from '@edanalytics/models';

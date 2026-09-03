@@ -77,7 +77,7 @@ export const ViewSbEnvironmentGlobal = (props: { sbEnvironment: GetSbEnvironment
           </ContentSection>
         </PageContentCard>
       </AuthorizeComponent>
-      {(sbEnvironment.startingBlocks || sbEnvironment.version === 'v2') && (
+      {(sbEnvironment.startingBlocks || sbEnvironment.version !== 'v1') && (
         <AuthorizeComponent
           config={{
             privilege: 'sb-sync-queue:read',

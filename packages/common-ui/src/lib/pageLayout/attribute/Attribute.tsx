@@ -18,7 +18,7 @@ import {
 import dayjs from 'dayjs';
 import localizedFormat from 'dayjs/plugin/localizedFormat';
 import { ReactElement, forwardRef, useEffect, useState } from 'react';
-import { Link as RouterLink } from 'react-router-dom';
+import { Link as RouterLink } from 'react-router';
 import { Icons } from '../../Icons';
 
 dayjs.extend(localizedFormat);
@@ -124,6 +124,11 @@ function _Attribute(
       window.addEventListener('blur', handleWindowBlur);
       return () => window.removeEventListener('blur', handleWindowBlur);
     }
+    // isMasked and showSecret intentionally omitted: this should only
+    // register the mount-time listener once, not re-subscribe every time
+    // showSecret's open/closed state itself changes (which would happen on
+    // every blur, causing listener churn without changing behavior).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   let valueContent: ReactElement;
@@ -222,7 +227,7 @@ export function CopyButton(
     </Popover>
   );
 }
-export const Attribute = forwardRef<any, AttributeProps>(_Attribute);
+export const Attribute = forwardRef<HTMLDivElement, AttributeProps>(_Attribute);
 
 export const DateValue = (props: { value: Date; defaultDateFmt?: DateFormat }) => {
   const [fmt, setFmt] = useState(props.defaultDateFmt ?? 0);

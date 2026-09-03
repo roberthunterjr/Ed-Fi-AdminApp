@@ -1,4 +1,3 @@
-import { Test } from '@nestjs/testing';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -32,11 +31,22 @@ function sha256(buf: Buffer): string {
   return createHash('sha256').update(buf).digest('hex');
 }
 
-function buildService(envOverrides: NodeJS.ProcessEnv = {}): ArtifactService {
-  // Apply env overrides before constructing
-  Object.assign(process.env, envOverrides);
-  return new ArtifactService();
-}
+// Mirrors the private surface of ArtifactService that these tests exercise
+// directly. Kept structurally compatible so we can access private members
+// without resorting to `any`.
+type ArtifactServiceInternal = {
+  targetDownloadRef: string | undefined;
+  expectedChecksum: string | undefined;
+  onDownloadError: string;
+  runtimeRoot: string;
+  isRuntimeReady: boolean;
+  handleDownloadError(message: string): void;
+  downloadArtifact(): Promise<Buffer | null>;
+  ensureRuntime(): Promise<void>;
+};
+
+const asInternal = (svc: ArtifactService): ArtifactServiceInternal =>
+  svc as unknown as ArtifactServiceInternal;
 
 const VALID_ENV: NodeJS.ProcessEnv = {
   CERT_BRUNO_SRC_REF: 'v2.1.0',
@@ -99,14 +109,14 @@ describe('ArtifactService: constructor validation', () => {
   it('uses CERT_BRUNO_SRC_REF as targetDownloadRef', () => {
     Object.assign(process.env, VALID_ENV);
     const svc = new ArtifactService();
-    expect((svc as any).targetDownloadRef).toBe('v2.1.0');
+    expect(asInternal(svc).targetDownloadRef).toBe('v2.1.0');
   });
 
   it('defaults onDownloadError to "error" when not set', () => {
     Object.assign(process.env, VALID_ENV);
     delete process.env.CERT_BRUNO_ON_DOWNLOAD_ERROR;
     const svc = new ArtifactService();
-    expect((svc as any).onDownloadError).toBe('error');
+    expect(asInternal(svc).onDownloadError).toBe('error');
   });
 });
 
@@ -118,13 +128,13 @@ describe('ArtifactService: handleDownloadError', () => {
   it('throws in error mode', () => {
     Object.assign(process.env, VALID_ENV);
     const svc = new ArtifactService();
-    expect(() => (svc as any).handleDownloadError('boom')).toThrow('boom');
+    expect(() => asInternal(svc).handleDownloadError('boom')).toThrow('boom');
   });
 
   it('does not throw in warning mode', () => {
     Object.assign(process.env, { ...VALID_ENV, CERT_BRUNO_ON_DOWNLOAD_ERROR: 'warning' });
     const svc = new ArtifactService();
-    expect(() => (svc as any).handleDownloadError('soft fail')).not.toThrow();
+    expect(() => asInternal(svc).handleDownloadError('soft fail')).not.toThrow();
   });
 });
 
@@ -152,7 +162,7 @@ describe('ArtifactService: downloadArtifact', () => {
       .mockResolvedValueOnce({ ok: true, json: async () => metadata })
       .mockResolvedValueOnce({ ok: true, arrayBuffer: async () => new Uint8Array(fakeZip).buffer });
 
-    const result = await (svc as any).downloadArtifact();
+    const result = await asInternal(svc).downloadArtifact();
     expect(result).toBeInstanceOf(Buffer);
     expect((result as Buffer).equals(fakeZip)).toBe(true);
   });
@@ -160,7 +170,7 @@ describe('ArtifactService: downloadArtifact', () => {
   it('throws when metadata fetch returns a non-OK status (error mode)', async () => {
     global.fetch = jest.fn().mockResolvedValueOnce({ ok: false, status: 404 });
 
-    await expect((svc as any).downloadArtifact()).rejects.toThrow(/HTTP 404/);
+    await expect(asInternal(svc).downloadArtifact()).rejects.toThrow(/HTTP 404/);
   });
 
   it('throws when ZIP fetch returns a non-OK status (error mode)', async () => {
@@ -170,7 +180,7 @@ describe('ArtifactService: downloadArtifact', () => {
       .mockResolvedValueOnce({ ok: true, json: async () => metadata })
       .mockResolvedValueOnce({ ok: false, status: 500 });
 
-    await expect((svc as any).downloadArtifact()).rejects.toThrow(/HTTP 500/);
+    await expect(asInternal(svc).downloadArtifact()).rejects.toThrow(/HTTP 500/);
   });
 
   it('throws when metadata sha256 does not match downloaded buffer (error mode)', async () => {
@@ -180,20 +190,22 @@ describe('ArtifactService: downloadArtifact', () => {
       .mockResolvedValueOnce({ ok: true, json: async () => metadata })
       .mockResolvedValueOnce({ ok: true, arrayBuffer: async () => new Uint8Array(fakeZip).buffer });
 
-    await expect((svc as any).downloadArtifact()).rejects.toThrow(/checksum mismatch.*metadata/i);
+    await expect(asInternal(svc).downloadArtifact()).rejects.toThrow(
+      /checksum mismatch.*metadata/i
+    );
   });
 
   it('throws when CERT_BRUNO_SRC_CHECKSUM does not match downloaded buffer (error mode)', async () => {
     // metadata hash matches buffer, but the env var checksum doesn't
     const metadata = { zipFileName: 'sis-v2.1.0.zip', sha256: correctHash };
-    (svc as any).expectedChecksum = 'deadbeef';
+    asInternal(svc).expectedChecksum = 'deadbeef';
 
     global.fetch = jest
       .fn()
       .mockResolvedValueOnce({ ok: true, json: async () => metadata })
       .mockResolvedValueOnce({ ok: true, arrayBuffer: async () => new Uint8Array(fakeZip).buffer });
 
-    await expect((svc as any).downloadArtifact()).rejects.toThrow(/CERT_BRUNO_SRC_CHECKSUM/);
+    await expect(asInternal(svc).downloadArtifact()).rejects.toThrow(/CERT_BRUNO_SRC_CHECKSUM/);
   });
 
   it('returns null (no throw) in warning mode when fetch fails', async () => {
@@ -202,7 +214,7 @@ describe('ArtifactService: downloadArtifact', () => {
     const warnSvc = new ArtifactService();
     global.fetch = jest.fn().mockResolvedValueOnce({ ok: false, status: 503 });
 
-    const result = await (warnSvc as any).downloadArtifact();
+    const result = await asInternal(warnSvc).downloadArtifact();
     expect(result).toBeNull();
   });
 });
@@ -220,7 +232,7 @@ describe('ArtifactService: ensureRuntimeReady ref-check', () => {
       ...VALID_ENV,
     });
     svc = new ArtifactService();
-    (svc as any).runtimeRoot = runtimeRoot;
+    asInternal(svc).runtimeRoot = runtimeRoot;
   });
 
   afterEach(() => {
@@ -237,19 +249,21 @@ describe('ArtifactService: ensureRuntimeReady ref-check', () => {
     fs.writeFileSync(path.join(runtimeRoot, '.ref'), 'v2.1.0', 'utf8');
     // targetDownloadRef is 'v2.1.0' (tag, no commit set)
 
-    const ensureRuntime = jest.spyOn(svc as any, 'ensureRuntime');
+    const ensureRuntime = jest.spyOn(asInternal(svc), 'ensureRuntime');
 
     await svc.ensureRuntimeReady();
 
     expect(ensureRuntime).not.toHaveBeenCalled();
-    expect((svc as any).isRuntimeReady).toBe(true);
+    expect(asInternal(svc).isRuntimeReady).toBe(true);
   });
 
   it('triggers download when persisted ref differs from target download ref', async () => {
     fs.mkdirSync(path.join(runtimeRoot, 'node_modules'), { recursive: true });
     fs.writeFileSync(path.join(runtimeRoot, '.ref'), 'v1.0.0', 'utf8'); // stale ref
 
-    const ensureRuntime = jest.spyOn(svc as any, 'ensureRuntime').mockResolvedValue(undefined);
+    const ensureRuntime = jest
+      .spyOn(asInternal(svc), 'ensureRuntime')
+      .mockResolvedValue(undefined);
 
     await svc.ensureRuntimeReady();
 
@@ -260,7 +274,9 @@ describe('ArtifactService: ensureRuntimeReady ref-check', () => {
     fs.mkdirSync(path.join(runtimeRoot, 'node_modules'), { recursive: true });
     // No .ref file
 
-    const ensureRuntime = jest.spyOn(svc as any, 'ensureRuntime').mockResolvedValue(undefined);
+    const ensureRuntime = jest
+      .spyOn(asInternal(svc), 'ensureRuntime')
+      .mockResolvedValue(undefined);
 
     await svc.ensureRuntimeReady();
 
@@ -272,7 +288,9 @@ describe('ArtifactService: ensureRuntimeReady ref-check', () => {
     fs.writeFileSync(path.join(runtimeRoot, '.ref'), 'v2.1.0', 'utf8');
     // No node_modules
 
-    const ensureRuntime = jest.spyOn(svc as any, 'ensureRuntime').mockResolvedValue(undefined);
+    const ensureRuntime = jest
+      .spyOn(asInternal(svc), 'ensureRuntime')
+      .mockResolvedValue(undefined);
 
     await svc.ensureRuntimeReady();
 

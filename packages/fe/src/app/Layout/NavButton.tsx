@@ -9,7 +9,7 @@ import {
 } from '@chakra-ui/react';
 import { Icons } from '@edanalytics/common-ui';
 import { ReactNode, useEffect } from 'react';
-import { Link as RouterLink } from 'react-router-dom';
+import { Link as RouterLink } from 'react-router';
 export interface INavButtonProps {
   route: string;
   icon: React.ElementType;
@@ -39,7 +39,9 @@ export const NavButton = (props: INavButtonProps) => {
   const isChildExpanded = checkisChildExpanded(props.childItems || []);
 
   useEffect(() => {
-    isChildExpanded && expand();
+    if (isChildExpanded) {
+      expand();
+    }
   }, [isChildExpanded, expand]);
 
   const depthOffset = `${props.depth || 0}em`;

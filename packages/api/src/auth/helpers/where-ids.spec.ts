@@ -1,5 +1,5 @@
 import { whereIds, checkId } from './where-ids';
-import { In } from 'typeorm';
+import { FindOperator } from 'typeorm';
 
 describe('whereIds', () => {
   it('returns an empty object when ids is true (allow all)', () => {
@@ -10,7 +10,7 @@ describe('whereIds', () => {
     const ids = new Set([1, 2, 3]);
     const result = whereIds(ids);
     expect(result).toHaveProperty('id');
-    expect(Array.isArray((result.id as any)._value)).toBe(true);
+    expect(Array.isArray((result.id as FindOperator<number>).value)).toBe(true);
   });
 
   it('returns an In clause with a single id', () => {

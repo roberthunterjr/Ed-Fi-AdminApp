@@ -9,7 +9,6 @@ import {
   FormLabel,
   Icon,
   Input,
-  Link,
   Radio,
   RadioGroup,
   Stack,
@@ -17,12 +16,12 @@ import {
   Tooltip,
 } from '@chakra-ui/react';
 import { PageTemplate } from '@edanalytics/common-ui';
-import { GetUserDto, PostUserDto, RoleType } from '@edanalytics/models';
+import { PostUserDto, RoleType } from '@edanalytics/models';
 import { classValidatorResolver } from '@hookform/resolvers/class-validator';
 import { useQueryClient } from '@tanstack/react-query';
 import { noop } from '@tanstack/react-table';
-import { Controller, useForm } from 'react-hook-form';
-import { useNavigate } from 'react-router-dom';
+import { Controller, Resolver, useForm } from 'react-hook-form';
+import { useNavigate } from 'react-router';
 import { usePopBanner } from '../../Layout/FeedbackBanner';
 import { userQueries, userTeamMembershipQueries } from '../../api';
 import { AuthorizeComponent, SelectRole, SelectTeam, useNavToParent } from '../../helpers';
@@ -59,7 +58,10 @@ export const CreateUser = () => {
     control,
     watch,
     formState: { errors, isSubmitting },
-  } = useForm<PostUserDto & TeamFields>({ resolver, defaultValues: { userType: 'human' } });
+  } = useForm<PostUserDto & TeamFields>({
+    resolver: resolver as unknown as Resolver<PostUserDto & TeamFields>,
+    defaultValues: { userType: 'human' },
+  });
 
   const [userType] = watch(['userType']);
   const isHuman = userType === 'human';

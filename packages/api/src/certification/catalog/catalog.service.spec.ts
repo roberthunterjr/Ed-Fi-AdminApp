@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
+import { DataSource, Repository } from 'typeorm';
 import {
   AreaCatalog,
   CatalogVersion,
@@ -9,6 +10,49 @@ import {
   StepParameterCatalog,
 } from '@edanalytics/models-server';
 import { CatalogService } from './catalog.service';
+
+type ParsedParamLike = { name: string; type: string; description: string | null };
+type ParsedStepLike = {
+  stepName: string;
+  displayName: string | null;
+  seq: number;
+  stepType: string;
+  params: ParsedParamLike[];
+};
+type ParsedScenarioLike = {
+  name: string;
+  displayName: string | null;
+  displayOrder: number;
+  steps: ParsedStepLike[];
+};
+type ParsedAreaLike = {
+  name: string;
+  displayName: string | null;
+  displayOrder: number;
+  scenarios: ParsedScenarioLike[];
+};
+type BruMetaLike = { name: string | null; seq: number | null };
+
+// Mirrors the private surface of CatalogService that these tests exercise
+// directly. Kept structurally compatible so we can access private members
+// without resorting to `any`.
+type CatalogServiceInternal = {
+  syncVersion(
+    artifactVersion: string,
+    dataStandardVersion: string,
+    versionRoot: string
+  ): Promise<void>;
+  parseAreas(versionRoot: string): ParsedAreaLike[];
+  parseMeta(folderBruPath: string): BruMetaLike;
+  parseStepTypeMap(folderBruPath: string): Record<number, string> | null;
+  extractInputParams(bruContent: string): ParsedParamLike[];
+  extractContextParams(bruContent: string): ParsedParamLike[];
+  extractReferenceParam(bruContent: string, stepType: string): ParsedParamLike[];
+  inferStepType(fileName: string): string;
+};
+
+const asInternal = (svc: CatalogService): CatalogServiceInternal =>
+  svc as unknown as CatalogServiceInternal;
 
 jest.mock('@edanalytics/models-server', () => {
   class AreaCatalog {}
@@ -89,7 +133,10 @@ describe('CatalogService', () => {
       await cb(manager);
     });
 
-    service = new CatalogService(catalogVersionRepo as any, dataSource as any);
+    service = new CatalogService(
+      catalogVersionRepo as unknown as Repository<CatalogVersion>,
+      dataSource as unknown as DataSource
+    );
   });
 
   afterEach(() => {
@@ -126,10 +173,10 @@ describe('CatalogService', () => {
       dirent('scratch'),
       dirent('v1'),
       dirent('x'),
-    ] as any);
+    ] as unknown as ReturnType<typeof fs.readdirSync>);
 
     const syncVersionSpy = jest
-      .spyOn(service as any, 'syncVersion')
+      .spyOn(asInternal(service), 'syncVersion')
       .mockResolvedValue(undefined);
 
     await service.sync('v2.1.0', '/sis');
@@ -149,7 +196,7 @@ describe('CatalogService', () => {
     catalogVersionRepo.findOne.mockResolvedValue({ catalogVersionId: 99 });
     const logSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation();
 
-    await (service as any).syncVersion('v2.1.0', 'v4', '/root/v4');
+    await asInternal(service).syncVersion('v2.1.0', 'v4', '/root/v4');
 
     expect(dataSource.transaction).not.toHaveBeenCalled();
     expect(logSpy).toHaveBeenCalledWith('Catalog already synced for v2.1.0/v4, skipping');
@@ -157,7 +204,7 @@ describe('CatalogService', () => {
 
   it('syncVersion should deactivate active version with portable boolean parameter and persist catalog hierarchy', async () => {
     catalogVersionRepo.findOne.mockResolvedValue(null);
-    jest.spyOn(service as any, 'parseAreas').mockReturnValue([
+    jest.spyOn(asInternal(service), 'parseAreas').mockReturnValue([
       {
         name: 'area-a',
         displayName: 'Area A',
@@ -181,7 +228,7 @@ describe('CatalogService', () => {
       },
     ]);
 
-    await (service as any).syncVersion('v2.1.0', 'v4', '/root/v4');
+    await asInternal(service).syncVersion('v2.1.0', 'v4', '/root/v4');
 
     expect(dataSource.transaction).toHaveBeenCalledTimes(1);
     expect(qb.update).toHaveBeenCalledWith(CatalogVersion);
@@ -203,7 +250,7 @@ describe('CatalogService', () => {
   it('parseMeta should return null values when folder.bru does not exist', () => {
     mockedFs.existsSync.mockReturnValue(false);
 
-    const result = (service as any).parseMeta('/missing/folder.bru');
+    const result = asInternal(service).parseMeta('/missing/folder.bru');
 
     expect(result).toEqual({ name: null, seq: null });
   });
@@ -220,10 +267,10 @@ describe('CatalogService', () => {
         '  2. __UPDATE__',
         '  3. __DELETE__',
         '}',
-      ].join('\n') as any
+      ].join('\n')
     );
 
-    const map = (service as any).parseStepTypeMap('/scenario/folder.bru');
+    const map = asInternal(service).parseStepTypeMap('/scenario/folder.bru');
 
     expect(map).toEqual({ 1: 'CREATE', 2: 'UPDATE', 3: 'DELETE' });
   });
@@ -238,7 +285,7 @@ describe('CatalogService', () => {
       '}',
     ].join('\n');
 
-    const result = (service as any).extractInputParams(bru);
+    const result = asInternal(service).extractInputParams(bru);
 
     expect(result).toEqual([
       { name: 'localEducationAgencyId', type: 'input', description: 'LEA ID' },
@@ -255,7 +302,7 @@ describe('CatalogService', () => {
       '}',
     ].join('\n');
 
-    const result = (service as any).extractContextParams(bru);
+    const result = asInternal(service).extractContextParams(bru);
 
     expect(result).toEqual([
       {
@@ -274,9 +321,9 @@ describe('CatalogService', () => {
   it('extractReferenceParam should return URL trailing id var for UPDATE/DELETE only', () => {
     const bru = 'url: {{baseUrl}}/schools/{{school_id}}?limit=1';
 
-    const updateResult = (service as any).extractReferenceParam(bru, 'UPDATE');
-    const deleteResult = (service as any).extractReferenceParam(bru, 'DELETE');
-    const createResult = (service as any).extractReferenceParam(bru, 'CREATE');
+    const updateResult = asInternal(service).extractReferenceParam(bru, 'UPDATE');
+    const deleteResult = asInternal(service).extractReferenceParam(bru, 'DELETE');
+    const createResult = asInternal(service).extractReferenceParam(bru, 'CREATE');
 
     expect(updateResult).toEqual([
       {
@@ -291,8 +338,8 @@ describe('CatalogService', () => {
   });
 
   it('inferStepType should infer delete/update/create from filename', () => {
-    expect((service as any).inferStepType('01-delete-school.bru')).toBe('DELETE');
-    expect((service as any).inferStepType('02-update-school.bru')).toBe('UPDATE');
-    expect((service as any).inferStepType('03-create-school.bru')).toBe('CREATE');
+    expect(asInternal(service).inferStepType('01-delete-school.bru')).toBe('DELETE');
+    expect(asInternal(service).inferStepType('02-update-school.bru')).toBe('UPDATE');
+    expect(asInternal(service).inferStepType('03-create-school.bru')).toBe('CREATE');
   });
 });

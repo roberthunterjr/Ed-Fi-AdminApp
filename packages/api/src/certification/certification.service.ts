@@ -2,8 +2,6 @@ import { Injectable } from '@nestjs/common';
 
 @Injectable()
 export class CertificationService {
-  constructor() {}
-
   //   // ------------------------------------------------------------------------------
   //   // @TODO: The underlying methods were copied from the original POC and will be refactored in Certification 2.2
   //   // ------------------------------------------------------------------------------

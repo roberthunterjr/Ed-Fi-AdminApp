@@ -10,3 +10,4 @@ export * from './is-arn';
 export * from './regarding';
 export * from './id.dto';
 export { default as TrimWhitespace } from './TrimWhitespace';
+export * from './ods-name';

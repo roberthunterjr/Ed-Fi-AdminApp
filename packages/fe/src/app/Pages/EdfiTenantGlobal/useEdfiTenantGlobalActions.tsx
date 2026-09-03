@@ -1,6 +1,6 @@
 import { ActionsType, Icons } from '@edanalytics/common-ui';
 import { GetEdfiTenantDto, OWNERSHIP_RESOURCE_TYPE } from '@edanalytics/models';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { usePopBanner } from '../../Layout/FeedbackBanner';
 import { edfiTenantQueriesGlobal } from '../../api';
 import {
@@ -179,7 +179,7 @@ export const useEdfiTenantGlobalActions = (
                 { entity: edfiTenant, pathParams: null },
                 {
                   ...mutationErrCallback({ popGlobalBanner: popBanner }),
-                  onSuccess(result, variables, context) {
+                  onSuccess(result, _variables, _context) {
                     popSyncBanner({
                       popBanner,
                       syncQueue: result,

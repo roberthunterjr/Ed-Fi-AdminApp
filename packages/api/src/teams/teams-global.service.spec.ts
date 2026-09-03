@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getEntityManagerToken, getRepositoryToken } from '@nestjs/typeorm';
 import { Team } from '@edanalytics/models-server';
+import { PostTeamDto, PutTeamDto, GetUserDto } from '@edanalytics/models';
 import { TeamsGlobalService } from './teams-global.service';
 
 const mockTeam = { id: 1, name: 'Engineering', displayName: 'Engineering' };
@@ -32,7 +33,7 @@ describe('TeamsGlobalService', () => {
   });
 
   it('create() saves a new team', async () => {
-    const dto = { name: 'Science' } as any;
+    const dto = { name: 'Science' } as PostTeamDto;
     await service.create(dto);
     expect(mockRepo.create).toHaveBeenCalledWith(dto);
     expect(mockRepo.save).toHaveBeenCalled();
@@ -49,7 +50,7 @@ describe('TeamsGlobalService', () => {
   });
 
   it('update() applies allowed fields and saves', async () => {
-    const dto = { name: 'Infra' } as any;
+    const dto = { name: 'Infra' } as PutTeamDto;
     await service.update(1, dto);
     expect(mockRepo.save).toHaveBeenCalled();
     const savedArg = mockRepo.save.mock.calls[0][0];
@@ -57,13 +58,13 @@ describe('TeamsGlobalService', () => {
   });
 
   it('remove() removes the team and returns undefined', async () => {
-    const result = await service.remove(1, { id: 99 } as any);
+    const result = await service.remove(1, { id: 99 } as GetUserDto);
     expect(mockRepo.remove).toHaveBeenCalled();
     expect(result).toBeUndefined();
   });
 
   it('remove() throws NotFoundException when team not found', async () => {
     const { NotFoundException } = await import('@nestjs/common');
-    await expect(service.remove(999, { id: 1 } as any)).rejects.toThrow(NotFoundException);
+    await expect(service.remove(999, { id: 1 } as GetUserDto)).rejects.toThrow(NotFoundException);
   });
 });

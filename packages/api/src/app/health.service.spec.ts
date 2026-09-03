@@ -2,6 +2,10 @@ import 'reflect-metadata';
 import { Test, TestingModule } from '@nestjs/testing';
 import { HealthService } from './health.service';
 
+type HealthServiceWithPrivateMembers = {
+  checkDatabaseIndependently: () => Promise<boolean>;
+};
+
 describe('HealthService', () => {
   let service: HealthService;
 
@@ -13,7 +17,7 @@ describe('HealthService', () => {
   });
 
   it('getHealth() returns healthy status when DB check passes', async () => {
-    jest.spyOn(service as any, 'checkDatabaseIndependently').mockResolvedValueOnce(true);
+    jest.spyOn(service as unknown as HealthServiceWithPrivateMembers, 'checkDatabaseIndependently').mockResolvedValueOnce(true);
     const result = await service.getHealth();
     expect(result.status).toBe('healthy');
     expect(result.checks.api.status).toBe('healthy');
@@ -22,7 +26,7 @@ describe('HealthService', () => {
   });
 
   it('getHealth() returns unhealthy when DB check returns false', async () => {
-    jest.spyOn(service as any, 'checkDatabaseIndependently').mockResolvedValueOnce(false);
+    jest.spyOn(service as unknown as HealthServiceWithPrivateMembers, 'checkDatabaseIndependently').mockResolvedValueOnce(false);
     const result = await service.getHealth();
     expect(result.status).toBe('unhealthy');
     expect(result.checks.database.status).toBe('unhealthy');
@@ -31,7 +35,7 @@ describe('HealthService', () => {
 
   it('getHealth() returns unhealthy when DB check throws a regular error', async () => {
     jest
-      .spyOn(service as any, 'checkDatabaseIndependently')
+      .spyOn(service as unknown as HealthServiceWithPrivateMembers, 'checkDatabaseIndependently')
       .mockRejectedValueOnce(new Error('connection refused'));
     const result = await service.getHealth();
     expect(result.status).toBe('unhealthy');
@@ -44,15 +48,16 @@ describe('HealthService', () => {
       name: 'AggregateError',
       errors: [new Error('inner db error')],
     });
-    jest.spyOn(service as any, 'checkDatabaseIndependently').mockRejectedValueOnce(aggErr);
+    jest.spyOn(service as unknown as HealthServiceWithPrivateMembers, 'checkDatabaseIndependently').mockRejectedValueOnce(aggErr);
     const result = await service.getHealth();
     expect(result.status).toBe('unhealthy');
   });
 
   it('getHealth() includes a valid ISO timestamp', async () => {
-    jest.spyOn(service as any, 'checkDatabaseIndependently').mockResolvedValueOnce(true);
+    jest.spyOn(service as unknown as HealthServiceWithPrivateMembers, 'checkDatabaseIndependently').mockResolvedValueOnce(true);
     const result = await service.getHealth();
     expect(() => new Date(result.timestamp)).not.toThrow();
     expect(new Date(result.timestamp).toISOString()).toBe(result.timestamp);
   });
 });
+

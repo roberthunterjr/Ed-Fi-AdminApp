@@ -17,7 +17,7 @@ import {
 } from '@chakra-ui/react';
 import { PageTemplate } from '@edanalytics/common-ui';
 import { useEffect, useMemo, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router';
 import certificationScenarios from './certification-scenarios.json';
 import { useNavToParent } from '../../helpers';
 import { config } from '../../../config/config';

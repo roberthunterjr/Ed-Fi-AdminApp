@@ -13,7 +13,6 @@ import { Controller } from '@nestjs/common';
 export class CertificationController {
   // TODO: — inject CertificationService and ArtifactService
   // Moved out of the constructor to avoid prettier formatting issues in CI.
-  constructor() {}
 
   // // ------------------------------------------------------------------------------
   // // @TODO: The run() method was copied from the original POC and will be refactored in Certification 2.2

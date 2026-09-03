@@ -6,14 +6,22 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  Matches,
   MaxLength,
   MinLength,
   ValidateNested,
 } from 'class-validator';
 import { sanitizeForUrl, trimTrailingSlashes } from '@edanalytics/utils';
-import { TrimWhitespace } from '../utils';
+import {
+  MAX_ODS_NAME_LENGTH,
+  MAX_ODS_NAME_LENGTH_MESSAGE,
+  ODS_NAME_PATTERN,
+  ODS_NAME_PATTERN_MESSAGE,
+  TrimWhitespace,
+} from '../utils';
 import { makeSerializer } from '../utils/make-serializer';
 import {
+  PostApiClientFormBase,
   PostApiClientResponseDtoBase,
   PostApplicationDtoBase,
   PostApplicationFormBase,
@@ -172,48 +180,16 @@ export class PostApiClientResponseDtoV2 extends PostApiClientResponseDtoBase {
   id: number;
 }
 
-export class PostApiClientFormDtoV2 {
-  @Expose()
-  @IsString()
-  @MinLength(3)
-  @MaxLength(50)
-  name: string;
-
-  @Expose()
-  @IsBoolean()
-  isApproved: boolean;
-
-  @Expose()
-  @IsNumber()
-  applicationId: number;
-  
+export class PostApiClientFormDtoV2 extends PostApiClientFormBase {
   @Expose()
   @IsNumber()
   odsInstanceId: number;
 }
 
-export class PutApiClientFormDtoV2 {
-  @Expose()
-  @IsString()
-  @MinLength(3)
-  @MaxLength(50)
-  name: string;
-
-  @Expose()
-  @IsBoolean()
-  isApproved: boolean;
-
-  @Expose()
-  @IsNumber()
-  odsInstanceId: number;
-
+export class PutApiClientFormDtoV2 extends PostApiClientFormDtoV2 {
   @Expose()
   @IsNumber()
   id: number;
-
-  @Expose()
-  @IsNumber()
-  applicationId: number;
 }
 
 export const toGetApiClientDtoV2 = makeSerializer(GetApiClientDtoV2);
@@ -356,6 +332,9 @@ export const toGetClaimsetSingleDtoV2 = makeSerializer(GetClaimsetSingleDtoV2);
 export class ImportClaimsetSingleDtoV2 {
   @Expose()
   @TrimWhitespace()
+  // Admin API rejects names of 255+ characters in BOTH versions. Note V2 has no
+  // whitespace restriction — that rule is V3-only, see ImportClaimsetSingleDtoV3.
+  @MaxLength(254)
   name: string;
 
   @Expose()
@@ -465,6 +444,7 @@ export class CopyClaimsetDtoV2 {
   @Expose()
   @IsString()
   @TrimWhitespace()
+  @MaxLength(254)
   name: string;
 }
 
@@ -483,6 +463,22 @@ export class GetOdsInstanceSummaryDtoV2 {
 }
 
 export const toGetOdsInstanceSummaryDtoV2 = makeSerializer(GetOdsInstanceSummaryDtoV2);
+
+export class PostInstanceDtoV2 {
+  @Expose()
+  @IsString()
+  @MaxLength(MAX_ODS_NAME_LENGTH, { message: MAX_ODS_NAME_LENGTH_MESSAGE })
+  // Mirrors ODS-Admin-API's own name pattern. Also what makes the character-based
+  // MaxLength above a real byte-length guarantee rather than an ASCII-only one.
+  @Matches(ODS_NAME_PATTERN, { message: ODS_NAME_PATTERN_MESSAGE })
+  @TrimWhitespace()
+  name: string;
+
+  @Expose()
+  @IsString()
+  @TrimWhitespace()
+  databaseTemplate: string;
+}
 
 export class PostCreateOdsInstanceDtoV2 {
   @Expose()

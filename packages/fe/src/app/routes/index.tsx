@@ -1,7 +1,7 @@
 import { ChakraProvider } from '@chakra-ui/react';
 import { globalTheme } from '@edanalytics/common-ui';
 import { memo, useEffect } from 'react';
-import { Outlet, RouteObject, RouterProvider, createBrowserRouter } from 'react-router-dom';
+import { Outlet, RouteObject, RouterProvider, createBrowserRouter } from 'react-router';
 import { ErrorFallback } from '../Layout/Fallback404';
 import { PublicAppLayout } from '../Layout/PublicAppLayout';
 import { StandardLayout } from '../Layout/StandardLayout';
@@ -23,7 +23,7 @@ import {
   apiClientRoute,
   apiClientsIndexRoute,
   apiClientsRoute,
-} from './apiclients.routes';
+} from './apiClients.routes';
 import {
   claimsetCopyRoute,
   claimsetCreateRoute,
@@ -188,6 +188,11 @@ const Login = memo(() => {
     window.location.href = `${API_URL}/auth/login/${config.oidcId}${
       redirect ? `?redirect=${redirect}` : ''
     }`;
+    // redirect intentionally omitted: this should navigate away exactly once
+    // on mount using whatever redirect value was present in the initial URL.
+    // useSearchParamsObject() returns a new object each render, so including
+    // it would re-run this navigation on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return null;
 });

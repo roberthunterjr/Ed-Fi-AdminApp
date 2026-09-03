@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getEntityManagerToken, getRepositoryToken } from '@nestjs/typeorm';
 import { User } from '@edanalytics/models-server';
+import { GetUserDto, PostUserDto, PutUserDto } from '@edanalytics/models';
 import { UsersGlobalService } from './users-global.service';
 
 const mockUser: Partial<User> = {
@@ -38,7 +39,7 @@ describe('UsersGlobalService', () => {
   });
 
   it('create() saves a new user', async () => {
-    const dto = { username: 'bob', roleId: 1 } as any;
+    const dto = { username: 'bob', roleId: 1 } as unknown as PostUserDto;
     await service.create(dto);
     expect(mockRepo.create).toHaveBeenCalledWith(dto);
     expect(mockRepo.save).toHaveBeenCalled();
@@ -61,7 +62,7 @@ describe('UsersGlobalService', () => {
   });
 
   it('update() applies allowed fields and saves', async () => {
-    const dto = { username: 'alice2', roleId: 3, isActive: false } as any;
+    const dto = { username: 'alice2', roleId: 3, isActive: false } as unknown as PutUserDto;
     await service.update(1, dto);
     expect(mockRepo.save).toHaveBeenCalled();
     const savedArg = mockRepo.save.mock.calls[0][0];
@@ -70,13 +71,13 @@ describe('UsersGlobalService', () => {
   });
 
   it('remove() removes the user and returns undefined', async () => {
-    const result = await service.remove(1, { id: 99 } as any);
+    const result = await service.remove(1, { id: 99 } as unknown as GetUserDto);
     expect(mockRepo.remove).toHaveBeenCalled();
     expect(result).toBeUndefined();
   });
 
   it('remove() throws NotFoundException when user not found', async () => {
     const { NotFoundException } = await import('@nestjs/common');
-    await expect(service.remove(999, { id: 1 } as any)).rejects.toThrow(NotFoundException);
+    await expect(service.remove(999, { id: 1 } as unknown as GetUserDto)).rejects.toThrow(NotFoundException);
   });
 });

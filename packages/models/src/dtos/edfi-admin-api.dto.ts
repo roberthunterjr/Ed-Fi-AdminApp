@@ -16,6 +16,7 @@ import { makeSerializer } from '../utils/make-serializer';
 import { SbaaAdminApiVersion } from '../interfaces';
 import { SecretSharingMethod } from '../enums';
 import { PostApiClientResponseDtoV2, PostApplicationResponseDtoV2 } from './edfi-admin-api.v2.dto';
+import { PostApiClientResponseDtoV3 } from './edfi-admin-api.v3.dto';
 
 export class PostVendorDto {
   @Expose()
@@ -125,6 +126,7 @@ export class ResourceClaimDto131 {
     return this.authStrategyOverridesForCRUD?.filter((v) => v !== null);
   }
 }
+const toResourceClaimDto131 = makeSerializer(ResourceClaimDto131);
 
 export class PostClaimsetDto {
   @Expose()
@@ -148,10 +150,12 @@ export class PostClaimsetDto {
 
   set resourceClaimsJson(value: string) {
     try {
-      this.resourceClaims = JSON.parse(value);
-    } catch (invalidJsonError) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      this.resourceClaims = undefined as any;
+      const parsed = JSON.parse(value);
+      this.resourceClaims = Array.isArray(parsed)
+        ? toResourceClaimDto131(parsed)
+        : (undefined as unknown as ResourceClaimDto131[]);
+    } catch {
+      this.resourceClaims = undefined as unknown as ResourceClaimDto131[];
     }
   }
 }
@@ -215,6 +219,22 @@ export class PostApplicationFormBase {
   @IsNumber()
   claimsetId: number;
 }
+export class PostApiClientFormBase {
+  @Expose()
+  @IsString()
+  @MinLength(3)
+  @MaxLength(50)
+  name: string;
+
+  @Expose()
+  @IsBoolean()
+  isApproved: boolean;
+
+  @Expose()
+  @IsNumber()
+  applicationId: number;
+}
+
 export class PostApplicationForm extends PostApplicationFormBase {
   @Expose()
   @IsOptional()
@@ -410,7 +430,11 @@ export interface EducationOrganizationDto {
 export interface OdsInstanceDto {
   id: number | null;
   name: string;
+  instanceManageId?: number | null;
   instanceType?: string;
+  status?: string | null;
+  databaseTemplate?: string | null;
+  databaseName?: string | null;
   edOrgs?: EducationOrganizationDto[];
 }
 
@@ -430,3 +454,6 @@ export type ApplicationResponseV1 = ApplicationYopassResponseDto | PostApplicati
 export type ApplicationResponseV2 = ApplicationYopassResponseDto | PostApplicationResponseDtoV2;
 
 export type ApiClientResponseV2 = ApiClientYopassResponseDto | PostApiClientResponseDtoV2;
+
+// Union types for AdminAPI v3 - Yopass Link & ID OR Ed-Fi Application Key & Secret
+export type ApiClientResponseV3 = ApiClientYopassResponseDto | PostApiClientResponseDtoV3;

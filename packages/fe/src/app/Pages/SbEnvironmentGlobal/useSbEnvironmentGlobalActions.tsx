@@ -1,5 +1,5 @@
 import { GetSbEnvironmentDto, OWNERSHIP_RESOURCE_TYPE } from '@edanalytics/models';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { usePopBanner } from '../../Layout/FeedbackBanner';
 import { sbEnvironmentQueriesGlobal } from '../../api';
 import {
@@ -136,7 +136,7 @@ export const useSbEnvironmentGlobalActions = (sbEnvironment: GetSbEnvironmentDto
               },
             }
           : {}),
-        ...(canRefreshResources && !sbEnvironment.startingBlocks && sbEnvironment.version === 'v2'
+        ...(canRefreshResources && !sbEnvironment.startingBlocks && sbEnvironment.version !== 'v1'
           ? {
               RefreshResources: {
                 icon: Icons.Download,
@@ -148,7 +148,7 @@ export const useSbEnvironmentGlobalActions = (sbEnvironment: GetSbEnvironmentDto
                     { entity: sbEnvironment, pathParams: null },
                     {
                       ...mutationErrCallback({ popGlobalBanner: popBanner }),
-                      onSuccess(result, variables, context) {
+                      onSuccess(result, _variables, _context) {
                         popSyncBanner({
                           popBanner,
                           syncQueue: result,
@@ -172,7 +172,7 @@ export const useSbEnvironmentGlobalActions = (sbEnvironment: GetSbEnvironmentDto
                     { entity: sbEnvironment, pathParams: null },
                     {
                       ...mutationErrCallback({ popGlobalBanner: popBanner }),
-                      onSuccess(result, variables, context) {
+                      onSuccess(result, _variables, _context) {
                         popBanner(result);
                       },
                     }

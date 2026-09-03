@@ -18,7 +18,7 @@ import {
 } from '@chakra-ui/react';
 import { PageTemplate } from '@edanalytics/common-ui';
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import certificationScenarios from './certification-scenarios.json';
 import { useNavToParent } from '../../helpers';
 import { config } from '../../../config/config';
@@ -81,7 +81,7 @@ export const RequestCertificationPage = () => {
       }
 
       seen.add(key);
-      const { scenarioStep, ...scenarioWithoutStep } = item;
+      const { scenarioStep: _scenarioStep, ...scenarioWithoutStep } = item;
       acc.push(scenarioWithoutStep);
       return acc;
     }, []);

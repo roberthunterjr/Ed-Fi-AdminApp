@@ -1,21 +1,37 @@
 import 'reflect-metadata';
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
-import { Ids } from '@edanalytics/models';
+import { Ids, SecretSharingMethod } from '@edanalytics/models';
+import { EdfiTenant, Edorg, SbEnvironment } from '@edanalytics/models-server';
+import { Repository } from 'typeorm';
+import { Response } from 'express';
 import { AdminApiControllerV1 } from './admin-api.v1.controller';
+import { AdminApiServiceV1 } from './admin-api.v1.service';
+import { postYopassSecret } from '../../../../utils';
+
+// postYopassSecret makes real network/crypto calls; mock it so the Yopass-path
+// test below doesn't depend on an actual Yopass backend being configured.
+jest.mock('../../../../utils', () => ({
+  ...jest.requireActual('../../../../utils'),
+  postYopassSecret: jest.fn(),
+}));
+// The Yopass branch is gated behind config.USE_YOPASS, which defaults to false
+// in the test environment.
+jest.mock('config', () => ({ USE_YOPASS: true }));
 
 describe('AdminApiControllerV1 - exportClaimset', () => {
   let controller: AdminApiControllerV1;
   let mockSbService: { getClaimsetRaw: jest.Mock };
 
-  const mockEdfiTenant: any = {
+  const mockEdfiTenant = {
     id: 1,
     sbEnvironment: { envLabel: 'Test Env' },
-  };
+  } as unknown as EdfiTenant;
 
-  const mockRes: any = {
+  const mockResImpl = {
     setHeader: jest.fn(),
     send: jest.fn(),
   };
+  const mockRes = mockResImpl as unknown as Response;
 
   beforeEach(() => {
     mockSbService = {
@@ -25,12 +41,12 @@ describe('AdminApiControllerV1 - exportClaimset', () => {
       }),
     };
     controller = new AdminApiControllerV1(
-      mockSbService as any,
-      null as any,
-      null as any
+      mockSbService as unknown as AdminApiServiceV1,
+      null as unknown as Repository<Edorg>,
+      null as unknown as Repository<EdfiTenant>
     );
-    mockRes.setHeader.mockClear();
-    mockRes.send.mockClear();
+    mockResImpl.setHeader.mockClear();
+    mockResImpl.send.mockClear();
   });
 
   it('exports claimsets when validIds is true (superuser access)', async () => {
@@ -119,5 +135,65 @@ describe('AdminApiControllerV1 - exportClaimset', () => {
       controller.exportClaimset(1, 1, mockEdfiTenant, ['1', 'abc', '3'], validIds, mockRes)
     ).rejects.toThrow(new BadRequestException('Invalid claimset ID: abc'));
     expect(mockSbService.getClaimsetRaw).not.toHaveBeenCalled();
+  });
+});
+
+describe('AdminApiControllerV1 - resetApplicationCredentials', () => {
+  let controller: AdminApiControllerV1;
+  let mockSbService: { getApplication: jest.Mock; resetApplicationCredentials: jest.Mock };
+
+  const mockEdfiTenant = { id: 1 } as unknown as EdfiTenant;
+
+  const mockSbEnvironment = {
+    domain: 'https://example.edfi.org',
+    startingBlocks: false,
+  } as unknown as SbEnvironment;
+
+  const mockApplication = {
+    id: 5,
+    applicationName: 'Test Application',
+    _educationOrganizationIds: [1],
+  };
+
+  beforeEach(() => {
+    (postYopassSecret as jest.Mock).mockClear();
+    mockSbService = {
+      getApplication: jest.fn().mockResolvedValue(mockApplication),
+      resetApplicationCredentials: jest.fn().mockResolvedValue({
+        applicationId: 5,
+        key: 'new-key',
+        secret: 'new-secret',
+      }),
+    };
+    controller = new AdminApiControllerV1(
+      mockSbService as unknown as AdminApiServiceV1,
+      null as unknown as Repository<Edorg>,
+      null as unknown as Repository<EdfiTenant>
+    );
+  });
+
+  it('returns a response with secretSharingMethod "Yopass" via the Yopass sharing path', async () => {
+    (postYopassSecret as jest.Mock).mockResolvedValue({ link: 'https://yopass.example/secret' });
+    const validIds: Ids = true;
+
+    const result = await controller.resetApplicationCredentials(
+      1,
+      1,
+      mockEdfiTenant,
+      mockSbEnvironment,
+      5,
+      validIds
+    );
+
+    expect(mockSbService.resetApplicationCredentials).toHaveBeenCalledWith(mockEdfiTenant, 5);
+    expect(postYopassSecret).toHaveBeenCalledWith(
+      expect.objectContaining({
+        applicationId: 5,
+        key: 'new-key',
+        secret: 'new-secret',
+        secretSharingMethod: SecretSharingMethod.Yopass,
+      })
+    );
+    expect(result).toMatchObject({ secretSharingMethod: SecretSharingMethod.Yopass });
   });
 });

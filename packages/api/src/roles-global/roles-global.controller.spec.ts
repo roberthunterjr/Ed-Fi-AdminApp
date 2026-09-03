@@ -2,7 +2,8 @@ import 'reflect-metadata';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Role } from '@edanalytics/models-server';
-import { RoleType } from '@edanalytics/models';
+import { GetSessionDataDto, PostRoleDto, PutRoleDto, RoleType } from '@edanalytics/models';
+import { CheckAbilityType } from '../auth/authorization';
 import { RolesGlobalController } from './roles-global.controller';
 import { RolesGlobalService } from './roles-global.service';
 import { ValidationHttpException } from '../utils/customExceptions';
@@ -24,7 +25,7 @@ const mockRolesRepo = {
   }),
 };
 
-const mockSessionUser = { id: 99 } as any;
+const mockSessionUser = { id: 99 } as unknown as GetSessionDataDto;
 
 describe('RolesGlobalController', () => {
   let controller: RolesGlobalController;
@@ -43,19 +44,19 @@ describe('RolesGlobalController', () => {
 
   describe('create()', () => {
     it('throws ValidationHttpException when UserGlobal role is missing me:read', async () => {
-      const dto = { type: RoleType.UserGlobal, privilegeIds: ['role:read'], name: 'Custom' } as any;
+      const dto = { type: RoleType.UserGlobal, privilegeIds: ['role:read'], name: 'Custom' } as unknown as PostRoleDto;
       await expect(controller.create(dto, mockSessionUser)).rejects.toThrow(ValidationHttpException);
     });
 
     it('creates successfully when UserGlobal role includes me:read', async () => {
-      const dto = { type: RoleType.UserGlobal, privilegeIds: ['me:read', 'role:read'], name: 'Custom' } as any;
+      const dto = { type: RoleType.UserGlobal, privilegeIds: ['me:read', 'role:read'], name: 'Custom' } as unknown as PostRoleDto;
       const result = await controller.create(dto, mockSessionUser);
       expect(mockService.create).toHaveBeenCalled();
       expect(result).toBeTruthy();
     });
 
     it('creates successfully for non-UserGlobal roles without me:read', async () => {
-      const dto = { type: RoleType.UserTeam, privilegeIds: ['role:read'], name: 'TeamRole' } as any;
+      const dto = { type: RoleType.UserTeam, privilegeIds: ['role:read'], name: 'TeamRole' } as unknown as PostRoleDto;
       const result = await controller.create(dto, mockSessionUser);
       expect(mockService.create).toHaveBeenCalled();
       expect(result).toBeTruthy();
@@ -81,13 +82,13 @@ describe('RolesGlobalController', () => {
   describe('update()', () => {
     it('throws ValidationHttpException when updating a UserGlobal role without me:read', async () => {
       mockRolesRepo.findOneByOrFail.mockResolvedValueOnce({ ...mockRole, type: RoleType.UserGlobal });
-      const dto = { privilegeIds: ['role:read'], name: 'Updated' } as any;
+      const dto = { privilegeIds: ['role:read'], name: 'Updated' } as unknown as PutRoleDto;
       await expect(controller.update(1, dto, mockSessionUser)).rejects.toThrow(ValidationHttpException);
     });
 
     it('updates successfully when UserGlobal role retains me:read', async () => {
       mockRolesRepo.findOneByOrFail.mockResolvedValueOnce({ ...mockRole, type: RoleType.UserGlobal });
-      const dto = { privilegeIds: ['me:read', 'role:read'], name: 'Updated' } as any;
+      const dto = { privilegeIds: ['me:read', 'role:read'], name: 'Updated' } as unknown as PutRoleDto;
       const result = await controller.update(1, dto, mockSessionUser);
       expect(mockService.update).toHaveBeenCalled();
       expect(result).toBeTruthy();
@@ -95,7 +96,7 @@ describe('RolesGlobalController', () => {
 
     it('updates successfully for non-UserGlobal roles without me:read', async () => {
       mockRolesRepo.findOneByOrFail.mockResolvedValueOnce({ ...mockRole, type: RoleType.UserTeam });
-      const dto = { privilegeIds: ['role:read'], name: 'Updated' } as any;
+      const dto = { privilegeIds: ['role:read'], name: 'Updated' } as unknown as PutRoleDto;
       const result = await controller.update(1, dto, mockSessionUser);
       expect(mockService.update).toHaveBeenCalled();
       expect(result).toBeTruthy();
@@ -104,7 +105,7 @@ describe('RolesGlobalController', () => {
 
   describe('remove()', () => {
     it('removes a role passing force and checkAbility', async () => {
-      const checkAbility = jest.fn(() => true) as any;
+      const checkAbility = jest.fn(() => true) as unknown as CheckAbilityType;
       const result = await controller.remove(1, false, mockSessionUser, checkAbility);
       expect(mockService.remove).toHaveBeenCalledWith(1, mockSessionUser, false, checkAbility);
       expect(result).toBeUndefined();

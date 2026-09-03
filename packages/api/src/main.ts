@@ -22,6 +22,7 @@ import * as sql from 'mssql';
 import { AppModule } from './app/app.module';
 import { ArtifactService } from './certification/artifact/artifact.service';
 import { CatalogService } from './certification/catalog/catalog.service';
+import { asBool } from './utils';
 import { CustomHttpException } from './utils/customExceptions';
 import { AggregateErrorHandler } from './app/aggregate-error-handler';
 import { AggregateErrorFilter } from './app/aggregate-error.filter';
@@ -41,9 +42,8 @@ async function createMssqlConfig(): Promise<sql.config> {
     user: urlParts.username,
     password: urlParts.password,
     options: {
-      encrypt: config.DB_SSL === true || config.DB_SSL === 'true',
-      trustServerCertificate:
-        config.DB_TRUST_CERTIFICATE === true || config.DB_TRUST_CERTIFICATE === 'true',
+      encrypt: asBool(config.DB_SSL),
+      trustServerCertificate: asBool(config.DB_TRUST_CERTIFICATE),
     },
     connectionTimeout: FIVE_SECONDS_IN_MILLISECONDS, // this might be to aggressive
   };

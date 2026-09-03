@@ -4,6 +4,15 @@ import axios from 'axios';
 import { ValidationHttpException } from './customExceptions';
 import config from 'config';
 
+/**
+ * Shape of the Admin API root/info endpoint response.
+ * Only the fields consumed by this module are modeled here.
+ */
+export interface AdminApiInfo {
+  version?: string;
+  specificationVersion?: string;
+  tenancy?: { multitenantMode?: boolean };
+}
 
 /**
  * Determines the API version (v1 or v2) from Admin API metadata version string
@@ -21,39 +30,6 @@ export const determineVersionFromAdminApiMetadata = (adminApiVersion: string): '
   } catch (error) {
     Logger.warn('Failed to parse Admin API version, defaulting to v1:', error);
     return 'v1';
-  }
-};
-
-/**
- * Determines the API version (v1 or v2) from ODS API metadata
- */
-export const determineVersionFromMetadata = (odsApiMeta: OdsApiMeta): 'v1' | 'v2' => {
-  try {
-    // Extract version from metadata
-    const version = odsApiMeta.version;
-
-    if (!version) {
-      Logger.warn('No version found in ODS API metadata');
-      throw new ValidationHttpException({
-        field: 'odsApiDiscoveryUrl',
-        message: `ODS API metadata does not contain a valid version.`,
-      });
-    }
-
-    // Parse the major version number correctly from semantic version string
-    const majorVersion = parseInt(version.split('.')[0], 10);
-
-    if (majorVersion >= 7) {
-      return 'v2';
-    } else {
-      return 'v1';
-    }
-  } catch (error) {
-    Logger.warn('Failed to parse ODS API version from metadata:', error);
-    throw new ValidationHttpException({
-      field: 'odsApiDiscoveryUrl',
-      message: `ODS API metadata does not contain a valid version.`,
-    });
   }
 };
 
@@ -174,7 +150,7 @@ export const fetchOdsApiMetadata = async (createSbEnvironmentDto: PostSbEnvironm
  * Fetches Admin API info from the root endpoint
  * Returns the raw response which includes version and tenancy.multitenantMode
  */
-export const fetchAdminApiInfo = async (adminApiUrl: string): Promise<any> => {
+export const fetchAdminApiInfo = async (adminApiUrl: string): Promise<AdminApiInfo> => {
   if (!adminApiUrl) {
     throw new ValidationHttpException({
       field: 'adminApiUrl',
@@ -220,7 +196,7 @@ export const fetchAdminApiInfo = async (adminApiUrl: string): Promise<any> => {
 export const validateAdminApiUrl = async (
   adminApiUrl: string,
   odsApiDiscoveryUrl: string
-): Promise<any> => {
+): Promise<AdminApiInfo> => {
   try {
     // Fetch Admin API info (reuses shared fetch function)
     const metadata = await fetchAdminApiInfo(adminApiUrl);
@@ -245,12 +221,35 @@ export const validateAdminApiUrl = async (
       });
     }
 
-    const odsDetectedVersion = determineVersionFromMetadata(odsMetadata);
+    // const adminDetectedVersion = determineVersionFromAdminApiMetadata(adminApiVersion);
+    const adminDetectedVersion = metadata.specificationVersion;
+    
+    // Extract version from metadata
+    const odsDetectedVersion = odsMetadata.version;
 
-    // Convert Admin API version to same format as ODS API version for comparison
-    const adminDetectedVersion = determineVersionFromAdminApiMetadata(adminApiVersion);
+    if (!odsDetectedVersion) {
+      Logger.warn('No version found in ODS API metadata');
+      throw new ValidationHttpException({
+        field: 'odsApiDiscoveryUrl',
+        message: `ODS API metadata does not contain a valid version.`,
+      });
+    }
 
-    if (odsDetectedVersion !== adminDetectedVersion) {
+    // Parse the major version number correctly from semantic version string
+    const majorOdsDetectedVersion = parseInt(odsDetectedVersion.split('.')[0], 10);
+
+     if (Number.isNaN(majorOdsDetectedVersion)) {
+       Logger.warn(`Failed to parse ODS API version from metadata: ${odsDetectedVersion}`);
+      throw new ValidationHttpException({
+        field: 'odsApiDiscoveryUrl',
+        message: `ODS API metadata does not contain a valid version.`,
+      });
+    }
+
+    if (
+      (majorOdsDetectedVersion >= 7 && adminDetectedVersion === 'v1') ||
+      (majorOdsDetectedVersion < 7 && (adminDetectedVersion === 'v2' || adminDetectedVersion === 'v3'))
+    ) {
       throw new ValidationHttpException({
         field: 'adminApiUrl',
         message: `Management API version (${adminDetectedVersion}) does not match Ed-Fi API version. Expected APIs to be compatible versions.`,
@@ -305,10 +304,14 @@ export const validateTenantModeCompatibility = (
   }
 };
 
-const isTimeoutError = (error: any): boolean => {
-  return error && (
-    error.code === 'ECONNABORTED' ||
-    (error.message && error.message.toLowerCase().includes('timeout'))
+const isTimeoutError = (error: unknown): boolean => {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+  const { code, message } = error as { code?: unknown; message?: unknown };
+  return (
+    code === 'ECONNABORTED' ||
+    (typeof message === 'string' && message.toLowerCase().includes('timeout'))
   );
 };
 

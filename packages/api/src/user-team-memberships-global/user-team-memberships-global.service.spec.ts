@@ -2,6 +2,11 @@ import 'reflect-metadata';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getEntityManagerToken, getRepositoryToken } from '@nestjs/typeorm';
 import { UserTeamMembership } from '@edanalytics/models-server';
+import {
+  GetUserDto,
+  PostUserTeamMembershipDto,
+  PutUserTeamMembershipDto,
+} from '@edanalytics/models';
 import { UserTeamMembershipsGlobalService } from './user-team-memberships-global.service';
 
 const mockMembership = { id: 1, userId: 10, teamId: 2, roleId: 3 };
@@ -32,7 +37,7 @@ describe('UserTeamMembershipsGlobalService', () => {
   });
 
   it('create() saves a new membership', async () => {
-    const dto = { userId: 5, teamId: 1, roleId: 2 } as any;
+    const dto: PostUserTeamMembershipDto = { userId: 5, teamId: 1, roleId: 2 };
     await service.create(dto);
     expect(mockRepo.create).toHaveBeenCalledWith(dto);
     expect(mockRepo.save).toHaveBeenCalled();
@@ -49,7 +54,7 @@ describe('UserTeamMembershipsGlobalService', () => {
   });
 
   it('update() applies allowed fields and saves', async () => {
-    const dto = { roleId: 5 } as any;
+    const dto: PutUserTeamMembershipDto = { id: 1, roleId: 5 };
     await service.update(1, dto);
     expect(mockRepo.save).toHaveBeenCalled();
     const savedArg = mockRepo.save.mock.calls[0][0];
@@ -57,13 +62,13 @@ describe('UserTeamMembershipsGlobalService', () => {
   });
 
   it('remove() removes and returns undefined', async () => {
-    const result = await service.remove(1, { id: 99 } as any);
+    const result = await service.remove(1, { id: 99 } as unknown as GetUserDto);
     expect(mockRepo.remove).toHaveBeenCalled();
     expect(result).toBeUndefined();
   });
 
   it('remove() throws NotFoundException when not found', async () => {
     const { NotFoundException } = await import('@nestjs/common');
-    await expect(service.remove(999, { id: 1 } as any)).rejects.toThrow(NotFoundException);
+    await expect(service.remove(999, { id: 1 } as unknown as GetUserDto)).rejects.toThrow(NotFoundException);
   });
 });

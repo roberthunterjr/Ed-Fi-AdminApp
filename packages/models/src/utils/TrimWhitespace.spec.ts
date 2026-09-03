@@ -20,7 +20,7 @@ describe('TrimWhitespace', () => {
 
   it('leaves a non-string value (e.g. number) unchanged', () => {
     const result = plainToInstance(TestDto, { name: 42 as unknown as string });
-    expect((result as any).name).toBe(42);
+    expect(result.name).toBe(42);
   });
 
   it('trims to empty string when value is only whitespace', () => {

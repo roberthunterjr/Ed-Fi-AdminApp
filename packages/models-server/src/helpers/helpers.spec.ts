@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { addUserCreating, addUserModifying, regarding } from './index';
-import { User, Team, Role, Ods, EdfiTenant, Edorg } from '../entities';
+import { User, Team, Role, Ods } from '../entities';
 import { GetUserDto } from '@edanalytics/models';
 
 const makeUser = (id: number): GetUserDto => ({ id } as GetUserDto);

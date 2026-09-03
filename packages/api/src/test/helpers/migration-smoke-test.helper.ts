@@ -23,7 +23,7 @@ export function createMockQueryRunner(): QueryRunner {
  * @param MigrationClass - The migration class to test (must implement MigrationInterface)
  */
 export function runMigrationSmokeTest(MigrationClass: new () => MigrationInterface): void {
-  describe(MigrationClass.name, () => {
+  describe(`${MigrationClass.name}`, () => {
     let migration: MigrationInterface;
     let queryRunner: QueryRunner;
 
@@ -44,7 +44,7 @@ export function runMigrationSmokeTest(MigrationClass: new () => MigrationInterfa
       }
       const result = migration.down(queryRunner);
       expect(result).toBeInstanceOf(Promise);
-      await result.catch(() => {});
+      await result.catch(() => undefined);
     });
   });
 }

@@ -11,14 +11,13 @@ import {
 import {
   GetIntegrationProviderDto,
   PutIntegrationProviderDto,
-  PutTeamDto,
 } from '@edanalytics/models';
 import { classValidatorResolver } from '@hookform/resolvers/class-validator';
 import { useQueryClient } from '@tanstack/react-query';
 import { usePopBanner } from '../../Layout/FeedbackBanner';
 
 import { useForm } from 'react-hook-form';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router';
 import { mutationErrCallback } from '../../helpers/mutationErrCallback';
 import { usePaths } from '../../routes/paths';
 import {
@@ -28,7 +27,7 @@ import {
 } from '../../api-v2';
 import { ContentSection, PageContentCard } from '@edanalytics/common-ui';
 
-const resolver = classValidatorResolver(PutTeamDto);
+const resolver = classValidatorResolver(PutIntegrationProviderDto);
 
 export const EditIntegrationProviderPage = () => {
   const paths = usePaths();
@@ -62,7 +61,7 @@ export const EditIntegrationProviderPage = () => {
         queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.integrationProviders] });
         goToView();
       },
-    }).catch(() => {});
+    }).catch(() => undefined); // error already handled by mutationErrCallback's onError above
   };
 
   return (

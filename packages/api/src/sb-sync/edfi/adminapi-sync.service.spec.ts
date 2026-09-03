@@ -1,13 +1,15 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import 'reflect-metadata';
 import { Test, TestingModule } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
+import { getEntityManagerToken, getRepositoryToken } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
 import { EdfiTenant, SbEnvironment } from '@edanalytics/models-server';
 import { TenantDto } from '@edanalytics/models';
 import { AdminApiSyncService } from './adminapi-sync.service';
-import { AdminApiServiceV1, AdminApiServiceV2 } from '../../teams/edfi-tenants/starting-blocks';
+import type { AdminApiServiceV1 } from '../../teams/edfi-tenants/starting-blocks';
+import { AdminApiServiceV2 } from '../../teams/edfi-tenants/starting-blocks';
 import { CacheService } from '../../app/cache.module';
+import { AdminApiVersionStrategyFactory } from '../../admin-api-version-strategy';
 import * as adminApiDataAdapterUtils from '../../utils/admin-api-data-adapter-utils';
 import * as syncOds from '../sync-ods';
 
@@ -17,6 +19,21 @@ describe('AdminApiSyncService', () => {
   let adminApiServiceV2: jest.Mocked<AdminApiServiceV2>;
   let edfiTenantsRepository: jest.Mocked<Repository<EdfiTenant>>;
   let entityManager: jest.Mocked<EntityManager>;
+  let strategyFactory: { getStrategy: jest.Mock };
+  let v1Strategy: {
+    version: string;
+    getAdminApiService: jest.Mock;
+    bootstrapCredentials: jest.Mock;
+    provisionCredentialsForNewTenants: jest.Mock;
+    getTenantModeDefault: jest.Mock;
+  };
+  let v2Strategy: {
+    version: string;
+    getAdminApiService: jest.Mock;
+    bootstrapCredentials: jest.Mock;
+    provisionCredentialsForNewTenants: jest.Mock;
+    getTenantModeDefault: jest.Mock;
+  };
 
   const mockSbEnvironmentV1: Partial<SbEnvironment> = {
     id: 1,
@@ -129,15 +146,37 @@ describe('AdminApiSyncService', () => {
     const mockAdminApiServiceV2 = {
       getTenants: jest.fn(),
       getAdminApiClientForEnvironment: jest.fn(),
+      triggerEdOrgRefresh: jest.fn().mockResolvedValue(null),
+      pollJobStatus: jest.fn().mockResolvedValue('timeout'),
+    };
+
+    v1Strategy = {
+      version: 'v1',
+      getAdminApiService: jest.fn().mockReturnValue(mockAdminApiServiceV1),
+      bootstrapCredentials: jest.fn().mockResolvedValue(undefined),
+      provisionCredentialsForNewTenants: jest.fn().mockResolvedValue(undefined),
+      getTenantModeDefault: jest.fn().mockReturnValue(false),
+    };
+    v2Strategy = {
+      version: 'v2',
+      getAdminApiService: jest.fn().mockReturnValue(mockAdminApiServiceV2),
+      bootstrapCredentials: jest.fn().mockResolvedValue(undefined),
+      provisionCredentialsForNewTenants: jest.fn().mockResolvedValue(undefined),
+      getTenantModeDefault: jest.fn(
+        (env: SbEnvironment) => (env?.configPublic?.values as { meta?: { mode?: string } })?.meta?.mode === 'MultiTenant'
+      ),
+    };
+    strategyFactory = {
+      getStrategy: jest.fn((version: string) => {
+        if (version === 'v1') return v1Strategy;
+        if (version === 'v2') return v2Strategy;
+        throw new Error(`Invalid API version: ${version}`);
+      }),
     };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AdminApiSyncService,
-        {
-          provide: AdminApiServiceV1,
-          useValue: mockAdminApiServiceV1,
-        },
         {
           provide: AdminApiServiceV2,
           useValue: mockAdminApiServiceV2,
@@ -151,23 +190,27 @@ describe('AdminApiSyncService', () => {
           useValue: mockSbEnvironmentsRepository,
         },
         {
-          provide: EntityManager,
+          provide: getEntityManagerToken(),
           useValue: mockEntityManager,
         },
         {
           provide: CacheService,
           useValue: { flushAll: jest.fn() },
         },
+        {
+          provide: AdminApiVersionStrategyFactory,
+          useValue: strategyFactory,
+        },
       ],
     }).compile();
 
     service = module.get<AdminApiSyncService>(AdminApiSyncService);
-    adminApiServiceV1 = module.get(AdminApiServiceV1) as jest.Mocked<AdminApiServiceV1>;
+    adminApiServiceV1 = mockAdminApiServiceV1 as unknown as jest.Mocked<AdminApiServiceV1>;
     adminApiServiceV2 = module.get(AdminApiServiceV2) as jest.Mocked<AdminApiServiceV2>;
     edfiTenantsRepository = module.get(getRepositoryToken(EdfiTenant)) as jest.Mocked<
       Repository<EdfiTenant>
     >;
-    entityManager = module.get(EntityManager) as jest.Mocked<EntityManager>;
+    entityManager = module.get(getEntityManagerToken()) as jest.Mocked<EntityManager>;
 
     // Default: no tenants in DB (orphan cleanup won't delete anything in most tests)
     edfiTenantsRepository.find.mockResolvedValue([]);
@@ -315,7 +358,7 @@ describe('AdminApiSyncService', () => {
         const syncTenantDataSpy = jest
           .spyOn(service as any, 'syncTenantData')
           .mockResolvedValue({ status: 'SUCCESS', message: 'synced' });
-        jest.spyOn(service as any, 'triggerEdOrgRefresh').mockResolvedValue(null);
+        adminApiServiceV2.triggerEdOrgRefresh.mockResolvedValue(null);
 
         const result = await service.syncEnvironmentData(environment);
 
@@ -343,21 +386,23 @@ describe('AdminApiSyncService', () => {
           adminApiServiceV2.getTenants.mockResolvedValue(tenants);
           edfiTenantsRepository.findOne.mockResolvedValue(mockEdfiTenant as EdfiTenant);
 
-          const triggerSpy = jest
-            .spyOn(service as any, 'triggerEdOrgRefresh')
-            .mockResolvedValue('job-xyz');
-          const pollSpy = jest
-            .spyOn(service as any, 'pollJobStatus')
-            .mockResolvedValue('completed');
+          adminApiServiceV2.triggerEdOrgRefresh.mockResolvedValue('job-xyz');
+          adminApiServiceV2.pollJobStatus.mockResolvedValue('completed');
           const syncTenantDataSpy = jest
             .spyOn(service as any, 'syncTenantData')
             .mockResolvedValue({ status: 'SUCCESS' });
 
           await service.syncEnvironmentData(environment);
 
-          // Both refresh methods and syncTenantData should have been called
-          expect(triggerSpy).toHaveBeenCalledWith(expect.objectContaining({ id: environment.id }));
-          expect(pollSpy).toHaveBeenCalledWith(expect.objectContaining({ id: environment.id }), 'job-xyz');
+          // Both refresh methods (now owned by the version-specific Admin API service,
+          // not AdminApiSyncService) and syncTenantData should have been called
+          expect(adminApiServiceV2.triggerEdOrgRefresh).toHaveBeenCalledWith(
+            expect.objectContaining({ id: environment.id })
+          );
+          expect(adminApiServiceV2.pollJobStatus).toHaveBeenCalledWith(
+            expect.objectContaining({ id: environment.id }),
+            'job-xyz'
+          );
           expect(syncTenantDataSpy).toHaveBeenCalled();
         });
 
@@ -366,13 +411,12 @@ describe('AdminApiSyncService', () => {
           adminApiServiceV2.getTenants.mockResolvedValue([mockTenantDto]);
           edfiTenantsRepository.findOne.mockResolvedValue(mockEdfiTenant as EdfiTenant);
 
-          jest.spyOn(service as any, 'triggerEdOrgRefresh').mockResolvedValue(null);
-          const pollSpy = jest.spyOn(service as any, 'pollJobStatus');
+          adminApiServiceV2.triggerEdOrgRefresh.mockResolvedValue(null);
           jest.spyOn(service as any, 'syncTenantData').mockResolvedValue({ status: 'SUCCESS' });
 
           const result = await service.syncEnvironmentData(environment);
 
-          expect(pollSpy).not.toHaveBeenCalled();
+          expect(adminApiServiceV2.pollJobStatus).not.toHaveBeenCalled();
           expect(result.status).toBe('SUCCESS');
         });
 
@@ -381,8 +425,8 @@ describe('AdminApiSyncService', () => {
           adminApiServiceV2.getTenants.mockResolvedValue([mockTenantDto]);
           edfiTenantsRepository.findOne.mockResolvedValue(mockEdfiTenant as EdfiTenant);
 
-          jest.spyOn(service as any, 'triggerEdOrgRefresh').mockResolvedValue('job-fail');
-          jest.spyOn(service as any, 'pollJobStatus').mockResolvedValue('failed');
+          adminApiServiceV2.triggerEdOrgRefresh.mockResolvedValue('job-fail');
+          adminApiServiceV2.pollJobStatus.mockResolvedValue('failed');
           jest.spyOn(service as any, 'syncTenantData').mockResolvedValue({ status: 'SUCCESS' });
           const errorSpy = jest.spyOn((service as any).logger, 'error');
 
@@ -402,11 +446,10 @@ describe('AdminApiSyncService', () => {
           jest.spyOn(syncOds, 'persistSyncTenant').mockResolvedValue(undefined);
           entityManager.transaction.mockImplementation(async (cb: any) => cb(entityManager));
 
-          const triggerSpy = jest.spyOn(service as any, 'triggerEdOrgRefresh');
-
           await service.syncEnvironmentData(environment);
 
-          expect(triggerSpy).not.toHaveBeenCalled();
+          // v1's strategy doesn't expose triggerEdOrgRefresh, so the v2 mock must be untouched
+          expect(adminApiServiceV2.triggerEdOrgRefresh).not.toHaveBeenCalled();
         });
       });
     });
@@ -614,9 +657,7 @@ describe('AdminApiSyncService', () => {
         ];
         adminApiServiceV2.getTenants.mockResolvedValue(discoveredTenants as any);
 
-        jest
-          .spyOn(service as any, 'provisionCredentialsForNewTenants')
-          .mockResolvedValue(undefined);
+        v2Strategy.provisionCredentialsForNewTenants.mockResolvedValue(undefined);
 
         const sbEnvironmentsRepository = (service as any).sbEnvironmentsRepository;
         sbEnvironmentsRepository.findOne.mockResolvedValue(environment);
@@ -627,13 +668,14 @@ describe('AdminApiSyncService', () => {
         const syncTenantDataSpy = jest
           .spyOn(service as any, 'syncTenantData')
           .mockResolvedValue({ status: 'SUCCESS', message: 'synced' });
-        jest.spyOn(service as any, 'triggerEdOrgRefresh').mockResolvedValue(null);
+        adminApiServiceV2.triggerEdOrgRefresh.mockResolvedValue(null);
 
         const result = await service.syncEnvironmentData(environment);
 
         expect(result.status).toBe('SUCCESS');
         // getTenants called exactly ONCE — credential provisioning no longer triggers a re-fetch
         expect(adminApiServiceV2.getTenants).toHaveBeenCalledTimes(1);
+        expect(v2Strategy.provisionCredentialsForNewTenants).toHaveBeenCalled();
         // syncTenantData called once per discovered tenant
         expect(syncTenantDataSpy).toHaveBeenCalledTimes(2);
       });
@@ -784,26 +826,6 @@ describe('AdminApiSyncService', () => {
       sbEnvironment: mockSbEnvironmentV2 as SbEnvironment,
     };
 
-    const mockTenantDetails = {
-      odsInstances: [
-        {
-          odsInstanceId: 1,
-          id: 1,
-          name: 'ODS One',
-          instanceType: 'Production',
-          edOrgs: [
-            {
-              educationOrganizationId: 255901,
-              nameOfInstitution: 'School One',
-              shortNameOfInstitution: 'S1',
-              discriminator: 'edfi.School',
-              parentId: 255900,
-            },
-          ],
-        },
-      ],
-    };
-
     beforeEach(() => {
       // Reset mocks for each test
       jest.clearAllMocks();
@@ -884,6 +906,7 @@ describe('AdminApiSyncService', () => {
           odsInstances: [
             {
               id: 1,
+              odsInstanceManageId: 101,
               name: 'ODS One',
               instanceType: 'Production',
               educationOrganizations: [
@@ -896,6 +919,7 @@ describe('AdminApiSyncService', () => {
             },
             {
               id: 2,
+              odsInstanceManageId: 202,
               name: 'ODS Two',
               instanceType: 'Production',
               educationOrganizations: [
@@ -931,6 +955,9 @@ describe('AdminApiSyncService', () => {
         expect(result.message).toContain('Successfully synced 2 ODS instance');
         expect(mockApiClient.get).toHaveBeenCalledWith('tenants/tenant-two/odsInstances/edOrgs');
         expect(persistSyncTenantSpy).toHaveBeenCalled();
+        const callArgs = persistSyncTenantSpy.mock.calls[0][0];
+        expect(callArgs.odss[0].instanceManageId).toBe(101);
+        expect(callArgs.odss[1].instanceManageId).toBe(202);
       });
 
       it('should use correct v2 endpoint format', async () => {
@@ -1030,7 +1057,7 @@ describe('AdminApiSyncService', () => {
           get: jest.fn().mockResolvedValue(detailsWithPartialData),
         };
 
-        (adminApiServiceV2 as any)['getAdminApiClient'] = jest.fn().mockImplementation((tenant) => {
+        (adminApiServiceV2 as any)['getAdminApiClient'] = jest.fn().mockImplementation((_tenant) => {
           return mockApiClient;
         });
 
@@ -1068,113 +1095,166 @@ describe('AdminApiSyncService', () => {
     });
   });
 
-  describe('triggerEdOrgRefresh', () => {
-    const env = mockSbEnvironmentV2 as SbEnvironment;
+  // triggerEdOrgRefresh/pollJobStatus now live on each version's Admin API service
+  // (AdminApiServiceV1/V2/V3), not on AdminApiSyncService — see the per-version specs.
 
-    it('should return the jobId when the refresh endpoint succeeds', async () => {
-      const mockClient = { post: jest.fn().mockResolvedValue({ jobId: 'job-abc-123' }) };
-      adminApiServiceV2.getAdminApiClientForEnvironment = jest.fn().mockReturnValue(mockClient);
+  describe('AdminApiSyncService — v3', () => {
+    let service: AdminApiSyncService;
+    let strategyFactory: { getStrategy: jest.Mock };
+    let v3Strategy: {
+      version: string;
+      getAdminApiService: jest.Mock;
+      bootstrapCredentials: jest.Mock;
+      provisionCredentialsForNewTenants: jest.Mock;
+      getTenantModeDefault: jest.Mock;
+    };
+    let edfiTenantsRepository: { findOne: jest.Mock; save: jest.Mock; find: jest.Mock };
+    let sbEnvironmentsRepository: { findOne: jest.Mock };
+    let cacheService: { flushAll: jest.Mock };
 
-      const result = await (service as any).triggerEdOrgRefresh(env);
+    const mockSbEnvironmentV3: any = {
+      id: 3,
+      name: 'Test Environment V3',
+      adminApiUrl: 'https://api.test.com',
+      version: 'v3',
+      configPublic: {
+        version: 'v3',
+        values: { meta: { mode: 'SingleTenant' }, tenants: { default: { adminApiKey: 'key' } } },
+        adminApiUrl: 'https://api.test.com',
+      },
+      configPrivate: { tenants: { default: { adminApiSecret: 'secret' } } },
+    };
 
-      expect(adminApiServiceV2.getAdminApiClientForEnvironment).toHaveBeenCalledWith(env);
-      expect(mockClient.post).toHaveBeenCalledWith('odsInstances/edOrgs/refresh');
-      expect(result).toBe('job-abc-123');
-    });
-
-    it('should return null when the response has no jobId', async () => {
-      const mockClient = { post: jest.fn().mockResolvedValue({}) };
-      adminApiServiceV2.getAdminApiClientForEnvironment = jest.fn().mockReturnValue(mockClient);
-      const warnSpy = jest.spyOn((service as any).logger, 'warn');
-
-      const result = await (service as any).triggerEdOrgRefresh(env);
-
-      expect(result).toBeNull();
-      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('missing jobId'));
-    });
-
-    it('should return null and log a warning when the Admin API call throws', async () => {
-      const mockClient = { post: jest.fn().mockRejectedValue(new Error('Network error')) };
-      adminApiServiceV2.getAdminApiClientForEnvironment = jest.fn().mockReturnValue(mockClient);
-      const warnSpy = jest.spyOn((service as any).logger, 'warn');
-
-      const result = await (service as any).triggerEdOrgRefresh(env);
-
-      expect(result).toBeNull();
-      expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Failed to trigger EdOrg refresh')
-      );
-    });
-  });
-
-  describe('pollJobStatus', () => {
-    const env = mockSbEnvironmentV2 as SbEnvironment;
-    const jobId = 'job-abc-123';
-
-    it('should return "completed" when the job completes on the first poll', async () => {
-      const mockClient = {
-        get: jest.fn().mockResolvedValue({ status: 'completed' }),
+    beforeEach(async () => {
+      const adminApiServiceV3Mock = {
+        getTenants: jest.fn().mockResolvedValue([{ id: 'default', name: 'default', odsInstances: [] }]),
+        getAdminApiClient: jest.fn(),
+        triggerEdOrgRefresh: jest.fn().mockResolvedValue(null),
+        pollJobStatus: jest.fn().mockResolvedValue('timeout'),
       };
-      adminApiServiceV2.getAdminApiClientForEnvironment = jest.fn().mockReturnValue(mockClient);
 
-      const result = await (service as any).pollJobStatus(env, jobId);
+      v3Strategy = {
+        version: 'v3',
+        getAdminApiService: jest.fn().mockReturnValue(adminApiServiceV3Mock),
+        bootstrapCredentials: jest.fn().mockResolvedValue(undefined),
+        provisionCredentialsForNewTenants: jest.fn().mockResolvedValue(undefined),
+        getTenantModeDefault: jest.fn(
+          (env: SbEnvironment) => (env?.configPublic?.values as { meta?: { mode?: string } })?.meta?.mode === 'MultiTenant'
+        ),
+      };
+      strategyFactory = { getStrategy: jest.fn().mockReturnValue(v3Strategy) };
 
-      expect(mockClient.get).toHaveBeenCalledWith(`jobs/${jobId}`);
-      expect(result).toBe('completed');
+      edfiTenantsRepository = {
+        findOne: jest.fn().mockResolvedValue({ id: 1, name: 'default', sbEnvironmentId: 3 }),
+        save: jest.fn(),
+        find: jest.fn().mockResolvedValue([]),
+      };
+      sbEnvironmentsRepository = { findOne: jest.fn().mockResolvedValue(mockSbEnvironmentV3) };
+      cacheService = { flushAll: jest.fn() };
+
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          AdminApiSyncService,
+          { provide: AdminApiServiceV2, useValue: {} },
+          { provide: getRepositoryToken(EdfiTenant), useValue: edfiTenantsRepository },
+          { provide: getRepositoryToken(SbEnvironment), useValue: sbEnvironmentsRepository },
+          { provide: getEntityManagerToken(), useValue: { transaction: jest.fn((cb) => cb({ getRepository: jest.fn() })) } },
+          { provide: CacheService, useValue: cacheService },
+          { provide: AdminApiVersionStrategyFactory, useValue: strategyFactory },
+        ],
+      }).compile();
+
+      service = module.get(AdminApiSyncService);
     });
 
-    it('should return "completed" after a few "running" responses', async () => {
-      const mockClient = {
-        get: jest.fn()
-          .mockResolvedValueOnce({ status: 'running' })
-          .mockResolvedValueOnce({ status: 'running' })
-          .mockResolvedValueOnce({ status: 'completed' }),
-      };
-      adminApiServiceV2.getAdminApiClientForEnvironment = jest.fn().mockReturnValue(mockClient);
+    it('syncEnvironmentData resolves the v3 strategy, bootstraps credentials, and syncs tenants', async () => {
+      const result = await service.syncEnvironmentData(mockSbEnvironmentV3);
 
-      const result = await (service as any).pollJobStatus(env, jobId);
-
-      expect(mockClient.get).toHaveBeenCalledTimes(3);
-      expect(result).toBe('completed');
+      expect(strategyFactory.getStrategy).toHaveBeenCalledWith('v3');
+      expect(v3Strategy.bootstrapCredentials).toHaveBeenCalled();
+      expect(result.status).toBe('SUCCESS');
     });
 
-    it('should return "failed" when the Admin API reports the job failed', async () => {
-      const mockClient = {
-        get: jest.fn().mockResolvedValue({ status: 'failed' }),
-      };
-      adminApiServiceV2.getAdminApiClientForEnvironment = jest.fn().mockReturnValue(mockClient);
+    it('syncEnvironmentData returns INVALID_VERSION when the factory throws for an unknown version', async () => {
+      strategyFactory.getStrategy.mockImplementation(() => {
+        throw new Error('Invalid API version: v9');
+      });
 
-      const result = await (service as any).pollJobStatus(env, jobId);
+      const result = await service.syncEnvironmentData({ ...mockSbEnvironmentV3, version: 'v9' } as any);
 
-      expect(result).toBe('failed');
+      expect(result.status).toBe('INVALID_VERSION');
     });
 
-    it('should return "timeout" after exhausting max poll attempts', async () => {
-      // testing.js sets ADMINAPI_REFRESH_POLL_ATTEMPTS to 3, so after 3 "running" responses it times out
-      const mockClient = {
-        get: jest.fn().mockResolvedValue({ status: 'running' }),
-      };
-      adminApiServiceV2.getAdminApiClientForEnvironment = jest.fn().mockReturnValue(mockClient);
-      const warnSpy = jest.spyOn((service as any).logger, 'warn');
+    describe('syncTenantData — v3', () => {
+      it('uses the v3 dataStores endpoint, falls back to dataStoreType, and maps the ODS/EdOrg data', async () => {
+        const adminApiServiceV3Mock = v3Strategy.getAdminApiService();
+        const mockApiClient = {
+          get: jest.fn().mockResolvedValue({
+            id: 'default',
+            name: 'default',
+            dataStores: [
+              {
+                id: 10,
+                name: 'ODS v3 One',
+                dataStoreManageId: 505,
+                // Deliberately omit `instanceType` and only supply `dataStoreType`
+                // so the `instanceType ?? dataStoreType` fallback is exercised.
+                dataStoreType: 'Ods',
+                educationOrganizations: [
+                  {
+                    educationOrganizationId: 255901,
+                    nameOfInstitution: 'V3 School',
+                    shortNameOfInstitution: 'V3S',
+                    discriminator: 'edfi.School',
+                    parentId: 255900,
+                  },
+                ],
+              },
+            ],
+          }),
+        };
+        adminApiServiceV3Mock.getAdminApiClient = jest.fn().mockReturnValue(mockApiClient);
 
-      const result = await (service as any).pollJobStatus(env, jobId);
+        edfiTenantsRepository.findOne.mockResolvedValue({
+          id: 1,
+          name: 'default',
+          sbEnvironmentId: 3,
+          odss: [],
+          sbEnvironment: mockSbEnvironmentV3,
+        });
 
-      expect(mockClient.get).toHaveBeenCalledTimes(3);
-      expect(result).toBe('timeout');
-      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('did not complete'));
-    });
+        const persistSyncTenantSpy = jest
+          .spyOn(syncOds, 'persistSyncTenant')
+          .mockResolvedValue(undefined);
 
-    it('should return "timeout" and log an error when the poll HTTP call throws', async () => {
-      const mockClient = {
-        get: jest.fn().mockRejectedValue(new Error('Connection refused')),
-      };
-      adminApiServiceV2.getAdminApiClientForEnvironment = jest.fn().mockReturnValue(mockClient);
-      const errorSpy = jest.spyOn((service as any).logger, 'error');
+        const result = await service.syncTenantData({ id: 1, name: 'default' } as any);
 
-      const result = await (service as any).pollJobStatus(env, jobId);
+        // Endpoint construction: v3 uses `dataStores/edOrgs`, not `odsInstances/edOrgs`.
+        expect(mockApiClient.get).toHaveBeenCalledWith('tenants/default/dataStores/edOrgs');
 
-      expect(result).toBe('timeout');
-      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Poll attempt'));
+        expect(result.status).toBe('SUCCESS');
+        expect(result.message).toContain('Successfully synced 1 ODS instance');
+
+        // Confirm the `dataStores` payload was actually mapped through to persistence,
+        // with `instanceType` falling back to `dataStoreType`.
+        expect(persistSyncTenantSpy).toHaveBeenCalled();
+        const persistArgs = persistSyncTenantSpy.mock.calls[0][0] as any;
+        expect(persistArgs.odss).toHaveLength(1);
+        expect(persistArgs.odss[0]).toMatchObject({
+          id: 10,
+          name: 'ODS v3 One',
+          instanceManageId: 505,
+          instanceType: 'Ods',
+        });
+        expect(persistArgs.odss[0].edorgs).toHaveLength(1);
+        expect(persistArgs.odss[0].edorgs[0]).toMatchObject({
+          educationorganizationid: 255901,
+          nameofinstitution: 'V3 School',
+          shortnameofinstitution: 'V3S',
+          discriminator: 'edfi.School',
+          parent: 255900,
+        });
+      });
     });
   });
 });

@@ -12,6 +12,7 @@ module.exports = {
   USE_YOPASS: false,
   YOPASS_URL: 'http://localhost:8082',
   EDFI_URLS_TIMEOUT_MS: 5000, // 5 seconds
+  OIDC_DISCOVERY_TIMEOUT_MS: 10000, // 10 seconds
 
   DB_ENGINE: 'pgsql', // 'pgsql' or 'mssql'
   DB_TRUST_CERTIFICATE: true, // For MSSQL local development using self-signed certs, set to true
@@ -58,10 +59,7 @@ module.exports = {
     ISSUER: 'https://localhost/auth/realms/edfi',
     CLIENT_ID: 'edfiadminapp',
     CLIENT_SECRET: 'big-secret-123',
-    MACHINE_AUDIENCE: 'edfiadminapp-api',
-    MANAGEMENT_DOMAIN: 'localhost',
-    MANAGEMENT_CLIENT_ID: 'edfiadminapp-machine',
-    MANAGEMENT_CLIENT_SECRET: 'edfi-machine-secret-456'
+    MACHINE_AUDIENCE: 'edfiadminapp-api'
   },
 
   WHITELISTED_REDIRECTS: [FE_URL],

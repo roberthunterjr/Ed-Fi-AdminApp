@@ -1,4 +1,5 @@
 import { ValidationError } from 'class-validator';
+import { FieldError } from 'react-hook-form';
 import {
   formErrFromValidator,
   formValidationResult,
@@ -47,7 +48,7 @@ describe('formErrFromValidator', () => {
     err.constraints = { isNotEmpty: 'Required', isString: 'Must be string' };
     err.value = '';
     const result = formErrFromValidator([err]);
-    expect((result['field'] as any).types).toMatchObject({
+    expect((result['field'] as FieldError).types).toMatchObject({
       isNotEmpty: 'Required',
       isString: 'Must be string',
     });

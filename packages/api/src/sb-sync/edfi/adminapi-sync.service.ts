@@ -2,14 +2,11 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectEntityManager, InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
 import { EdfiTenant, SbEnvironment } from '@edanalytics/models-server';
-import { TenantDto, ISbEnvironmentConfigPrivateV2, ISbEnvironmentConfigPublicV2 } from '@edanalytics/models';
-import { AdminApiServiceV1, AdminApiServiceV2 } from '../../teams/edfi-tenants/starting-blocks';
+import { TenantDto, ISbEnvironmentConfigPrivateV2, ISbEnvironmentConfigPublicV2, ISbEnvironmentConfigPublicV3 } from '@edanalytics/models';
 import { transformTenantData } from '../../utils/admin-api-data-adapter-utils';
 import { persistSyncTenant } from '../sync-ods';
 import { CacheService } from '../../app/cache.module';
-import axios from 'axios';
-import { randomBytes, randomUUID } from 'crypto';
-import config from 'config';
+import { AdminApiVersionStrategyFactory } from '../../admin-api-version-strategy';
 
 export interface SyncResult {
   status: 'SUCCESS' | 'ERROR' | 'NO_ADMIN_API_CONFIG' | 'INVALID_VERSION';
@@ -18,13 +15,49 @@ export interface SyncResult {
   error?: Error;
 }
 
+/** Shape of the `response` payload on a CustomHttpException / HttpException-like error. */
+interface AdminApiErrorResponseBody {
+  message?: string | string[];
+  title?: string;
+  type?: string;
+}
+
+/** Raw education organization shape as returned by the Admin API (v2/v3). */
+interface RawAdminApiEducationOrganization {
+  educationOrganizationId: number;
+  nameOfInstitution: string;
+  shortNameOfInstitution?: string;
+  discriminator: string;
+  parentId?: number;
+}
+
+/** Raw ODS instance / data store shape as returned by the Admin API (v2/v3). */
+interface RawAdminApiOdsInstance {
+  id?: number | null;
+  odsInstanceManageId?: number | null;
+  dataStoreManageId?: number | null;
+  name?: string;
+  instanceType?: string;
+  dataStoreType?: string;
+  status?: string | null;
+  databaseTemplate?: string | null;
+  databaseName?: string | null;
+  educationOrganizations?: RawAdminApiEducationOrganization[];
+}
+
+/** Raw tenant details response as returned by the versioned Admin API client. */
+interface RawAdminApiTenantDetails {
+  id?: string;
+  name?: string;
+  odsInstances?: RawAdminApiOdsInstance[];
+  dataStores?: RawAdminApiOdsInstance[];
+}
+
 @Injectable()
 export class AdminApiSyncService {
   private readonly logger = new Logger(AdminApiSyncService.name);
 
   constructor(
-    @Inject(AdminApiServiceV2) private adminApiServiceV2: AdminApiServiceV2,
-    @Inject(AdminApiServiceV1) private adminApiServiceV1: AdminApiServiceV1,
     @InjectRepository(EdfiTenant)
     private edfiTenantsRepository: Repository<EdfiTenant>,
     @InjectRepository(SbEnvironment)
@@ -32,6 +65,7 @@ export class AdminApiSyncService {
     @InjectEntityManager()
     private readonly entityManager: EntityManager,
     @Inject(CacheService) private readonly cacheService: CacheService,
+    private readonly strategyFactory: AdminApiVersionStrategyFactory
   ) {
   }
 
@@ -112,6 +146,11 @@ export class AdminApiSyncService {
         id: ods.odsInstanceId,
         name: ods.odsInstanceName,
         dbName: ods.odsInstanceName || `ods-${ods.odsInstanceId}`,
+        instanceManageId: ods.instanceManageId ?? null,
+        instanceType: ods.instanceType ?? null,
+        status: ods.status ?? null,
+        databaseTemplate: ods.databaseTemplate ?? null,
+        databaseName: ods.databaseName ?? null,
         edorgs: ods.edorgs?.map(edorg => ({
           educationorganizationid: edorg.educationOrganizationId,
           nameofinstitution: edorg.nameOfInstitution,
@@ -126,311 +165,6 @@ export class AdminApiSyncService {
     });
 
     this.logger.log(`Successfully processed tenant: ${tenantData.name}`);
-  }
-
-  /**
-   * Provisions Admin API credentials for newly discovered tenants during sync
-   * For multi-tenant v2 environments, this creates credentials for tenants that don't have them yet
-   * 
-   * @param sbEnvironment - The SB Environment being synced
-   * @param discoveredTenants - Tenants discovered from Admin API
-   */
-  private async provisionCredentialsForNewTenants(
-    sbEnvironment: SbEnvironment,
-    discoveredTenants: TenantDto[]
-  ): Promise<void> {
-    const configPublic = sbEnvironment.configPublic;
-    const configPrivate = sbEnvironment.configPrivate;
-
-    if (configPublic?.version !== 'v2' || !configPublic.values) {
-      return; // Only applicable to v2 environments
-    }
-
-    const v2ConfigPublic = configPublic.values as ISbEnvironmentConfigPublicV2;
-    const v2ConfigPrivate = configPrivate as ISbEnvironmentConfigPrivateV2 | null;
-
-    const existingTenants = Object.keys(v2ConfigPublic.tenants || {});
-    const discoveredTenantNames = discoveredTenants.map(t => t.name);
-
-    // Find tenants that were discovered but don't have credentials yet
-    const newTenants = discoveredTenantNames.filter(name => !existingTenants.includes(name));
-
-    if (newTenants.length === 0) {
-      this.logger.log('No new tenants to provision credentials for');
-      return;
-    }
-
-    this.logger.log(`Provisioning credentials for ${newTenants.length} new tenant(s): ${newTenants.join(', ')}`);
-
-    // Initialize tenant configs if they don't exist
-    if (!v2ConfigPublic.tenants) {
-      v2ConfigPublic.tenants = {};
-    }
-    if (!v2ConfigPrivate?.tenants) {
-      if (!sbEnvironment.configPrivate) {
-        sbEnvironment.configPrivate = { tenants: {} } as ISbEnvironmentConfigPrivateV2;
-      } else {
-        (sbEnvironment.configPrivate as ISbEnvironmentConfigPrivateV2).tenants = {};
-      }
-    }
-
-    // Create credentials for each new tenant
-    for (const tenantName of newTenants) {
-      try {
-        this.logger.log(`Creating credentials for new tenant: ${tenantName}`);
-        const { clientId, clientSecret } = await this.createClientCredentials(
-          sbEnvironment.adminApiUrl!,
-          tenantName,
-          true // isMultiTenant
-        );
-
-        // Store credentials in config
-        v2ConfigPublic.tenants![tenantName] = {
-          adminApiKey: clientId,
-        };
-
-        const privateConfig = sbEnvironment.configPrivate as ISbEnvironmentConfigPrivateV2;
-        if (!privateConfig.tenants) {
-          privateConfig.tenants = {};
-        }
-        privateConfig.tenants[tenantName] = {
-          adminApiSecret: clientSecret,
-        };
-
-        this.logger.log(`Successfully provisioned credentials for tenant: ${tenantName}`);
-      } catch (error) {
-        this.logger.error(
-          `Failed to provision credentials for tenant ${tenantName}: ${error.message}`,
-          error.stack
-        );
-        // Continue with other tenants even if one fails
-      }
-    }
-
-    // Save the updated environment config to database
-    try {
-      await this.sbEnvironmentsRepository.save(sbEnvironment);
-      this.logger.log(`Updated environment config with credentials for ${newTenants.length} new tenant(s)`);
-    } catch (error) {
-      this.logger.error(
-        `Failed to save updated environment config: ${error.message}`,
-        error.stack
-      );
-      throw error;
-    }
-  }
-
-  /**
-   * Creates Admin API client credentials via the /connect/register endpoint
-   * Similar to the method in sb-environments-edfi.services.ts but adapted for sync flow
-   * 
-   * @param adminApiUrl - The Admin API base URL
-   * @param tenantName - The tenant name (for multi-tenant mode)
-   * @param isMultiTenant - Whether this is a multi-tenant environment
-   * @returns Promise with clientId and clientSecret
-   */
-  private async createClientCredentials(
-    adminApiUrl: string,
-    tenantName: string,
-    isMultiTenant: boolean
-  ): Promise<{ clientId: string; clientSecret: string; displayName: string }> {
-    const registerUrl = `${adminApiUrl}/connect/register`;
-    
-    // Generate secure random credentials
-    const secretCharset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
-    const secretBytes = randomBytes(32);
-    const clientSecret = Array.from(secretBytes, (byte) => secretCharset[byte % secretCharset.length]).join('');
-    const clientId = `client_${randomUUID()}`;
-    
-    const nameSuffixBytes = randomBytes(4);
-    const displayNameSuffix = Array.from(nameSuffixBytes, (byte) =>
-      (byte % 36).toString(36)
-    ).join('');
-    const displayName = `AdminApp-v4-${displayNameSuffix}`;
-    
-    const formData = new URLSearchParams();
-    formData.append('ClientId', clientId);
-    formData.append('ClientSecret', clientSecret);
-    formData.append('DisplayName', displayName);
-
-    const headers = isMultiTenant
-      ? {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          tenant: tenantName,
-        }
-      : {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        };
-
-    try {
-      const registerResponse = await axios.post(registerUrl, formData.toString(), {
-        headers: headers,
-      });
-
-      if (!registerResponse.status || registerResponse.status !== 200) {
-        throw new Error(`Registration failed! status: ${registerResponse.status}`);
-      }
-
-      return { clientId, displayName, clientSecret };
-    } catch (error) {
-      this.logger.error(`Failed to register client credentials for tenant ${tenantName}:`, error);
-
-      // Provide helpful error message
-      if (error.response?.status === 400 && isMultiTenant) {
-        throw new Error(
-          `Tenant '${tenantName}' does not exist or is not properly configured in the Admin API`
-        );
-      }
-
-      throw new Error(`Failed to create credentials: ${error.message}`);
-    }
-  }
-
-  /**
-   * Bootstraps Admin API credentials for a brand-new v2 environment that has no
-   * tenant credentials yet.  This is needed because getTenants() requires a login
-   * token, which in turn requires at least one set of stored credentials.
-   *
-   * For single-tenant environments: registers one credential (no tenant header)
-   * stored under the key 'default'.
-   * For multi-tenant environments: discovers tenant names from an unauthenticated
-   * GET to the Admin API root, then registers a credential per tenant.
-   *
-   * No-ops when the environment already has at least one tenant credential.
-   */
-  private async bootstrapEnvironmentCredentials(sbEnvironment: SbEnvironment): Promise<void> {
-    const configPublic = sbEnvironment.configPublic;
-    if (configPublic?.version !== 'v2' || !configPublic.values) return;
-
-    const v2ConfigPublic = configPublic.values as ISbEnvironmentConfigPublicV2;
-    if (Object.keys(v2ConfigPublic?.tenants || {}).length > 0) {
-      this.logger.log(`Environment ${sbEnvironment.name} already has credentials, skipping bootstrap`);
-      return;
-    }
-
-    const isMultiTenant = v2ConfigPublic?.meta?.mode === 'MultiTenant';
-    let tenantNames: string[];
-
-    if (isMultiTenant) {
-      try {
-        const rootClient = axios.create({
-          baseURL: sbEnvironment.adminApiUrl!.replace(/\/$/, ''),
-        });
-        const rootResponse = await rootClient.get<{ tenancy?: { multitenantMode?: boolean; tenants?: string[] } }>('/').then(r => r.data);
-
-        if (
-          rootResponse?.tenancy?.multitenantMode === true &&
-          Array.isArray(rootResponse.tenancy.tenants) &&
-          rootResponse.tenancy.tenants.length > 0
-        ) {
-          tenantNames = rootResponse.tenancy.tenants;
-          this.logger.log(`Bootstrap: discovered tenants from root: [${tenantNames.join(', ')}]`);
-        } else {
-          tenantNames = ['default'];
-          this.logger.log('Bootstrap: root endpoint did not return tenant list, falling back to default');
-        }
-      } catch (error) {
-        this.logger.error(`Bootstrap: failed to reach Admin API root: ${error.message}`);
-        return;
-      }
-    } else {
-      tenantNames = ['default'];
-    }
-
-    // Initialize config structures if absent
-    if (!sbEnvironment.configPrivate) {
-      sbEnvironment.configPrivate = { tenants: {} } as ISbEnvironmentConfigPrivateV2;
-    }
-    if (!v2ConfigPublic.tenants) {
-      v2ConfigPublic.tenants = {};
-    }
-
-    for (const tenantName of tenantNames) {
-      try {
-        const { clientId, clientSecret } = await this.createClientCredentials(
-          sbEnvironment.adminApiUrl!,
-          tenantName,
-          isMultiTenant
-        );
-
-        v2ConfigPublic.tenants![tenantName] = { adminApiKey: clientId };
-
-        const privateConfig = sbEnvironment.configPrivate as ISbEnvironmentConfigPrivateV2;
-        if (!privateConfig.tenants) privateConfig.tenants = {};
-        privateConfig.tenants[tenantName] = { adminApiSecret: clientSecret };
-
-        this.logger.log(`Bootstrap: registered credentials for tenant '${tenantName}'`);
-      } catch (error) {
-        this.logger.error(`Bootstrap: failed to register credentials for tenant '${tenantName}': ${error.message}`);
-      }
-    }
-
-    await this.sbEnvironmentsRepository.save(sbEnvironment);
-    this.logger.log(`Bootstrap complete for environment: ${sbEnvironment.name}`);
-  }
-
-  private async triggerEdOrgRefresh(sbEnvironment: SbEnvironment): Promise<string | null> {
-    try {
-      const client = this.adminApiServiceV2.getAdminApiClientForEnvironment(sbEnvironment);
-      const response = await client.post('odsInstances/edOrgs/refresh');
-      const jobId = (response as { jobId?: string })?.jobId ?? null;
-      if (!jobId) {
-        this.logger.warn(
-          `EdOrg refresh response missing jobId for environment ${sbEnvironment.name}`
-        );
-        return null;
-      }
-      this.logger.log(`EdOrg refresh triggered for ${sbEnvironment.name}, jobId: ${jobId}`);
-      return jobId;
-    } catch (error) {
-      this.logger.warn(
-        `Failed to trigger EdOrg refresh for environment ${sbEnvironment.name}: ${(error as Error).message}`
-      );
-      return null;
-    }
-  }
-
-  /**
-   * Polls GET jobs/{jobId} until the job reaches a terminal state or the attempt limit is reached.
-   * Poll parameters are driven by ADMINAPI_REFRESH_POLL_ATTEMPTS and ADMINAPI_REFRESH_POLL_INTERVAL_MS config.
-   * @param sbEnvironment - The environment whose Admin API client to use
-   * @param jobId - The job ID returned by triggerEdOrgRefresh()
-   * @returns 'completed' | 'failed' | 'timeout'
-   */
-  private async pollJobStatus(
-    sbEnvironment: SbEnvironment,
-    jobId: string
-  ): Promise<'completed' | 'failed' | 'timeout'> {
-    const rawMaxAttempts = Number(config.ADMINAPI_REFRESH_POLL_ATTEMPTS);
-    const rawIntervalMs = Number(config.ADMINAPI_REFRESH_POLL_INTERVAL_MS);
-    const maxAttempts: number = Number.isFinite(rawMaxAttempts) && rawMaxAttempts >= 1 ? rawMaxAttempts : 10;
-    const intervalMs: number = Number.isFinite(rawIntervalMs) && rawIntervalMs >= 0 ? rawIntervalMs : 5000;
-    const client = this.adminApiServiceV2.getAdminApiClientForEnvironment(sbEnvironment);
-
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      try {
-        const response = await client.get(`jobs/${jobId}`);
-        const status = (response as unknown as { status?: string })?.status;
-        if (status === 'completed') return 'completed';
-        if (status === 'failed') return 'failed';
-      } catch (error) {
-        // Bail immediately on HTTP error — if the Admin API is unreachable,
-        // further polling attempts are unlikely to succeed.
-        this.logger.error(
-          `Poll attempt ${attempt}/${maxAttempts} failed for job ${jobId}: ${(error as Error).message}`
-        );
-        return 'timeout';
-      }
-
-      if (attempt < maxAttempts) {
-        await new Promise<void>((resolve) => setTimeout(resolve, intervalMs));
-      }
-    }
-
-    this.logger.warn(
-      `Job ${jobId} did not complete after ${maxAttempts} poll attempts for environment ${sbEnvironment.name}`
-    );
-    return 'timeout';
   }
 
   /**
@@ -452,33 +186,30 @@ export class AdminApiSyncService {
         };
       }
 
-      // Determine API version (v1 or v2) and select appropriate service
-      const version = sbEnvironment.version;
-      if (!version || (version !== 'v1' && version !== 'v2')) {
-        this.logger.error(`Environment ${sbEnvironment.name} has invalid or missing version: ${version}`);
+      // Determine API version and select the appropriate strategy
+      let strategy;
+      try {
+        strategy = this.strategyFactory.getStrategy(sbEnvironment.version);
+      } catch (error) {
+        this.logger.error(`Environment ${sbEnvironment.name} has invalid or missing version: ${sbEnvironment.version}`);
         return {
           status: 'INVALID_VERSION',
-          message: `Invalid API version: ${version}. Expected 'v1' or 'v2'`,
+          message: (error as Error).message,
         };
       }
 
-      this.logger.log(`Environment ${sbEnvironment.name} is using Admin API version: ${version}`);
+      this.logger.log(`Environment ${sbEnvironment.name} is using Admin API version: ${strategy.version}`);
 
-      // Select appropriate Admin API service based on version
-      const adminApiService = version === 'v1' ? this.adminApiServiceV1 : this.adminApiServiceV2;
-
-      // For brand-new v2 environments (no stored credentials yet), register
-      // credentials first so getTenants() can authenticate successfully.
-      if (version === 'v2') {
-        await this.bootstrapEnvironmentCredentials(sbEnvironment);
-        // Reload to pick up any newly-saved credentials
-        const reloaded = await this.sbEnvironmentsRepository.findOne({ where: { id: sbEnvironment.id } });
-        if (reloaded) sbEnvironment = reloaded;
-      }
+      // For brand-new environments (no stored credentials yet), register credentials
+      // first so getTenants() can authenticate successfully.
+      await strategy.bootstrapCredentials(sbEnvironment);
+      const reloaded = await this.sbEnvironmentsRepository.findOne({ where: { id: sbEnvironment.id } });
+      if (reloaded) sbEnvironment = reloaded;
 
       // Discover tenants from the Admin API
       this.logger.log(`Discovering tenants for environment: ${sbEnvironment.name}`);
-      let tenants: TenantDto[] = await adminApiService.getTenants(sbEnvironment);
+      const adminApiService = strategy.getAdminApiService();
+      const tenants: TenantDto[] = await adminApiService.getTenants(sbEnvironment);
 
       if (!tenants || tenants.length === 0) {
         this.logger.warn(`No tenants found for environment: ${sbEnvironment.name}`);
@@ -498,16 +229,15 @@ export class AdminApiSyncService {
       // bulk data directly caused the "wrong credentials / wrong data" issue
       // because it uses a manually-constructed client.
       // -----------------------------------------------------------------------
-      if (version === 'v2') {
-        const configPublic = sbEnvironment.configPublic;
-        const isMultiTenant =
-          configPublic?.version === 'v2' &&
-          configPublic.values?.meta?.mode === 'MultiTenant';
+      if (strategy.version !== 'v1') {
+        // Use the strategy's own tenant-mode resolution so v1 stays a hard false and
+        // v2/v3 stay symmetric, instead of re-deriving it from configPublic here.
+        const isMultiTenant = strategy.getTenantModeDefault(sbEnvironment);
 
         if (isMultiTenant) {
           // Provision credentials for tenants discovered by the API but not yet
           // in our config (newly discovered tenants).
-          await this.provisionCredentialsForNewTenants(sbEnvironment, tenants);
+          await strategy.provisionCredentialsForNewTenants(sbEnvironment, tenants);
 
           // Reload so syncTenantData (which re-reads sbEnvironment from DB per
           // tenant) picks up the freshly written credentials.
@@ -520,10 +250,13 @@ export class AdminApiSyncService {
         }
 
         // Trigger EdOrg refresh and poll for completion before fetching tenant data.
-        // This is non-blocking: if the refresh fails or times out we still proceed.
-        const refreshJobId = await this.triggerEdOrgRefresh(sbEnvironment);
+        // This is non-fatal: if the refresh fails or times out we still proceed with sync
+        // (this does block the sync flow — up to ~ADMINAPI_REFRESH_POLL_ATTEMPTS *
+        // ADMINAPI_REFRESH_POLL_INTERVAL_MS — but runs inside the background sync
+        // consumer, not an HTTP request, so it doesn't block a user-facing call).
+        const refreshJobId = await strategy.getAdminApiService().triggerEdOrgRefresh(sbEnvironment);
         if (refreshJobId) {
-          const jobStatus = await this.pollJobStatus(sbEnvironment, refreshJobId);
+          const jobStatus = await strategy.getAdminApiService().pollJobStatus(sbEnvironment, refreshJobId);
           if (jobStatus === 'failed') {
             this.logger.error(
               `EdOrg refresh job ${refreshJobId} failed — syncing with potentially stale data`
@@ -655,10 +388,10 @@ export class AdminApiSyncService {
         
         // Check if it's a CustomHttpException with additional details
         if ('response' in error && typeof error.response === 'object' && error.response !== null) {
-          const response = error.response as any;
+          const response = error.response as AdminApiErrorResponseBody;
           if (response.message) {
-            errorDetails = Array.isArray(response.message) 
-              ? response.message.join(', ') 
+            errorDetails = Array.isArray(response.message)
+              ? response.message.join(', ')
               : response.message;
           }
           if (response.title) {
@@ -719,18 +452,20 @@ export class AdminApiSyncService {
         };
       }
 
-      // Determine API version (v1 or v2) and select appropriate service
-      const version = sbEnvironment.version;
-      if (!version || (version !== 'v1' && version !== 'v2')) {
-        this.logger.error(`Environment for tenant ${edfiTenant.name} has invalid version: ${version}`);
+      // Determine API version and select the appropriate strategy
+      let strategy;
+      try {
+        strategy = this.strategyFactory.getStrategy(sbEnvironment.version);
+      } catch (error) {
+        this.logger.error(`Environment for tenant ${edfiTenant.name} has invalid version: ${sbEnvironment.version}`);
         return {
           status: 'INVALID_VERSION',
-          message: `Invalid API version: ${version}. Expected 'v1' or 'v2'`,
+          message: (error as Error).message,
         };
       }
 
       // V1 is single-tenant, so individual tenant sync is not supported
-      if (version === 'v1') {
+      if (strategy.version === 'v1') {
         this.logger.warn(`Tenant sync not supported for v1 environments. Use environment-level sync instead.`);
         return {
           status: 'ERROR',
@@ -738,32 +473,34 @@ export class AdminApiSyncService {
         };
       }
 
-      this.logger.log(`Syncing tenant ${edfiTenant.name} using Admin API v2`);
+      this.logger.log(`Syncing tenant ${edfiTenant.name} using Admin API ${strategy.version}`);
 
       // Validate that credentials exist for this tenant in the environment configuration
       const configPublic = sbEnvironment.configPublic;
       const configPrivate = sbEnvironment.configPrivate;
-      const v2Config =
-        'version' in configPublic && configPublic.version === 'v2' ? configPublic.values : undefined;
-      const v2ConfigPrivate =
-        'version' in configPublic && configPublic.version === 'v2'
+      const tenantConfig =
+        'version' in configPublic && configPublic.version === strategy.version
+          ? (configPublic.values as ISbEnvironmentConfigPublicV2 | ISbEnvironmentConfigPublicV3)
+          : undefined;
+      const tenantConfigPrivateAll =
+        'version' in configPublic && configPublic.version === strategy.version
           ? (configPrivate as ISbEnvironmentConfigPrivateV2)
           : undefined;
 
-      if (!v2Config || !v2ConfigPrivate) {
-        this.logger.error(`Environment configuration is not v2 format for tenant ${edfiTenant.name}`);
+      if (!tenantConfig || !tenantConfigPrivateAll) {
+        this.logger.error(`Environment configuration is not ${strategy.version} format for tenant ${edfiTenant.name}`);
         return {
           status: 'ERROR',
-          message: 'Environment is not configured for Admin API v2',
+          message: `Environment is not configured for Admin API ${strategy.version}`,
         };
       }
 
       // Check if credentials exist for this specific tenant
-      const tenantConfigPublic = v2Config?.tenants?.[edfiTenant.name];
-      const tenantConfigPrivate = v2ConfigPrivate?.tenants?.[edfiTenant.name];
+      const tenantConfigPublic = tenantConfig?.tenants?.[edfiTenant.name];
+      const tenantConfigPrivate = tenantConfigPrivateAll?.tenants?.[edfiTenant.name];
 
       if (!tenantConfigPublic || !tenantConfigPrivate) {
-        const availableTenants = Object.keys(v2Config?.tenants || {});
+        const availableTenants = Object.keys(tenantConfig?.tenants || {});
         this.logger.error(
           `No credentials found for tenant "${edfiTenant.name}" in environment "${sbEnvironment.name}". ` +
           `Available tenants with credentials: [${availableTenants.join(', ')}]`
@@ -793,16 +530,19 @@ export class AdminApiSyncService {
 
       this.logger.log(`Credentials validated for tenant ${edfiTenant.name}`);
 
-      // For v2, fetch tenant details from the correct endpoint
-      const endpoint = `tenants/${edfiTenant.name}/odsInstances/edOrgs`;
-      
+      // Fetch tenant details using the version-appropriate client and endpoint
+      const versionedApiService = strategy.getAdminApiService();
+      const endpoint =
+        strategy.version === 'v3'
+          ? `tenants/${edfiTenant.name}/dataStores/edOrgs`
+          : `tenants/${edfiTenant.name}/odsInstances/edOrgs`;
+
       this.logger.log(`Fetching tenant details from Admin API: ${endpoint}`);
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let tenantDetails: any;
+      let tenantDetails: RawAdminApiTenantDetails;
       try {
         // Use getAdminApiClient with tenantWithEnvironment to ensure tenant-specific authentication
-        tenantDetails = await this.adminApiServiceV2.getAdminApiClient(tenantWithEnvironment)
+        tenantDetails = await versionedApiService.getAdminApiClient(tenantWithEnvironment)
           .get(endpoint);
       } catch (apiError) {
         this.logger.error(
@@ -824,19 +564,26 @@ export class AdminApiSyncService {
         };
       }
 
+      const rawInstances =
+        strategy.version === 'v3' ? tenantDetails.dataStores : tenantDetails.odsInstances;
+
       this.logger.log(
-        `Retrieved ${tenantDetails.odsInstances?.length || 0} ODS instance(s) for tenant: ${edfiTenant.name}`
+        `Retrieved ${rawInstances?.length || 0} ODS instance(s) for tenant: ${edfiTenant.name}`
       );
 
-      // Transform the v2 response to TenantDto format
+      // Transform the response to TenantDto format
       const tenantDto: TenantDto = {
         id: tenantDetails.id || edfiTenant.name,
         name: tenantDetails.name || edfiTenant.name,
-        odsInstances: (tenantDetails.odsInstances || []).map((instance: any) => ({
+        odsInstances: (rawInstances || []).map((instance: RawAdminApiOdsInstance) => ({
           id: instance.id ?? null,
+          instanceManageId: instance.odsInstanceManageId ?? instance.dataStoreManageId ?? null,
           name: instance.name || 'Unknown ODS Instance',
-          instanceType: instance.instanceType,
-          edOrgs: (instance.educationOrganizations || []).map((edOrg: any) => ({
+          instanceType: instance.instanceType ?? instance.dataStoreType,
+          status: instance.status ?? null,
+          databaseTemplate: instance.databaseTemplate ?? null,
+          databaseName: instance.databaseName ?? null,
+          edOrgs: (instance.educationOrganizations || []).map((edOrg: RawAdminApiEducationOrganization) => ({
             instanceId: instance.id,
             instanceName: instance.name,
             educationOrganizationId: edOrg.educationOrganizationId,
@@ -868,8 +615,8 @@ export class AdminApiSyncService {
         
         // Check if it's a CustomHttpException or HttpException with additional details
         if ('response' in error && typeof error.response === 'object' && error.response !== null) {
-          const response = error.response as any;
-          
+          const response = error.response as AdminApiErrorResponseBody;
+
           // Extract message details
           if (response.message) {
             if (typeof response.message === 'string') {

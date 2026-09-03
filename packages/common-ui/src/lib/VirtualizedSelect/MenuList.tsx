@@ -72,7 +72,7 @@ export const MenuList = <Option, IsMulti extends boolean, Group extends GroupBas
       )}
       sx={sx}
       ref={(el) => {
-        innerRef && innerRef(el);
+        innerRef?.(el);
         scrollRef.current = el;
       }}
     >

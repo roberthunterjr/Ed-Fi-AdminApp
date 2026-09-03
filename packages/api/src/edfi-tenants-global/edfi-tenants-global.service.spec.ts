@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { EdfiTenant } from '@edanalytics/models-server';
+import { PostEdfiTenantDto } from '@edanalytics/models';
 import { EdfiTenantsGlobalService } from './edfi-tenants-global.service';
 import { AdminApiServiceV1 } from '../teams/edfi-tenants/starting-blocks/v1/admin-api.v1.service';
 import { AdminApiServiceV2 } from '../teams/edfi-tenants/starting-blocks/v2/admin-api.v2.service';
@@ -30,7 +31,7 @@ describe('EdfiTenantsGlobalService', () => {
   });
 
   it('create() saves a new EdFi tenant', async () => {
-    const dto = { name: 'NewTenant' } as any;
+    const dto: PostEdfiTenantDto = { name: 'NewTenant' };
     await service.create(dto);
     expect(mockRepo.create).toHaveBeenCalledWith(dto);
     expect(mockRepo.save).toHaveBeenCalled();

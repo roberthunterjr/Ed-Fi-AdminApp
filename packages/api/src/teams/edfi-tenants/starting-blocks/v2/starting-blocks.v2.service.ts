@@ -115,7 +115,7 @@ export class StartingBlocksServiceV2 {
 
     try {
       configPublic.odsApiMeta = await fetch(sbEnvironment.usableDomain).then((r) => r.json());
-    } catch (cantRetrieveMetaError) {
+    } catch (_cantRetrieveMetaError) {
       this.logger.warn('Failed to GET ODS API root URL at ' + sbEnvironment.usableDomain);
     }
 

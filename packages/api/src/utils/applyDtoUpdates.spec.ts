@@ -30,7 +30,7 @@ describe('applyDtoUpdates', () => {
 
     applyDtoUpdates(entity, dto, ['username']);
 
-    expect((entity as any).secret).toBeUndefined();
+    expect((entity as unknown as Record<string, unknown>).secret).toBeUndefined();
     expect(entity.roleId).toBe(5);
   });
 
