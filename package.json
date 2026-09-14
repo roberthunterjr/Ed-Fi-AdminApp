@@ -4,6 +4,7 @@
   "license": "Apache-2.0",
   "scripts": {
     "prepare": "husky",
+    "postinstall": "node scripts/fix-ajv-keywords-peer.js",
     "start": "nx run-many -p api fe -t serve",
     "build": "npm run build:fe && npm run build:api",
     "build:fe": "nx run fe:build",
