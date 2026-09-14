@@ -1,5 +1,14 @@
 # Certification Automation Platform — MVP PRD
 
+> **Canonical location: Confluence.** This document is maintained at
+> [Certification Automation Platform — MVP PRD](https://edfi.atlassian.net/wiki/spaces/OTD/pages/2784460817/Certification+Automation+Platform+MVP+PRD).
+> Edit the prose there, not here — this copy is a snapshot and will go stale.
+>
+> **One exception: the §8 mermaid diagram.** Its source in this file is canonical.
+> Author diagram changes here, where they are version-controlled and diffable, then
+> mirror the updated block into the Confluence page's "Diagram source" expand, which
+> the Mermaid Diagrams macro renders from.
+
 **Status:** Draft for review
 **Parent document:** [Certification Automation Platform PRD](https://edfi.atlassian.net/wiki/spaces/OTD/pages/2660139020/Certification+Automation+Platform+PRD) (local copy: `docs/PRD-Certification-v2.md`)
 **Primary audience:** The development team implementing this work.
@@ -164,6 +173,14 @@ Reused from parent PRD §10.4. These are the only statuses in the MVP.
 | **Changes Requested** | Reviewer has asked for artifact or run changes, with comments. | Vendor |
 | **Approved** | Reviewer approved the submission. | Terminal |
 | **Rejected** | Reviewer rejected the submission. | Terminal |
+
+<!-- CANONICAL DIAGRAM SOURCE.
+     This block is the source of truth for the §8 status flow. The Confluence page
+     (2784460817) renders a mirror of it via the Mermaid Diagrams macro, which reads
+     the first language-mermaid code block on that page.
+     When changing this diagram: edit here, commit, then paste the updated block into
+     the Confluence page's "Diagram source" expand. Keep it the FIRST mermaid block on
+     that page — the macro addresses it by index (0), not by name. -->
 
 ```mermaid
 flowchart TD
