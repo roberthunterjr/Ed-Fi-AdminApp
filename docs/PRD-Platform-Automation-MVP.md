@@ -144,6 +144,10 @@ Carried forward from the parent PRD without change.
 | D18 | **The mapping CSV template is owned by the Product Owner and is expected to change rarely.** The template is the stable part; the *values* a vendor fills into it are the variable part, adjusted by the vendor until their source data reaches the target resources as expected. Mapping content is therefore versioned as an ordinary artifact (FR6) and pinned per run (D14) — no separate template-versioning machinery is needed. *Resolves OQ4.* |
 | D19 | **Authoring the new MTSS / Interventions scenarios is in MVP scope for this team.** The scenarios land in the certification testing repository alongside the existing SIS scenarios and are executed the same way (D1). This is not an external content dependency. *Resolves OQ7.* |
 | D20 | **Vendor environment credentials reuse Admin App's existing mechanism.** Admin App already provisions a client ID and client secret for tenant environments; the MVP does not introduce a new credential store or a new provisioning path. The engineering work is **delivering those existing credentials securely to the Bruno CLI executor** so a run targets the correct environment. *Resolves OQ3.* |
+| D21 | **Runs execute a named tag that the Product Owner promotes, and record the resolved commit SHA.** Certification behavior changes only by a deliberate act of the requirements owner — consistent with the rule that the platform implements certification requirements but does not govern them — while the recorded SHA keeps every run reproducible to an exact commit. *Resolves OQ1.* |
+| D22 | **One execution at a time per product; submissions may be concurrent.** SIS, Assessments, and MTSS are distinct certification models (§6 of the parent PRD), so a product may have an open submission in more than one at once. Only one *run* may be executing at any moment, which prevents two runs contending for the same environment without forcing a vendor to serialize independent certifications. *Resolves OQ6.* |
+| D23 | **Reviewer awareness is same-business-day, via routine dashboard checks.** The dashboard must be accurate when loaded; it is not required to update live. Outbound email is a fast-follow, not an MVP gap. *Resolves OQ8.* |
+| D24 | **A structurally valid mapping runs even if the environment holds no data for the resources it declares.** The run fails loudly and reports what was missing. This is consistent with §8.1's trial-run philosophy: "this resource returned nothing" is the actionable feedback the vendor needs, and pre-screening would report the same thing later in the vendor's debugging loop, not earlier. *Resolves OQ9.* |
 
 ---
 
@@ -184,7 +188,8 @@ flowchart TD
 - Vendors may replace artifacts during review. Reviewers see an indicator that artifacts changed since they last looked.
 - Reviewers do not upload artifacts on behalf of vendors.
 - Vendors can see submission and review status at any time. It is a persistent, checkable state, not a one-time confirmation.
-- Certifications are granted to **products**, not vendors. Only one active certification run may exist per product at a time.
+- Certifications are granted to **products**, not vendors.
+- A product may have concurrent open submissions across different certification models — SIS, Assessments, and MTSS are distinct models and a vendor is not made to finish one before starting another. Only one run may be *executing* for a product at any moment (D22).
 
 ## 8.1 Run Completeness — Trial Runs vs. Qualifying Runs
 
@@ -357,7 +362,7 @@ Admin App already provisions a client ID and client secret for tenant environmen
 - A run can be started regardless of whether the submission's required artifacts are complete, so the vendor can work by trial and error.
 - Each run is stamped **Complete** or **Incomplete** at start time per §8.1, and the UI states which it will be *before* the vendor starts it.
 - Assessments is the one exception: it cannot be started without a valid mapping CSV (D15), because the mapping is what tells the platform what to validate against. Sample data and product documentation are not required to start an Assessments run — only the mapping is. The UI explains this precondition specifically rather than reporting a generic "artifacts missing" error.
-- Only one run per product may be in progress at a time.
+- Only one run per product may be executing at a time, across all certification models (D22). A vendor with open SIS and Assessments submissions can start either, but not both at once; the UI says which run is holding the slot rather than greying out the button without explanation.
 - The run's state (queued / running / completed / failed) is visible while it executes.
 
 ### FR8 — Execute Bruno-based scenario runs (SIS v5, MTSS)
@@ -365,7 +370,8 @@ Admin App already provisions a client ID and client secret for tenant environmen
 - The certification testing repository is the source of truth for collections (D1). Both SIS v5 and the new MTSS / Interventions scenarios (D19) execute through this same path.
 - The executor receives the target environment's credentials from Admin App's existing mechanism (D20) and runs against the correct environment. **This credential hand-off is the substantive engineering work in this requirement** — the execution itself is a CLI invocation.
 - Credentials are passed to the executor without landing in process listings, shell history, run logs, or the persisted run output.
-- Each run records the exact repository version it executed.
+- The executor runs a **named tag promoted by the Product Owner**, and records the **commit SHA that tag resolved to** at run time (D21). The tag is what people reason about; the SHA is what makes the run reproducible.
+- Promoting a tag is the only way certification behavior changes. The platform does not track a moving branch.
 - Run output is ingested and persisted, not merely streamed to a log.
 - A run that fails for infrastructure reasons is distinguishable from a run whose scenarios failed, and an authentication failure is distinguishable from both — a vendor debugging a bad credential should not be reading scenario failures.
 
@@ -374,6 +380,7 @@ Admin App already provisions a client ID and client secret for tenant environmen
 - Only GET requests are issued; no writes or updates (§5).
 - A valid mapping CSV is a hard precondition; without it there is nothing to validate against and the run cannot start (D15).
 - The mapping CSV determines which resources and elements are in scope.
+- A declared resource for which the environment returns no data is a **run failure, not a refusal to run** (D24). The validator executes fully and reports the empty resource, so the vendor learns what is missing rather than being blocked at the door.
 - The run pins the mapping CSV version it evaluated, so results can always be traced to the mapping that produced them (D14).
 - For each in-scope element, the platform evaluates presence, descriptor validity, and value reconciliation against sample data (D8).
 - Validation is deterministic: the same environment, mapping, and sample data produce the same result.
@@ -388,7 +395,7 @@ Admin App already provisions a client ID and client secret for tenant environmen
 
 ### FR11 — Track certification runs
 **As** a Certification Reviewer, **I can** see the full run history for a product **so that** I can judge whether the evidence in front of me is current.
-- Every run records initiator, start and end time, target environment, scenario set, executed repository version (where applicable), completeness designation (§8.1), the artifact versions it executed against, and outcome.
+- Every run records initiator, start and end time, target environment, scenario set, the executed tag and its resolved commit SHA (where applicable, D21), completeness designation (§8.1), the artifact versions it executed against, and outcome.
 - Run history is immutable; runs are never edited or deleted. A run's completeness designation is fixed at start and never recalculated, so the run remains an accurate statement of what it validated against.
 - A run whose pinned artifact versions are no longer the submission's current versions is visibly marked as stale, so a reviewer does not treat it as evidence for artifacts it never saw.
 - The submission clearly indicates which run is the current one, and which run (if any) is the current *qualifying* run.
@@ -401,6 +408,7 @@ Admin App already provisions a client ID and client secret for tenant environmen
 - The view indicates when artifacts have changed since the reviewer last opened the submission.
 - The view defaults to qualifying runs, with trial runs available but not in the way (§8.1).
 - The view includes a **dashboard surface for Ed-Fi staff** that answers, without anyone being notified: what newly reached Ready for Review, what changed during review, and what runs are in flight or recently failed. With no outbound email in the MVP (D12), this is how pending work becomes visible at all.
+- The dashboard must be accurate as of page load. It is **not** required to update live (D23) — the operating assumption is that reviewers check it as part of their normal workday and pick work up the same business day.
 
 ### FR13 — Deterministic readiness gate
 **As** the platform, **I** block a submission from reaching Ready for Review until it is complete **so that** reviewers never spend time on an incomplete package.
@@ -485,12 +493,7 @@ The MVP is judged on two outcomes:
 
 ## 15.1 Still Open
 
-| # | Question | Why it matters | Needs an answer by |
-| --- | --- | --- | --- |
-| OQ1 | How is the certification testing repository version pinned per run — tag, branch, or commit SHA? Who promotes a new version to "current"? | Determines whether two runs months apart are comparable, and who can change certification behavior. | FR8 design |
-| OQ6 | Does "one active certification run per product" (§8) mean one *submission* or one *execution*? A vendor pursuing SIS and Assessments simultaneously is a plausible case. | Determines a core data-model constraint. | Data model design |
-| OQ8 | The administrator dashboard (FR12) is the answer to "how does a reviewer learn a submission is ready" without email. What is the acceptable latency between a submission becoming ready and a reviewer noticing — i.e. is anyone expected to keep the dashboard open, or is a once-a-day check the operating assumption? | Sets the bar for how fresh the dashboard must be, and whether email is a fast-follow rather than a later phase. | FR12 design |
-| OQ9 | A mapping CSV is now a confirmed precondition (D15). Given that, should a *structurally valid* mapping that declares resources the environment has no data for still be allowed to run and fail loudly — which is arguably the trial-and-error feedback the vendor wants — or should the platform pre-screen and refuse? | Determines whether §8.1's trial-run affordance extends to the content of the mapping, or stops at its structure. | FR9 design |
+**None.** Every question raised during drafting has been resolved and folded into §7. New questions are expected to surface during design; add them here.
 
 ## 15.2 Resolved
 
@@ -498,11 +501,15 @@ Kept here so the reasoning behind each decision is traceable rather than lost.
 
 | # | Question | Resolution |
 | --- | --- | --- |
+| OQ1 | How is the certification testing repository version pinned per run? | **A named tag promoted by the Product Owner**, with the resolved commit SHA recorded on each run. Certification behavior changes only by deliberate act; runs stay reproducible to an exact commit. See D21, FR8. |
 | OQ2 | What tolerance applies to value-level reconciliation? | **Type-aware normalized comparison** — parse both sides to their Ed-Fi type before comparing, so formatting differences pass and value differences fail. See D16 and §9.1. |
 | OQ3 | Where are vendor environment credentials stored? | **No new store.** Admin App already provisions client ID and secret for tenant environments; the MVP reuses it. The actual work is delivering those credentials securely to the Bruno CLI executor. See D20, FR5, FR8. |
 | OQ4 | Who owns the mapping CSV template, and how is it versioned? | **Product Owner owns the template**, which is expected to change rarely. The variable part is the values vendors fill in, already covered by artifact versioning (FR6) and per-run pinning (D14) — so no separate template-versioning machinery is needed. See D18. |
 | OQ5 | How is the certification environment loaded with sample data? | **Vendor-driven, through their own application's Ed-Fi integration.** The uploaded sample data is the expected-result set, not a load source — so a run exercises the vendor's real integration. See D17, §10.5. |
+| OQ6 | Does "one active run per product" mean one submission or one execution? | **One execution.** A product may hold concurrent open submissions across the distinct certification models, but only one run executes at a time — preventing environment contention without forcing vendors to serialize independent work. See D22, §8, FR7. |
 | OQ7 | Is MTSS / Interventions scenario authoring this team's work? | **Yes, in MVP scope.** The scenarios land in the certification testing repository alongside the SIS scenarios and execute through the same path. See D19, §3.3. |
+| OQ8 | What reviewer-awareness latency is acceptable without email? | **Same business day**, via routine dashboard checks. The dashboard must be accurate on load but need not update live, so email becomes a fast-follow rather than an MVP gap. See D23, FR12. |
+| OQ9 | Should a valid mapping declaring resources with no data run, or be pre-screened? | **Run and fail loudly.** "This resource returned nothing" is the actionable feedback; pre-screening would surface the same fact later in the vendor's debugging loop. See D24, FR9. |
 
 ---
 
