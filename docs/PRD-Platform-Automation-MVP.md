@@ -482,10 +482,26 @@ The platform orchestrates workflow, executes validation, collects evidence, and 
 
 # 14. Success Metrics
 
-The MVP is judged on two outcomes:
+Two things are being measured, and they answer different questions. §14.1 asks whether the scope in §3 actually landed — it is a completion checklist, and every line must be true to call the MVP done. §14.2 asks whether what landed is any good.
+
+## 14.1 Release Criteria — Did the Scope Land?
+
+One criterion per scope bucket in §3. An MVP that certifies an Assessments vendor but never ran an MTSS scenario is not done.
+
+| # | Scope bucket | Criterion |
+| --- | --- | --- |
+| RC1 | Automation Platform (§3.1) | A vendor is onboarded, associated with a team and an Ed-Fi-provisioned environment, uploads all three required artifacts, and reaches **Ready for Review** — with each step visible on the administrator dashboard and recorded in audit history. |
+| RC2 | Assessments Domain (§3.2) | An Assessments validation run executes from an uploaded mapping CSV, issues GETs only, and reports pass/fail by domain, resource, and element — including at least one genuine failure of each kind the validator distinguishes (missing element, invalid descriptor, value mismatch, empty declared resource). |
+| RC3 | MTSS / Interventions (§3.3) | The new scenarios exist in the certification testing repository, execute end to end when invoked by the platform, and their results render in the UI. Authoring alone does not satisfy this criterion — the scenarios must have run through the platform. |
+| RC4 | SIS v5 (§3.4) | The **existing** SIS v5 scenarios run to completion end to end through the platform, against an Ed-Fi-provisioned environment, with results ingested, displayed, and recorded. This is the bucket with no new scenario content, so failure here points at the execution pipeline rather than the scenarios. |
+| RC5 | Bruno execution path (§3.1, FR8) | RC3 and RC4 are both satisfied using the same platform-invoked execution path and the same credential hand-off — demonstrating one pipeline serving both scenario sets, not two one-offs. |
+
+## 14.2 Outcome Metrics — Is It Any Good?
 
 1. **First vendor certified end-to-end.** At least one real vendor completes an Assessments v5 certification entirely through the platform, with no out-of-band steps.
-2. **Run reproducibility.** Re-running the same submission produces identical results, demonstrating that validation is deterministic and auditable.
+2. **Run reproducibility.** Re-running the same submission produces identical results, demonstrating that validation is deterministic and auditable. This applies to all three certification models, not only Assessments — a Bruno-executed SIS run that is not reproducible undermines the audit claim just as much.
+
+Reviewer time saved and vendor self-service rate are deliberately *not* MVP metrics. Both are the point of the larger platform effort, but neither is measurable against a single certification, and setting them as MVP targets would invite gaming the first vendor's experience.
 
 ---
 
