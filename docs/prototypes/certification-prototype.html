@@ -952,10 +952,15 @@ function statusBanner(sub, g, busy){
       since they last looked (FR16).</p></div>`;
   }
   if (g.met){
+    const qFailed = g.qualifying.outcome !== 'passed';
     return `<div class="banner green"><h3>${badge('ready')} All gate conditions met</h3>
       <p>All three required artifact types are present and run
       <a href="#/run/${g.qualifying.id}">${esc(g.qualifying.id)}</a> is a finished run stamped
-      <strong>Complete</strong>. Waiting on an Ed-Fi reviewer to pick it up.</p></div>`;
+      <strong>Complete</strong>. Waiting on an Ed-Fi reviewer to pick it up.</p>
+      ${qFailed ? `<p><strong>Note:</strong> that run reported failures. The gate asks only whether a
+        finished Complete run exists, not whether it passed (D25) — so this submission is visible to a
+        reviewer, and the reviewer decides whether the failures are disqualifying. You may keep fixing and
+        re-running in the meantime.</p>` : ''}</div>`;
   }
   const bullets = [];
   g.missing.forEach(a => bullets.push('<strong>Missing artifact:</strong> ' + esc(a.label) +
@@ -1406,7 +1411,9 @@ function reviewerDashboard(){
           return `<tr><td>${rowLink(s)}</td><td>${esc(product(s.productId).vendor)}</td>
             <td>${esc(MODELS[s.model].label)}</td>
             <td><a href="#/run/${g.qualifying.id}" class="mono">${esc(g.qualifying.id)}</a>
-              ${isStale(s, g.qualifying) ? ' <span class="badge b-gray stale">Stale</span>' : ''}</td>
+              ${isStale(s, g.qualifying) ? ' <span class="badge b-gray stale">Stale</span>' : ''}
+              ${g.qualifying.outcome !== 'passed'
+                ? '<div class="badge b-red stale">Run failed — your call (D25)</div>' : ''}</td>
             <td class="muted">${fmtShort(s.history[0] ? s.history[0].at : s.created)}</td>
             <td class="act"><button class="btn sm" data-act="pickup" data-sub="${s.id}">Pick up</button></td></tr>`;
         }).join('')}</tbody></table>` : '<div class="empty">Nothing new. Queue is clear.</div>'}
@@ -1523,6 +1530,13 @@ function reviewerSubmission(id){
       <h3>${badge(sub.status)} Decision recorded</h3>
       <p>${esc(sub.decision.by)} on ${fmt(sub.decision.at)}.${
         sub.decision.reason ? ' Reason: ' + esc(sub.decision.reason) : ''} Terminal for this submission (FR15).</p></div>` : ''}
+    ${!terminal && g.met && g.qualifying.outcome !== 'passed' ? `<div class="banner amber">
+      <h3><span class="badge b-red">Qualifying run failed</span> Yours to judge</h3>
+      <p>Run <a href="#/run/${g.qualifying.id}" class="mono">${esc(g.qualifying.id)}</a> is a finished run
+      stamped <strong>Complete</strong>, so it satisfies the readiness gate — but its checks
+      <strong>failed</strong>. The gate does not evaluate outcomes, and the platform never withholds a
+      submission from review because its results look bad (D25). Whether these failures are disqualifying,
+      warrant a re-run, or are acceptable for this certification is your determination (§12).</p></div>` : ''}
     ${!terminal && !g.met ? `<div class="banner amber"><h3>${badge(sub.status)} Not admissible yet</h3>
       <p>The readiness gate is unmet: ${g.missing.length
         ? 'missing ' + g.missing.map(a => esc(a.label)).join(', ') + '.'

@@ -157,6 +157,7 @@ Carried forward from the parent PRD without change.
 | D22 | **One execution at a time per product; submissions may be concurrent.** SIS, Assessments, and MTSS are distinct certification models (§6 of the parent PRD), so a product may have an open submission in more than one at once. Only one *run* may be executing at any moment, which prevents two runs contending for the same environment without forcing a vendor to serialize independent certifications. *Resolves OQ6.* |
 | D23 | **Reviewer awareness is same-business-day, via routine dashboard checks.** The dashboard must be accurate when loaded; it is not required to update live. Outbound email is a fast-follow, not an MVP gap. *Resolves OQ8.* |
 | D24 | **A structurally valid mapping runs even if the environment holds no data for the resources it declares.** The run fails loudly and reports what was missing. This is consistent with §8.1's trial-run philosophy: "this resource returned nothing" is the actionable feedback the vendor needs, and pre-screening would report the same thing later in the vendor's debugging loop, not earlier. *Resolves OQ9.* |
+| D25 | **A qualifying run must be finished and stamped Complete; it does not have to have passed.** The readiness gate (FR13) is a completeness check, not a quality check. A submission whose qualifying run reports failures still reaches **Ready for Review**, and the reviewer decides whether those failures are disqualifying, whether a re-run is needed, or whether they are acceptable for this certification. This keeps the platform out of certification judgment (§12) and avoids the platform silently withholding a submission a reviewer would have wanted to see. The cost — reviewers occasionally opening a submission whose run failed — is accepted; the dashboard and run results state the outcome plainly, so no reviewer is surprised by it. |
 
 ---
 
@@ -168,7 +169,7 @@ Reused from parent PRD §10.4. These are the only statuses in the MVP.
 | --- | --- | --- |
 | **Draft** | Submission created; vendor is assembling artifacts. | Vendor |
 | **Submission Incomplete** | One or more required artifact types is missing. The missing types are listed explicitly. | Vendor |
-| **Ready for Review** | All required artifact types are present and at least one qualifying run — a finished run stamped **Complete** (§8.1) — exists. | Reviewer picks it up |
+| **Ready for Review** | All required artifact types are present and at least one qualifying run — a finished run stamped **Complete** (§8.1) — exists. The qualifying run need not have *passed* (D25); whether its failures are disqualifying is the reviewer's call. | Reviewer picks it up |
 | **In Review** | A reviewer has started reviewing. Visible to the vendor. | Reviewer |
 | **Changes Requested** | Reviewer has asked for artifact or run changes, with comments. | Vendor |
 | **Approved** | Reviewer approved the submission. | Terminal |
@@ -217,7 +218,7 @@ Every run is stamped at start time with a completeness designation, derived from
 | Designation | When it is assigned | What it is good for |
 | --- | --- | --- |
 | **Incomplete** | One or more required artifact types (§9) was missing when the run started. | Vendor trial and error. Results are real and fully displayed, but the run cannot make a submission Ready for Review. |
-| **Complete** | All required artifact types were present when the run started. | A qualifying run. Satisfies the run half of the readiness gate (FR13). |
+| **Complete** | All required artifact types were present when the run started. | A qualifying run. Satisfies the run half of the readiness gate (FR13) regardless of whether its checks passed (D25). |
 
 Rules:
 
@@ -226,6 +227,7 @@ Rules:
 - Incomplete runs are displayed with the same result detail as Complete runs. They are not second-class evidence for the vendor; they are simply not admissible for review.
 - To reach **Ready for Review**, a vendor with only Incomplete runs must upload the missing artifacts and start one more run.
 - Run designation is visible to both vendors and reviewers, so a reviewer never mistakes a trial run for a qualifying one.
+- **Completeness and outcome are independent.** A run stamped **Complete** whose checks *failed* is still a qualifying run (D25). Completeness answers "was this validated against a full artifact package?"; outcome answers "did the validation pass?" The gate asks only the first question, and the reviewer answers the second — which is why the submission's run results and the administrator dashboard both state the outcome plainly rather than leaving it to be inferred from the status.
 
 ---
 
@@ -431,6 +433,7 @@ Admin App already provisions a client ID and client secret for tenant environmen
 **As** the platform, **I** block a submission from reaching Ready for Review until it is complete **so that** reviewers never spend time on an incomplete package.
 - The gate is a rules check: all three required artifact types present, **and** at least one finished run stamped **Complete** (§8.1).
 - Runs stamped **Incomplete** never satisfy the gate, no matter how many of them passed.
+- Conversely, a run stamped **Complete** satisfies the gate **even if its checks failed** (D25). The gate does not evaluate run outcomes, and the platform never withholds a submission from review on the grounds that its results look bad — that determination belongs to the reviewer (§12).
 - The gate is deterministic. There is no agent and no inference (D10).
 - When the gate is not met, the submission shows **Submission Incomplete** listing the specific unmet conditions — distinguishing "artifact X is missing" from "artifacts are complete, but no qualifying run has been executed since," because those need different actions from the vendor.
 - The gate re-evaluates automatically whenever an artifact or run changes.
@@ -484,6 +487,7 @@ The platform orchestrates workflow, executes validation, collects evidence, and 
 | Review mapping documentation | | ✅ |
 | Evaluate semantic alignment | | ✅ |
 | Determine if re-validation is needed | | ✅ |
+| Judge whether a failed qualifying run is disqualifying (D25) | | ✅ |
 | Approve / reject certification | | ✅ |
 
 ---
