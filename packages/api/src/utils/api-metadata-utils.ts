@@ -315,3 +315,46 @@ const isTimeoutError = (error: unknown): boolean => {
   );
 };
 
+
+/**
+ * Ask an Admin API for its tenant list via `GET /v2/tenancy`.
+ *
+ * Admin API used to report tenants inline on the root endpoint as
+ * `tenancy.tenants`. Builds from roughly 2.3.3-alpha onward drop that block
+ * from the root response and serve the list here instead, advertising it under
+ * `urls.tenancy` on the root.
+ *
+ * This is a *supplement* to the existing root read, not a replacement: callers
+ * keep their own root request and its error handling, and only consult this
+ * when the root came back without a tenant list. Losing the list is destructive
+ * rather than merely degraded -- callers fall back to a single `default` tenant
+ * and the sync then treats every real tenant as orphaned and deletes it, which
+ * is what removed tenant1 and tenant2 from a multi-tenant environment here on
+ * 2026-09-15.
+ *
+ * Swallows its own errors and returns null: an older Admin API has no such
+ * route, and that must leave the caller's pre-existing fallback untouched.
+ * An empty list is also reported as null, since "no tenants" is
+ * indistinguishable from a failed probe and is exactly the destructive case.
+ *
+ * @param baseUrl Admin API base URL
+ * @param opts    Optional axios config (e.g. an Authorization header)
+ * @returns tenant names, or null if this endpoint did not provide any
+ */
+export const fetchTenantsFromTenancyEndpoint = async (
+  baseUrl: string,
+  opts?: { headers: { Authorization: string } }
+): Promise<string[] | null> => {
+  try {
+    const client = axios.create({ baseURL: baseUrl.replace(/\/$/, '') });
+    const data = await client.get<{ tenants?: string[] }>('/v2/tenancy', opts).then((r) => r.data);
+
+    if (Array.isArray(data?.tenants) && data.tenants.length > 0) {
+      Logger.log(`Tenants resolved from Admin API /v2/tenancy: [${data.tenants.join(', ')}]`);
+      return data.tenants;
+    }
+  } catch (error) {
+    Logger.warn(`Admin API /v2/tenancy probe failed: ${(error as Error).message}`);
+  }
+  return null;
+};

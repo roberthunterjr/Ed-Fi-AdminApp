@@ -20,6 +20,7 @@ import {
   BuildConfigPublicInput,
   DispatchSyncResult,
 } from './admin-api-version-strategy.interface';
+import { fetchTenantsFromTenancyEndpoint } from '../utils/api-metadata-utils';
 
 @Injectable()
 export class V2AdminApiVersionStrategy implements AdminApiVersionStrategy {
@@ -162,8 +163,18 @@ export class V2AdminApiVersionStrategy implements AdminApiVersionStrategy {
           tenantNames = rootResponse.tenancy.tenants;
           this.logger.log(`Bootstrap: discovered tenants from root: [${tenantNames.join(', ')}]`);
         } else {
-          tenantNames = ['default'];
-          this.logger.log('Bootstrap: root endpoint did not return tenant list, falling back to default');
+          // Newer Admin API builds omit the tenancy block from the root and
+          // serve the list from /v2/tenancy instead. Falling through to a single
+          // 'default' tenant here is destructive downstream -- the sync treats
+          // every tenant it cannot see as orphaned and deletes it.
+          const fromTenancy = await fetchTenantsFromTenancyEndpoint(sbEnvironment.adminApiUrl!);
+          if (fromTenancy) {
+            tenantNames = fromTenancy;
+            this.logger.log(`Bootstrap: discovered tenants from /v2/tenancy: [${tenantNames.join(', ')}]`);
+          } else {
+            tenantNames = ['default'];
+            this.logger.log('Bootstrap: root endpoint did not return tenant list, falling back to default');
+          }
         }
       } catch (error) {
         this.logger.error(`Bootstrap: failed to reach Admin API root: ${error.message}`);

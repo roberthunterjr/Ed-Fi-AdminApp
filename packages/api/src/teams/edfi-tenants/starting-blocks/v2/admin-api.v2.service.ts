@@ -69,6 +69,7 @@ import {
 } from '../admin-api-refresh-poll.util';
 import { StartingBlocksServiceV2 } from './starting-blocks.v2.service';
 import { adminApiLoginStatusMsgs } from '../../adminApiLoginFailureMsgs';
+import { fetchTenantsFromTenancyEndpoint } from '../../../../utils/api-metadata-utils';
 
 /**
  * Error body shape returned by the Admin API on failed requests (e.g. registration/login).
@@ -1393,9 +1394,25 @@ export class AdminApiServiceV2 {
           `Multi-tenant mode detected with ${tenantNames.length} tenants: ${tenantNames.join(', ')}`
         );
       } else {
-        // Single-tenant mode
-        tenantNames = ['default'];
-        this.logger.log('Single-tenant mode detected, using default tenant');
+        // Before concluding single-tenant: newer Admin API builds omit the
+        // tenancy block from the root and serve the list from /v2/tenancy.
+        // Mistaking multi-tenant for single-tenant here is destructive --
+        // callers delete every tenant that does not appear in this list.
+        const fromTenancy = await fetchTenantsFromTenancyEndpoint(
+          environment.adminApiUrl,
+          authToken ? { headers: { Authorization: `Bearer ${authToken}` } } : undefined
+        );
+
+        if (fromTenancy) {
+          tenantNames = fromTenancy;
+          this.logger.log(
+            `Multi-tenant mode detected via /v2/tenancy with ${tenantNames.length} tenants: ${tenantNames.join(', ')}`
+          );
+        } else {
+          // Single-tenant mode
+          tenantNames = ['default'];
+          this.logger.log('Single-tenant mode detected, using default tenant');
+        }
       }
 
       // Log credential availability for discovered tenants
