@@ -1,0 +1,1795 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Ed-Fi Admin App &mdash; Certification Automation Platform (MVP prototype)</title>
+<style>
+/* ============================================================
+   Ed-Fi Admin App shell — visual vocabulary lifted from the
+   existing application screenshots. Prototype only.
+   ============================================================ */
+:root{
+  --teal:#2e7d6a; --teal-dark:#246455; --teal-soft:#a9cfc5; --teal-bg:#eef6f3;
+  --red:#e5342a; --red-dark:#c42b22; --red-bg:#fdeeed;
+  --ink:#1f2a37; --ink-2:#39424e; --muted:#6b7480; --muted-2:#8b929c;
+  --line:#e3e6ea; --line-2:#eceef1; --page:#f4f5f7; --thead:#eef0f3;
+  --amber:#b7791f; --amber-bg:#fdf6e6; --blue:#2b6cb0; --blue-bg:#ebf3fb;
+  --indigo:#5a4b9e; --indigo-bg:#f0edf9; --green:#2f7d54; --green-bg:#ecf6f0;
+  --accent:var(--teal); --accent-dark:var(--teal-dark); --accent-bg:var(--teal-bg);
+  --radius:6px;
+  --font:"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+}
+body.scope-global{ --accent:var(--red); --accent-dark:var(--red-dark); --accent-bg:var(--red-bg); }
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{font-family:var(--font);color:var(--ink);background:var(--page);font-size:14px;line-height:1.45}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+button{font-family:inherit;font-size:inherit}
+
+/* ---------- header ---------- */
+.appbar{height:52px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;
+  padding:0 20px;gap:16px;position:sticky;top:0;z-index:40}
+.logo{display:flex;align-items:center;gap:8px;font-weight:800;letter-spacing:-.3px;font-size:15px}
+.logo .dot{width:22px;height:22px;border-radius:50%;
+  background:conic-gradient(#e5342a,#f6a623,#7ab800,#00a3b5,#5a4b9e,#e5342a);
+  box-shadow:inset 0 0 0 6px #fff}
+.logo small{display:block;font-size:7px;letter-spacing:1.4px;color:var(--muted);font-weight:700}
+.appbar .divider{width:1px;height:26px;background:var(--line)}
+.scope-title{font-weight:700;font-size:16px}
+.appbar .spacer{flex:1}
+.proto-pill{font-size:10px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;
+  color:#8a5a00;background:#fff4d6;border:1px solid #f0dca8;border-radius:999px;padding:3px 9px}
+.persona{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+.persona select{font-family:inherit;font-size:12.5px;padding:5px 8px;border:1px solid var(--line);
+  border-radius:var(--radius);background:#fff;color:var(--ink)}
+.help{color:var(--muted);font-size:17px;cursor:default}
+.avatar{width:28px;height:28px;border-radius:50%;background:#d7dae0;color:#4a5460;display:grid;
+  place-items:center;font-size:12px;font-weight:700}
+
+/* ---------- layout ---------- */
+.layout{display:flex;min-height:calc(100vh - 52px)}
+.sidebar{width:252px;flex:0 0 252px;background:#fff;border-right:1px solid var(--line);padding:16px 0 28px}
+.main{flex:1;min-width:0;padding:18px 26px 60px}
+.scopepick{margin:0 14px 14px}
+.scopepick select{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:var(--radius);
+  background:#fff;font-family:inherit;font-size:13.5px;font-weight:600;color:var(--ink)}
+.navsec{font-size:12px;font-weight:700;color:var(--muted);padding:14px 18px 6px;letter-spacing:.2px}
+.nav a{display:flex;align-items:center;gap:11px;padding:8px 18px;color:var(--ink-2);font-size:13.5px;
+  border-left:3px solid transparent}
+.nav a:hover{background:#f7f8f9;text-decoration:none}
+.nav a.on{color:var(--accent);font-weight:700;background:var(--accent-bg);border-left-color:var(--accent)}
+.nav a .ic{width:17px;text-align:center;opacity:.75;font-size:13px}
+.nav .sub a{padding-left:42px;font-size:13px}
+.navsearch{margin:0 14px 8px;position:relative}
+.navsearch input{width:100%;padding:8px 10px 8px 30px;border:1px solid var(--line);border-radius:999px;
+  font-family:inherit;font-size:13px}
+.navsearch:before{content:"\1F50D";position:absolute;left:10px;top:7px;font-size:11px;opacity:.5}
+.sidenote{margin:22px 16px 0;padding-top:12px;border-top:1px solid var(--line-2);font-size:11.5px;color:var(--muted-2)}
+
+/* ---------- page furniture ---------- */
+.crumbs{font-size:13px;color:var(--muted);margin-bottom:10px}
+.crumbs a{color:var(--muted)}
+.crumbs span{margin:0 6px;color:#c3c8cf}
+.pagehead{display:flex;align-items:flex-start;gap:16px;margin:0 0 16px}
+.pagehead h1{font-size:26px;margin:0;letter-spacing:-.4px}
+.pagehead .sub{color:var(--muted);font-size:13.5px;margin-top:4px}
+.pagehead .acts{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+.card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:20px 22px;margin-bottom:18px}
+.card h2{font-size:15.5px;margin:0 0 14px}
+.card h2 .hint{font-weight:400;color:var(--muted);font-size:12.5px;margin-left:8px}
+.cardhead{display:flex;align-items:center;gap:12px;margin:0 0 14px}
+.cardhead h2{margin:0}
+.cardhead .right{margin-left:auto;display:flex;gap:8px;align-items:center}
+.summary{display:flex;gap:56px;flex-wrap:wrap;padding-bottom:18px;margin-bottom:18px;border-bottom:1px solid var(--line-2)}
+.summary div{min-width:120px}
+.summary .k{color:var(--muted);font-size:13px}
+.summary .v{font-size:14.5px;margin-top:2px}
+.tools{display:flex;align-items:center;gap:14px;margin-bottom:14px;flex-wrap:wrap}
+.search{position:relative;flex:0 1 360px}
+.search input{width:100%;padding:8px 12px 8px 32px;border:1px solid var(--line);border-radius:999px;
+  font-family:inherit;font-size:13px}
+.search:before{content:"\1F50D";position:absolute;left:12px;top:8px;font-size:11px;opacity:.5}
+.linkish{background:none;border:0;color:var(--accent);font-weight:600;cursor:pointer;padding:0;font-size:13px}
+.chip{border:1px solid var(--teal-soft);background:var(--teal-bg);color:var(--teal-dark);border-radius:999px;
+  padding:5px 11px;font-size:12.5px;font-weight:600;cursor:pointer}
+.chip select{border:0;background:transparent;font-family:inherit;font-size:12.5px;font-weight:600;
+  color:var(--teal-dark);outline:none}
+
+/* ---------- buttons ---------- */
+.btn{display:inline-flex;align-items:center;gap:7px;padding:8px 14px;border-radius:var(--radius);
+  border:1px solid transparent;background:var(--teal);color:#fff;font-weight:700;font-size:13px;cursor:pointer}
+.btn:hover{background:var(--teal-dark)}
+.btn.sm{padding:6px 11px;font-size:12.5px}
+.btn.red{background:var(--red)} .btn.red:hover{background:var(--red-dark)}
+.btn.ghost{background:#fff;border-color:var(--line);color:var(--ink-2)}
+.btn.ghost:hover{background:#f7f8f9}
+.btn.quiet{background:var(--teal-soft);color:#fff;cursor:not-allowed}
+.btn[disabled]{background:var(--teal-soft);color:#fff;cursor:not-allowed;border-color:transparent}
+body.scope-global .btn[disabled]{background:#f0b3ae}
+.btnrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+
+/* ---------- tables ---------- */
+table.t{width:100%;border-collapse:collapse}
+table.t th{background:var(--thead);color:#5a6472;font-size:11px;letter-spacing:.7px;text-transform:uppercase;
+  text-align:left;padding:10px 14px;font-weight:700;border-bottom:1px solid var(--line)}
+table.t td{padding:12px 14px;border-bottom:1px solid var(--line-2);vertical-align:middle}
+table.t tr:last-child td{border-bottom:0}
+table.t tr.group td{background:#fafbfc;font-weight:700;font-size:13px;color:var(--ink-2)}
+table.t td.num,table.t th.num{text-align:right}
+table.t td.act{text-align:right;white-space:nowrap}
+.t .mono{font-family:ui-monospace,Consolas,monospace;font-size:12.5px}
+.empty{padding:22px 14px;color:var(--muted);font-style:italic}
+.pager{display:flex;align-items:center;justify-content:center;gap:10px;padding:14px 0 2px;color:var(--muted);font-size:13px}
+.pager button{border:0;background:none;color:var(--muted);cursor:pointer;font-size:14px;padding:2px 5px}
+.pager select{border:1px solid var(--line);border-radius:var(--radius);padding:4px 6px;font-family:inherit;font-size:12.5px}
+
+/* ---------- badges / pills ---------- */
+.badge{display:inline-block;padding:3px 9px;border-radius:999px;font-size:11.5px;font-weight:700;white-space:nowrap}
+.b-gray{background:#eef0f3;color:#5a6472}
+.b-amber{background:var(--amber-bg);color:var(--amber)}
+.b-blue{background:var(--blue-bg);color:var(--blue)}
+.b-indigo{background:var(--indigo-bg);color:var(--indigo)}
+.b-orange{background:#fdf0e6;color:#b45309}
+.b-green{background:var(--green-bg);color:var(--green)}
+.b-red{background:var(--red-bg);color:var(--red-dark)}
+.dotstate{display:inline-flex;align-items:center;gap:7px;color:var(--ink-2);font-size:13px}
+.dotstate i{width:8px;height:8px;border-radius:50%;background:#c3c8cf;display:inline-block}
+.dotstate.run i{background:var(--blue);animation:pulse 1s infinite}
+.dotstate.ok i{background:var(--green)} .dotstate.bad i{background:var(--red)}
+.dotstate.warn i{background:var(--amber)}
+@keyframes pulse{50%{opacity:.25}}
+.legend{margin-top:18px;padding-top:14px;border-top:1px solid var(--line-2);display:flex;gap:10px;flex-wrap:wrap}
+.legend .badge{font-weight:600}
+.tag{display:inline-block;font-family:ui-monospace,Consolas,monospace;font-size:12px;background:#f2f4f6;
+  border:1px solid var(--line);border-radius:4px;padding:1px 6px;color:var(--ink-2)}
+
+/* ---------- banners ---------- */
+.banner{border:1px solid var(--line);border-left:4px solid var(--accent);background:#fbfcfd;border-radius:var(--radius);
+  padding:14px 18px;margin-bottom:18px}
+.banner h3{margin:0 0 6px;font-size:14.5px;display:flex;align-items:center;gap:10px}
+.banner p{margin:4px 0 0;color:var(--ink-2)}
+.banner ul{margin:8px 0 0 18px;padding:0;color:var(--ink-2)}
+.banner li{margin:3px 0}
+.banner.amber{border-left-color:var(--amber);background:var(--amber-bg)}
+.banner.blue{border-left-color:var(--blue);background:var(--blue-bg)}
+.banner.green{border-left-color:var(--green);background:var(--green-bg)}
+.banner.red{border-left-color:var(--red);background:var(--red-bg)}
+.banner.indigo{border-left-color:var(--indigo);background:var(--indigo-bg)}
+.scenariohead{border:1px solid var(--line);border-left:4px solid var(--blue);background:#f7fafd;
+  border-radius:var(--radius);padding:14px 18px;margin-bottom:16px;display:flex;gap:56px}
+.scenariohead .k{font-size:11px;letter-spacing:.7px;text-transform:uppercase;color:var(--muted);font-weight:700}
+.scenariohead .v{font-size:17px;font-weight:700;margin-top:2px}
+
+/* ---------- product / dashboard cards ---------- */
+.grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(310px,1fr))}
+.tile{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px}
+.tile h3{margin:0 0 2px;font-size:15px}
+.tile .meta{color:var(--muted);font-size:12.5px;margin-bottom:12px}
+.tile .row{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line-2);font-size:13.5px}
+.tile .row .mdl{font-weight:600}
+.tile .row .sp{margin-left:auto}
+.kpis{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));margin-bottom:18px}
+.kpi{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:15px 18px}
+.kpi .n{font-size:30px;font-weight:800;letter-spacing:-1px;line-height:1.1}
+.kpi .l{color:var(--muted);font-size:12.5px;margin-top:2px}
+.kpi.hot .n{color:var(--red)}
+.asof{color:var(--muted-2);font-size:12px;margin:-6px 0 16px}
+
+/* ---------- forms ---------- */
+.field{margin-bottom:16px;max-width:520px}
+.field label{display:block;font-weight:700;margin-bottom:6px;font-size:13.5px}
+.field input[type=text],.field input[type=password],.field select,.field textarea{
+  width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:var(--radius);font-family:inherit;font-size:13.5px}
+.field select:focus,.field input:focus,.field textarea:focus{outline:none;border-color:#2b6cb0;box-shadow:0 0 0 2px #dbe8f6}
+.field .help{color:var(--muted);font-size:12.5px;margin-top:5px}
+.field.wide{max-width:none}
+.radios label{display:flex;gap:9px;align-items:flex-start;font-weight:400;margin:0 0 9px;font-size:13.5px}
+.radios input{margin-top:3px}
+.drop{border:1.5px dashed var(--line);border-radius:var(--radius);padding:22px;text-align:center;color:var(--muted);
+  background:#fafbfc;margin-bottom:14px;font-size:13px}
+
+/* ---------- history ---------- */
+.hist{list-style:none;margin:0;padding:0}
+.hist li{display:flex;gap:12px;padding:9px 0;border-bottom:1px solid var(--line-2);font-size:13px}
+.hist li:last-child{border-bottom:0}
+.hist .when{color:var(--muted);width:130px;flex:0 0 130px;font-size:12.5px}
+.hist .who{color:var(--muted);margin-left:auto;font-size:12.5px;white-space:nowrap}
+
+/* ---------- modal / toast ---------- */
+.veil{position:fixed;inset:0;background:rgba(24,32,41,.42);display:grid;place-items:center;z-index:100;padding:24px}
+.modal{background:#fff;border-radius:8px;width:100%;max-width:580px;max-height:88vh;overflow:auto;
+  box-shadow:0 18px 50px rgba(0,0,0,.24)}
+.modal .mh{padding:18px 22px;border-bottom:1px solid var(--line);font-weight:700;font-size:16px}
+.modal .mb{padding:20px 22px}
+.modal .mf{padding:14px 22px;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end;background:#fafbfc}
+.toast{position:fixed;right:20px;bottom:20px;z-index:200;background:#1f2a37;color:#fff;padding:12px 16px;
+  border-radius:var(--radius);font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.25);max-width:380px}
+.err{color:var(--red-dark)}
+.muted{color:var(--muted)}
+.nowrap{white-space:nowrap}
+.stale{font-size:11.5px}
+</style>
+</head>
+<body class="scope-team">
+<div class="appbar">
+  <div class="logo"><span class="dot"></span><span>ed&middot;fi<small>ALLIANCE</small></span></div>
+  <div class="divider"></div>
+  <div class="scope-title" id="scopeTitle">Test Vendor Dev Team</div>
+  <span class="proto-pill">Prototype</span>
+  <div class="spacer"></div>
+  <div class="persona">
+    <label for="personaSel">Viewing as</label>
+    <select id="personaSel">
+      <option value="vendor">Vendor &mdash; Test Vendor Dev Team</option>
+      <option value="reviewer">Ed-Fi Alliance staff &mdash; global scope</option>
+    </select>
+  </div>
+  <span class="help">?</span>
+  <div class="avatar" id="avatar">A</div>
+</div>
+<div class="layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main" id="main"></main>
+</div>
+<div id="overlay"></div>
+
+<script>
+/* ==============================================================
+   Certification Automation Platform — MVP clickable prototype
+   Mock data only. No network calls, no persistence.
+   Behaviours traceable to docs/PRD-Platform-Automation-MVP.md:
+     §8 status model, §8.1 run completeness, §9 artifacts,
+     §9.1 value reconciliation, FR7/FR8/FR9/FR10/FR11/FR12/FR13/FR14/FR15/FR17
+   ============================================================== */
+
+/* ---------- tiny helpers ---------- */
+const $ = s => document.querySelector(s);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const NOW = new Date('2026-09-15T14:20:00');
+let clock = new Date(NOW);
+const tick = () => { clock = new Date(clock.getTime() + 61000); return new Date(clock); };
+const fmt = d => d ? new Date(d).toLocaleString('en-US',
+  {month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit'}) : '—';
+const fmtShort = d => d ? new Date(d).toLocaleString('en-US',
+  {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'}) : '—';
+const dur = (a,b) => !a||!b ? '—' : Math.max(1, Math.round((new Date(b)-new Date(a))/1000)) + 's';
+let seq = 100; const uid = p => p + '-' + (++seq);
+
+/* ---------- reference data ---------- */
+const MODELS = {
+  sis: {id:'sis', label:'SIS v5', kind:'bruno', tag:'sis-v5.0.3', sha:'a7f3c19d'},
+  assessments: {id:'assessments', label:'Assessments v5', kind:'assessments', tag:'assessments-v5.1.0', sha:'6c02b4ae'},
+  mtss: {id:'mtss', label:'MTSS / Interventions v5', kind:'bruno', tag:'mtss-v1.0.0', sha:'4b1e08d2'}
+};
+const ARTIFACTS = [
+  {id:'mapping', label:'Vendor mapping CSV', validation:'Structural / schema validation on upload',
+   note:'Source of truth for Assessments scope (D2).'},
+  {id:'sample',  label:'Sample data', validation:'Parseable and non-empty',
+   note:'Expected-result set for value reconciliation — not a load source (D17).'},
+  {id:'docs',    label:'Product documentation', validation:'Not validated — human review',
+   note:'For Assessments: an example score report from the vendor’s application.'}
+];
+const STATUS = {
+  draft:      {label:'Draft',                 cls:'b-gray',   who:'Vendor'},
+  incomplete: {label:'Submission Incomplete',  cls:'b-amber',  who:'Vendor'},
+  ready:      {label:'Ready for Review',       cls:'b-blue',   who:'Reviewer picks it up'},
+  inreview:   {label:'In Review',              cls:'b-indigo', who:'Reviewer'},
+  changes:    {label:'Changes Requested',      cls:'b-orange', who:'Vendor'},
+  approved:   {label:'Approved',               cls:'b-green',  who:'Terminal'},
+  rejected:   {label:'Rejected',               cls:'b-red',    who:'Terminal'}
+};
+const badge = k => `<span class="badge ${STATUS[k].cls}">${esc(STATUS[k].label)}</span>`;
+const completenessBadge = c => c === 'Complete'
+  ? '<span class="badge b-green">Complete</span>'
+  : '<span class="badge b-amber">Incomplete &middot; trial run</span>';
+
+/* Bruno scenario content, named after the real collections in the screenshots. */
+const SCENARIOS = {
+  sis: [
+    ['DescriptorMapping','DescriptorMappings'],
+    ['EducationOrganization','ClassPeriods'],['EducationOrganization','Courses'],
+    ['EducationOrganization','Locations'],['EducationOrganization','Programs'],
+    ['EducationOrganization','Schools'],
+    ['EducationOrganizationCalendar','CalendarDates'],['EducationOrganizationCalendar','Calendars'],
+    ['EducationOrganizationCalendar','GradingPeriods'],['EducationOrganizationCalendar','Sessions'],
+    ['MasterSchedule','BellSchedules'],['MasterSchedule','CourseOfferings'],['MasterSchedule','Sections'],
+    ['StaffAssociation','StaffEdOrgAssociations'],['StaffAssociation','Staffs'],
+    ['StaffAssociation','StaffSchoolAssociations'],
+    ['Student','Students'],
+    ['StudentEnrollment','StudentSchoolAssociations'],
+    ['StudentAttendance','StudentSchoolAttendanceEvents'],
+    ['StudentGrade','Grades']
+  ],
+  mtss: [
+    ['Intervention','Interventions'],['Intervention','InterventionPrescriptions'],
+    ['Cohort','Cohorts'],['Cohort','StudentCohortAssociations'],
+    ['StudentIntervention','StudentInterventionAssociations'],
+    ['StudentIntervention','StudentInterventionAttendanceEvents'],
+    ['Goal','StudentGoals'],
+    ['ProgressMonitoring','StudentProgressMonitoringResults']
+  ]
+};
+const stepsFor = scenario => ([
+  `01 - Check first ${scenario.replace(/s$/,'')} is valid`,
+  `02 - Check second ${scenario.replace(/s$/,'')} is valid`,
+  `03 - Check first ${scenario.replace(/s$/,'')} was Updated`,
+  `04 - Check second ${scenario.replace(/s$/,'')} was Deleted`
+]);
+/* Scenarios seeded to fail in a "realistic" Bruno run. */
+const BRUNO_FAILS = {
+  sis: {'MasterSchedule/Sections':{step:2, msg:'Expected sectionIdentifier "ALG-1-S1-A", observed "ALG1S1A"'},
+        'StudentAttendance/StudentSchoolAttendanceEvents':{step:3, msg:'PUT returned 400: attendanceEventCategoryDescriptor could not be resolved'}},
+  mtss: {'StudentIntervention/StudentInterventionAttendanceEvents':{step:1, msg:'GET returned 404 — resource not implemented by vendor API'}}
+};
+
+/* Assessments validation content — deliberately seeds every failure kind RC2 requires. */
+const ASSESSMENT_RESULTS = [
+  {domain:'Assessment', resource:'assessments', elements:[
+    {el:'assessmentIdentifier', type:'String', expected:'ELA-BM-2026-01', observed:'ELA-BM-2026-01', st:'pass'},
+    {el:'namespace', type:'String', expected:'uri://vendor-b.example.com', observed:'uri://vendor-b.example.com', st:'pass'},
+    {el:'assessmentTitle', type:'String', expected:'ELA Benchmark 1', observed:'ELA Benchmark 1 ', st:'pass',
+      why:'Trailing whitespace trimmed before comparison (§9.1, String).'},
+    {el:'assessmentCategoryDescriptor', type:'Descriptor',
+      expected:'uri://ed-fi.org/AssessmentCategoryDescriptor#Benchmark test',
+      observed:'uri://ed-fi.org/AssessmentCategoryDescriptor#Benchmark test', st:'pass'},
+    {el:'academicSubjects[0].academicSubjectDescriptor', type:'Descriptor',
+      expected:'uri://ed-fi.org/AcademicSubjectDescriptor#English Language Arts',
+      observed:'uri://vendor-b.example.com/AcademicSubjectDescriptor#ELA', st:'fail-descriptor',
+      why:'Descriptor URI does not resolve to a legitimate Ed-Fi descriptor (D8).'},
+    {el:'maxRawScore', type:'Decimal', expected:'100', observed:'100.0', st:'pass',
+      why:'Parsed numerically before comparison (§9.1, Decimal).'}
+  ]},
+  {domain:'Assessment', resource:'objectiveAssessments', elements:[
+    {el:'identificationCode', type:'String', expected:'ELA-BM-2026-01-OA1', observed:'ELA-BM-2026-01-OA1', st:'pass'},
+    {el:'maxRawScore', type:'Decimal', expected:'85', observed:'87', st:'fail-value',
+      why:'Value mismatch after normalization — genuine difference, not formatting.'},
+    {el:'percentOfAssessment', type:'Decimal', expected:'40', observed:'"forty"', st:'fail-type',
+      why:'Observed value cannot be parsed as Decimal — reported as a type error, not a value mismatch (§9.1).'},
+    {el:'nomenclature', type:'String', expected:'Reading Informational Text', observed:'Reading Informational Text', st:'pass'}
+  ]},
+  {domain:'Student Assessment', resource:'studentAssessments', elements:[
+    {el:'studentReference.studentUniqueId', type:'String', expected:'604821', observed:'604821', st:'pass'},
+    {el:'administrationDate', type:'Date', expected:'9/14/2026', observed:'2026-09-14T00:00:00Z', st:'pass',
+      why:'Both sides parsed to an instant before comparison (§9.1, Date).'},
+    {el:'scoreResults[0].result', type:'Decimal', expected:'78', observed:'78', st:'pass'},
+    {el:'scoreResults[0].assessmentReportingMethodDescriptor', type:'Descriptor',
+      expected:'uri://ed-fi.org/AssessmentReportingMethodDescriptor#Raw score',
+      observed:'uri://ed-fi.org/AssessmentReportingMethodDescriptor#Raw score', st:'pass'},
+    {el:'performanceLevels[0].performanceLevelDescriptor', type:'Descriptor',
+      expected:'uri://ed-fi.org/PerformanceLevelDescriptor#Proficient',
+      observed:'uri://ed-fi.org/PerformanceLevelDescriptor#Proficient', st:'pass'},
+    {el:'reportedSchoolIdentifier', type:'String', expected:'255901107', observed:'(absent)', st:'fail-missing',
+      why:'Element declared in the mapping CSV but not present in the API response.'},
+    {el:'whenAssessedGradeLevelDescriptor', type:'Descriptor',
+      expected:'uri://ed-fi.org/GradeLevelDescriptor#Ninth grade', observed:'(absent)', st:'fail-missing',
+      why:'Element declared in the mapping CSV but not present in the API response.'}
+  ]},
+  {domain:'Student Assessment', resource:'studentAssessmentEducationOrganizationAssociations',
+   emptyResource:true, elements:[
+    {el:'educationOrganizationReference.educationOrganizationId', type:'String', expected:'255901107', observed:'—', st:'fail-empty'},
+    {el:'assessmentReportingMethodDescriptor', type:'Descriptor', expected:'uri://ed-fi.org/…#Raw score', observed:'—', st:'fail-empty'}
+  ]}
+];
+const ST_LABEL = {
+  pass:['ok','Pass'],
+  'fail-missing':['bad','Missing element'],
+  'fail-descriptor':['bad','Invalid descriptor'],
+  'fail-value':['bad','Value mismatch'],
+  'fail-type':['bad','Type error'],
+  'fail-empty':['bad','No data returned']
+};
+
+/* ---------- mutable application state ---------- */
+const APP = {
+  persona: 'vendor',
+  vendorUser: 'j.rivera@vendor-b.example.com',
+  reviewerUser: 'cert-reviewer@ed-fi.org',
+  products: [],
+  submissions: [],
+  runs: [],
+  loadedAt: new Date(NOW)
+};
+const me = () => APP.persona === 'vendor' ? APP.vendorUser : APP.reviewerUser;
+
+function artifactSet(list){
+  const out = {};
+  ARTIFACTS.forEach(a => out[a.id] = []);
+  (list||[]).forEach(([type, name, by, at]) => {
+    out[type].push({v:out[type].length+1, name, by, at});
+  });
+  return out;
+}
+function mkSubmission(o){
+  const sub = Object.assign({
+    id:uid('sub'), status:'draft', comments:[], history:[],
+    reviewerSeenAt:null, artifactsChangedAt:null, decision:null
+  }, o);
+  APP.submissions.push(sub);
+  return sub;
+}
+function hist(sub, what, who, when){
+  sub.history.unshift({what, who:who||me(), at:when||tick()});
+}
+
+/* ---------- seed ---------- */
+(function seed(){
+  const V = 'j.rivera@vendor-b.example.com', V2 = 'p.okoye@vendor-b.example.com';
+  const R = 'cert-reviewer@ed-fi.org';
+  const d = (day, h, m) => new Date(2026, 8, day, h, m); // Sept 2026
+
+  APP.products = [
+    {id:'p1', name:'Vendor B Student Suite', vendor:'Vendor B', team:'Test Vendor Dev Team', env:'Vendor_B'},
+    {id:'p2', name:'Vendor B Assessment Hub', vendor:'Vendor B', team:'Test Vendor Dev Team', env:'Vendor_B'},
+    {id:'p3', name:'Vendor B Intervention Manager', vendor:'Vendor B', team:'Test Vendor Dev Team', env:'Vendor_B'},
+    /* other vendors — reviewer queue only */
+    {id:'p4', name:'Acme SIS', vendor:'Acme Learning', team:'Acme Dev', env:'Acme_Prod_Cert', foreign:true},
+    {id:'p5', name:'Northwind Assess', vendor:'Northwind Data', team:'Northwind Cert', env:'Northwind_Cert', foreign:true},
+    {id:'p6', name:'Larkspur MTSS', vendor:'Larkspur Ed', team:'Larkspur Cert', env:'Larkspur_Cert', foreign:true}
+  ];
+
+  /* p1 / SIS v5 — complete artifacts, one qualifying run: Ready for Review */
+  const s1 = mkSubmission({productId:'p1', model:'sis', status:'ready',
+    artifacts:artifactSet([
+      ['mapping','vendorb-sis-mapping-v1.csv',V,d(2,9,14)],
+      ['mapping','vendorb-sis-mapping-v2.csv',V,d(8,11,2)],
+      ['sample','vendorb-sis-sample-data.json',V2,d(2,9,40)],
+      ['docs','VendorB-SIS-Product-Overview.pdf',V,d(3,15,5)]
+    ]), created:d(2,9,10)});
+  s1.artifactsChangedAt = d(8,11,2);
+
+  /* p2 / Assessments v5 — product documentation missing: Submission Incomplete */
+  const s2 = mkSubmission({productId:'p2', model:'assessments', status:'incomplete',
+    artifacts:artifactSet([
+      ['mapping','vendorb-assessments-mapping-v1.csv',V,d(9,10,15)],
+      ['sample','assessment-sample-data.csv',V2,d(9,10,52)]
+    ]), created:d(9,10,0)});
+
+  /* p3 / MTSS v5 — nothing uploaded: Draft */
+  mkSubmission({productId:'p3', model:'mtss', status:'draft',
+    artifacts:artifactSet([]), created:d(12,16,30)});
+
+  /* foreign submissions for the reviewer queue */
+  const f1 = mkSubmission({productId:'p4', model:'sis', status:'ready',
+    artifacts:artifactSet([
+      ['mapping','acme-sis-mapping.csv','dev@acme.example.com',d(11,8,5)],
+      ['sample','acme-sample.json','dev@acme.example.com',d(11,8,20)],
+      ['docs','Acme-SIS-Docs.pdf','dev@acme.example.com',d(11,8,35)]
+    ]), created:d(10,9,0)});
+  const f2 = mkSubmission({productId:'p5', model:'assessments', status:'inreview',
+    artifacts:artifactSet([
+      ['mapping','nw-assessments-mapping.csv','eng@northwind.example.com',d(4,13,0)],
+      ['mapping','nw-assessments-mapping-r2.csv','eng@northwind.example.com',d(14,9,45)],
+      ['sample','nw-sample-scores.csv','eng@northwind.example.com',d(4,13,20)],
+      ['docs','Northwind-Score-Report-Example.pdf','eng@northwind.example.com',d(4,13,30)]
+    ]), created:d(4,12,0)});
+  f2.reviewerSeenAt = d(12,10,0);
+  f2.artifactsChangedAt = d(14,9,45);   /* changed mid-review → dashboard flag */
+  const f3 = mkSubmission({productId:'p6', model:'mtss', status:'changes',
+    artifacts:artifactSet([
+      ['mapping','larkspur-mtss-mapping.csv','ops@larkspur.example.com',d(1,10,0)],
+      ['sample','larkspur-sample.json','ops@larkspur.example.com',d(1,10,10)],
+      ['docs','Larkspur-MTSS-Guide.pdf','ops@larkspur.example.com',d(1,10,20)]
+    ]), created:d(1,9,30)});
+  f3.comments.push({by:R, at:d(9,14,10), text:'The StudentGoals mapping points at a descriptor namespace you own rather than the Ed-Fi one. Please correct the mapping and re-run.'});
+  f3.reviewerSeenAt = d(9,14,10);
+  const f4 = mkSubmission({productId:'p4', model:'assessments', status:'approved',
+    artifacts:artifactSet([
+      ['mapping','acme-assessments-mapping.csv','dev@acme.example.com',d(1,8,0)],
+      ['sample','acme-assessment-sample.csv','dev@acme.example.com',d(1,8,10)],
+      ['docs','Acme-Score-Report.pdf','dev@acme.example.com',d(1,8,20)]
+    ]), created:d(1,7,30)});
+  f4.decision = {kind:'approved', by:R, at:d(8,16,0), reason:''};
+  f4.reviewerSeenAt = d(8,16,0);
+
+  /* seeded runs */
+  const mkRun = o => { const r = Object.assign({id:uid('run'), results:null}, o); APP.runs.push(r); return r; };
+
+  mkRun({submissionId:s1.id, productId:'p1', model:'sis', state:'completed', outcome:'failed',
+    completeness:'Incomplete', pinned:{mapping:1, sample:1, docs:null},
+    tag:MODELS.sis.tag, sha:MODELS.sis.sha, initiator:V2, env:'Vendor_B',
+    started:d(2,10,5), ended:d(2,10,12), results:brunoResults('sis','realistic')});
+  mkRun({submissionId:s1.id, productId:'p1', model:'sis', state:'completed', outcome:'failed',
+    completeness:'Complete', pinned:{mapping:1, sample:1, docs:1},
+    tag:MODELS.sis.tag, sha:MODELS.sis.sha, initiator:V, env:'Vendor_B',
+    started:d(5,9,30), ended:d(5,9,38), results:brunoResults('sis','realistic')});
+  mkRun({submissionId:s1.id, productId:'p1', model:'sis', state:'completed', outcome:'passed',
+    completeness:'Complete', pinned:{mapping:1, sample:1, docs:1},
+    tag:MODELS.sis.tag, sha:MODELS.sis.sha, initiator:V, env:'Vendor_B',
+    started:d(7,13,0), ended:d(7,13,9), results:brunoResults('sis','pass')});
+
+  mkRun({submissionId:s2.id, productId:'p2', model:'assessments', state:'completed', outcome:'auth-error',
+    completeness:'Incomplete', pinned:{mapping:1, sample:null, docs:null},
+    tag:MODELS.assessments.tag, sha:MODELS.assessments.sha, initiator:V, env:'Vendor_B',
+    started:d(9,11,0), ended:d(9,11,1)});
+  mkRun({submissionId:s2.id, productId:'p2', model:'assessments', state:'completed', outcome:'failed',
+    completeness:'Incomplete', pinned:{mapping:1, sample:1, docs:null},
+    tag:MODELS.assessments.tag, sha:MODELS.assessments.sha, initiator:V2, env:'Vendor_B',
+    started:d(13,15,20), ended:d(13,15,26), results:assessmentResults('realistic')});
+
+  mkRun({submissionId:f1.id, productId:'p4', model:'sis', state:'completed', outcome:'passed',
+    completeness:'Complete', pinned:{mapping:1, sample:1, docs:1},
+    tag:MODELS.sis.tag, sha:MODELS.sis.sha, initiator:'dev@acme.example.com', env:'Acme_Prod_Cert',
+    started:d(12,9,0), ended:d(12,9,8), results:brunoResults('sis','pass')});
+  mkRun({submissionId:f2.id, productId:'p5', model:'assessments', state:'completed', outcome:'passed',
+    completeness:'Complete', pinned:{mapping:1, sample:1, docs:1},
+    tag:MODELS.assessments.tag, sha:MODELS.assessments.sha, initiator:'eng@northwind.example.com',
+    env:'Northwind_Cert', started:d(11,10,0), ended:d(11,10,7), results:assessmentResults('pass')});
+  mkRun({submissionId:f3.id, productId:'p6', model:'mtss', state:'completed', outcome:'infra-error',
+    completeness:'Complete', pinned:{mapping:1, sample:1, docs:1},
+    tag:MODELS.mtss.tag, sha:MODELS.mtss.sha, initiator:'ops@larkspur.example.com',
+    env:'Larkspur_Cert', started:d(14,17,40), ended:d(14,17,41)});
+  mkRun({submissionId:f4.id, productId:'p4', model:'assessments', state:'completed', outcome:'passed',
+    completeness:'Complete', pinned:{mapping:1, sample:1, docs:1},
+    tag:MODELS.assessments.tag, sha:MODELS.assessments.sha, initiator:'dev@acme.example.com',
+    env:'Acme_Prod_Cert', started:d(6,11,0), ended:d(6,11,6), results:assessmentResults('pass')});
+
+  /* seeded history */
+  s1.history = [
+    {what:'Status changed to Ready for Review (readiness gate met)', who:'Platform', at:d(8,11,3)},
+    {what:'Artifact replaced: Vendor mapping CSV → v2 (vendorb-sis-mapping-v2.csv)', who:V, at:d(8,11,2)},
+    {what:'Run run-107 completed — Complete — all scenarios passed', who:'Platform', at:d(7,13,9)},
+    {what:'Run started — SIS v5 — stamped Complete', who:V, at:d(7,13,0)},
+    {what:'Artifact uploaded: Product documentation v1', who:V, at:d(3,15,5)},
+    {what:'Artifact uploaded: Sample data v1', who:V2, at:d(2,9,40)},
+    {what:'Artifact uploaded: Vendor mapping CSV v1 (structural validation passed)', who:V, at:d(2,9,14)},
+    {what:'Submission created', who:V, at:d(2,9,10)}
+  ];
+  s2.history = [
+    {what:'Run run-110 completed — Incomplete — 5 checks failed', who:'Platform', at:d(13,15,26)},
+    {what:'Run started — Assessments v5 — stamped Incomplete (Product documentation missing)', who:V2, at:d(13,15,20)},
+    {what:'Run run-109 failed — authentication error (401 from environment Vendor_B)', who:'Platform', at:d(9,11,1)},
+    {what:'Artifact uploaded: Sample data v1', who:V2, at:d(9,10,52)},
+    {what:'Artifact uploaded: Vendor mapping CSV v1 (structural validation passed)', who:V, at:d(9,10,15)},
+    {what:'Submission created', who:V, at:d(9,10,0)}
+  ];
+  f2.history = [
+    {what:'Artifact replaced: Vendor mapping CSV → v2', who:'eng@northwind.example.com', at:d(14,9,45)},
+    {what:'Status changed to In Review', who:R, at:d(12,10,0)},
+    {what:'Status changed to Ready for Review (readiness gate met)', who:'Platform', at:d(11,10,8)},
+    {what:'Submission created', who:'eng@northwind.example.com', at:d(4,12,0)}
+  ];
+  f3.history = [
+    {what:'Run run-113 failed — infrastructure error (executor could not reach Larkspur_Cert)', who:'Platform', at:d(14,17,41)},
+    {what:'Changes requested with comment', who:R, at:d(9,14,10)},
+    {what:'Status changed to In Review', who:R, at:d(9,13,50)},
+    {what:'Submission created', who:'ops@larkspur.example.com', at:d(1,9,30)}
+  ];
+  f1.history = [
+    {what:'Status changed to Ready for Review (readiness gate met)', who:'Platform', at:d(12,9,9)},
+    {what:'Submission created', who:'dev@acme.example.com', at:d(10,9,0)}
+  ];
+  f4.history = [
+    {what:'Approved', who:R, at:d(8,16,0)},
+    {what:'Status changed to In Review', who:R, at:d(8,15,30)},
+    {what:'Submission created', who:'dev@acme.example.com', at:d(1,7,30)}
+  ];
+  seq = 120;
+})();
+
+/* ---------- result builders ---------- */
+function brunoResults(model, mode){
+  const fails = mode === 'pass' ? {} : (BRUNO_FAILS[model] || {});
+  return {kind:'bruno', scenarios: SCENARIOS[model].map(([area, scenario]) => {
+    const key = area + '/' + scenario;
+    const f = fails[key];
+    return {area, scenario, steps: stepsFor(scenario).map((label, i) => ({
+      label,
+      st: f && i + 1 === f.step ? 'fail' : (f && i + 1 > f.step ? 'skipped' : 'pass'),
+      msg: f && i + 1 === f.step ? f.msg : ''
+    })), st: f ? 'fail' : 'pass'};
+  })};
+}
+function assessmentResults(mode){
+  const groups = ASSESSMENT_RESULTS.map(g => ({
+    domain:g.domain, resource:g.resource,
+    emptyResource: mode === 'pass' ? false : !!g.emptyResource,
+    elements: g.elements.map(e => mode === 'pass'
+      ? Object.assign({}, e, {st:'pass', observed: e.st === 'pass' ? e.observed : e.expected,
+          why: e.st === 'pass' ? e.why : ''})
+      : Object.assign({}, e))
+  }));
+  return {kind:'assessments', groups};
+}
+function resultTally(r){
+  if (!r) return {pass:0, fail:0, total:0};
+  if (r.kind === 'bruno'){
+    const p = r.scenarios.filter(s => s.st === 'pass').length;
+    return {pass:p, fail:r.scenarios.length - p, total:r.scenarios.length, unit:'scenarios'};
+  }
+  let pass = 0, fail = 0;
+  r.groups.forEach(g => g.elements.forEach(e => e.st === 'pass' ? pass++ : fail++));
+  return {pass, fail, total:pass + fail, unit:'element checks'};
+}
+
+/* ---------- derived state ---------- */
+const product = id => APP.products.find(p => p.id === id);
+const submission = id => APP.submissions.find(s => s.id === id);
+const run = id => APP.runs.find(r => r.id === id);
+const runsFor = sub => APP.runs.filter(r => r.submissionId === sub.id)
+  .sort((a,b) => new Date(b.started) - new Date(a.started));
+const currentVersion = (sub, type) => {
+  const list = sub.artifacts[type];
+  return list && list.length ? list[list.length - 1] : null;
+};
+const mySubmissions = () => APP.submissions.filter(s => !product(s.productId).foreign);
+
+/* FR13 — deterministic readiness gate. */
+function gate(sub){
+  const missing = ARTIFACTS.filter(a => !currentVersion(sub, a.id));
+  const qualifying = runsFor(sub).find(r => r.state === 'completed' && r.completeness === 'Complete');
+  return {missing, qualifying, artifactsComplete: missing.length === 0,
+          met: missing.length === 0 && !!qualifying};
+}
+/* §8.1 — completeness is decided from artifacts alone, at run start. */
+const wouldStamp = sub => gate(sub).artifactsComplete ? 'Complete' : 'Incomplete';
+/* D22 — one execution at a time per product. */
+const busyRun = productId => APP.runs.find(r => r.productId === productId &&
+  (r.state === 'queued' || r.state === 'running'));
+/* FR11 — a run is stale when its pinned versions are no longer current. */
+function isStale(sub, r){
+  return ARTIFACTS.some(a => {
+    const cur = currentVersion(sub, a.id);
+    return (cur ? cur.v : null) !== (r.pinned ? r.pinned[a.id] : null);
+  });
+}
+const hasUnseenChanges = sub => !!(sub.artifactsChangedAt && sub.reviewerSeenAt &&
+  new Date(sub.artifactsChangedAt) > new Date(sub.reviewerSeenAt));
+
+function recomputeStatus(sub){
+  if (['inreview','changes','approved','rejected'].includes(sub.status)) return;
+  const g = gate(sub);
+  const anything = ARTIFACTS.some(a => currentVersion(sub, a.id)) || runsFor(sub).length > 0;
+  const next = g.met ? 'ready' : (anything ? 'incomplete' : 'draft');
+  if (next !== sub.status){
+    sub.status = next;
+    hist(sub, next === 'ready'
+      ? 'Status changed to Ready for Review (readiness gate met)'
+      : 'Status changed to ' + STATUS[next].label + ' (readiness gate not met)', 'Platform');
+  }
+}
+
+/* ---------- actions ---------- */
+function uploadArtifact(sub, type, name, malformed){
+  if (type === 'mapping' && malformed){
+    hist(sub, 'Vendor mapping CSV upload rejected — structural validation failed (' + name + ')');
+    return {ok:false, errors:[
+      'Row 1: required column "EdFiResource" is missing.',
+      'Row 1: unexpected column "Resource Name" — not in the published template.',
+      'Row 14: "EdFiElement" is empty but "VendorField" is populated.',
+      'Row 22: "IsRequired" must be TRUE or FALSE; found "yes".'
+    ]};
+  }
+  const list = sub.artifacts[type];
+  const replacing = list.length > 0;
+  list.push({v:list.length + 1, name, by:me(), at:tick()});
+  const label = ARTIFACTS.find(a => a.id === type).label;
+  hist(sub, (replacing
+    ? 'Artifact replaced: ' + label + ' → v' + list.length + ' (' + name + ')'
+    : 'Artifact uploaded: ' + label + ' v1 (' + name + ')') +
+    (type === 'mapping' ? ' — structural validation passed' : ''));
+  sub.artifactsChangedAt = tick();
+  recomputeStatus(sub);
+  return {ok:true};
+}
+
+function startRun(sub, outcomeMode){
+  const m = MODELS[sub.model];
+  const r = {
+    id:uid('run'), submissionId:sub.id, productId:sub.productId, model:sub.model,
+    state:'queued', outcome:null, completeness:wouldStamp(sub),
+    pinned:{}, tag:m.tag, sha:m.sha, initiator:me(), env:product(sub.productId).env,
+    started:tick(), ended:null, results:null, mode:outcomeMode
+  };
+  ARTIFACTS.forEach(a => { const c = currentVersion(sub, a.id); r.pinned[a.id] = c ? c.v : null; });
+  APP.runs.push(r);
+  hist(sub, 'Run started — ' + m.label + ' — stamped ' + r.completeness +
+    (r.completeness === 'Incomplete'
+      ? ' (' + gate(sub).missing.map(a => a.label).join(', ') + ' missing)' : ''));
+  setTimeout(() => { if (r.state === 'queued'){ r.state = 'running'; render(); } }, 1400);
+  setTimeout(() => finishRun(r), 5200);
+  return r;
+}
+function finishRun(r){
+  if (r.state === 'completed') return;
+  const sub = submission(r.submissionId);
+  r.state = 'completed';
+  r.ended = tick();
+  if (r.mode === 'infra'){
+    r.outcome = 'infra-error';
+    hist(sub, 'Run ' + r.id + ' failed — infrastructure error (executor could not reach ' + r.env + ')', 'Platform');
+  } else if (r.mode === 'auth'){
+    r.outcome = 'auth-error';
+    hist(sub, 'Run ' + r.id + ' failed — authentication error (401 from environment ' + r.env + ')', 'Platform');
+  } else {
+    const mode = r.mode === 'pass' ? 'pass' : 'realistic';
+    r.results = MODELS[r.model].kind === 'bruno' ? brunoResults(r.model, mode) : assessmentResults(mode);
+    const t = resultTally(r.results);
+    r.outcome = t.fail === 0 ? 'passed' : 'failed';
+    hist(sub, 'Run ' + r.id + ' completed — ' + r.completeness + ' — ' +
+      (t.fail === 0 ? 'all ' + t.unit + ' passed' : t.fail + ' of ' + t.total + ' ' + t.unit + ' failed'), 'Platform');
+  }
+  recomputeStatus(sub);
+  render();
+}
+
+function reviewerOpen(sub){
+  sub.reviewerSeenAt = tick();
+  if (sub.status === 'ready'){ sub.status = 'inreview'; hist(sub, 'Status changed to In Review'); }
+}
+function requestChanges(sub, text){
+  sub.comments.push({by:me(), at:tick(), text});
+  sub.status = 'changes';
+  sub.reviewerSeenAt = tick();
+  hist(sub, 'Changes requested with comment');
+}
+function decide(sub, kind, reason){
+  sub.status = kind;
+  sub.decision = {kind, by:me(), at:tick(), reason:reason || ''};
+  hist(sub, (kind === 'approved' ? 'Approved' : 'Rejected') + (reason ? ' — ' + reason : ''));
+}
+
+/* ==============================================================
+   Routing
+   ============================================================== */
+function go(hash){ location.hash = hash; }
+function parseRoute(){
+  const h = (location.hash || '').replace(/^#\/?/, '');
+  const parts = h.split('/').filter(Boolean);
+  if (!parts.length) return {name:APP.persona === 'vendor' ? 'products' : 'dashboard', args:[]};
+  return {name:parts[0], args:parts.slice(1)};
+}
+window.addEventListener('hashchange', render);
+
+$('#personaSel').addEventListener('change', e => {
+  APP.persona = e.target.value;
+  APP.loadedAt = new Date(clock);
+  location.hash = APP.persona === 'vendor' ? '#/products' : '#/dashboard';
+  render();
+});
+
+/* ==============================================================
+   Rendering
+   ============================================================== */
+function render(){
+  const isVendor = APP.persona === 'vendor';
+  document.body.className = isVendor ? 'scope-team' : 'scope-global';
+  $('#scopeTitle').textContent = isVendor ? 'Test Vendor Dev Team' : 'Global scope';
+  $('#avatar').textContent = isVendor ? 'J' : 'A';
+  $('#personaSel').value = APP.persona;
+  const route = parseRoute();
+  $('#sidebar').innerHTML = navHTML(route);
+  $('#main').innerHTML = (isVendor ? vendorScreen(route) : reviewerScreen(route));
+  bind();
+}
+
+function navHTML(route){
+  const on = n => route.name === n ? ' class="on"' : '';
+  if (APP.persona === 'vendor'){
+    return `
+    <div class="scopepick"><select><option>Test Vendor Dev Team</option></select></div>
+    <nav class="nav">
+      <a href="#/products"${on('products')}><span class="ic">&#9750;</span>Home</a>
+      <a href="#/account"><span class="ic">&#9737;</span>Account</a>
+      <a href="#/users"><span class="ic">&#9783;</span>Users</a>
+      <div class="navsec">Certification</div>
+      <a href="#/products"${on('products')}><span class="ic">&#9635;</span>My products</a>
+      <a href="#/runs"${on('runs')}><span class="ic">&#9202;</span>Run history</a>
+      <div class="navsec">Environments</div>
+      <div class="navsearch"><input placeholder="Search" /></div>
+      <a href="#/env"${on('env')}><span class="ic">&#9707;</span>Vendor_B</a>
+      <div class="sub">
+        <a href="#/env">ODSs</a><a href="#/env">Ed-Orgs</a><a href="#/env">Vendors</a>
+        <a href="#/env">Applications</a><a href="#/env">Claimsets</a><a href="#/env">Profiles</a>
+      </div>
+    </nav>
+    <div class="sidenote">Prototype &mdash; mock data, no server. Illustrates
+      <em>docs/PRD-Platform-Automation-MVP.md</em>.</div>`;
+  }
+  return `
+    <div class="scopepick"><select><option>No team (global)</option><option>Test Vendor Dev Team</option></select></div>
+    <nav class="nav">
+      <a href="#/dashboard"${on('dashboard')}><span class="ic">&#9750;</span>Home</a>
+      <a href="#/account"><span class="ic">&#9737;</span>Account</a>
+      <a href="#/env"><span class="ic">&#9707;</span>Environments</a>
+      <a href="#/teams"><span class="ic">&#9974;</span>Teams</a>
+      <a href="#/users"><span class="ic">&#9783;</span>Users</a>
+      <a href="#/memberships"><span class="ic">&#9672;</span>Team memberships</a>
+      <a href="#/roles"><span class="ic">&#9878;</span>Roles</a>
+      <a href="#/ownerships"><span class="ic">&#9776;</span>Ownerships</a>
+      <a href="#/syncqueue"><span class="ic">&#8635;</span>Sync queue</a>
+      <div class="navsec">Certification</div>
+      <a href="#/dashboard"${on('dashboard')}><span class="ic">&#9636;</span>Dashboard</a>
+      <a href="#/queue"${on('queue')}><span class="ic">&#9776;</span>Review queue</a>
+      <div class="navsec">Environments</div>
+      <a href="#/env"><span class="ic">&#9707;</span>Vendor_B</a>
+    </nav>
+    <div class="sidenote">Prototype &mdash; mock data, no server. Illustrates
+      <em>docs/PRD-Platform-Automation-MVP.md</em>.</div>`;
+}
+
+const crumbs = parts => `<div class="crumbs">` + parts.map((p, i) =>
+  (i ? '<span>/</span>' : '') + (p[1] ? `<a href="${p[1]}">${esc(p[0])}</a>` : esc(p[0]))
+).join('') + `</div>`;
+
+function placeholder(title){
+  return crumbs([['Home', '#/'], [title]]) + `
+    <div class="pagehead"><div><h1>${esc(title)}</h1>
+      <div class="sub">Existing Admin App surface &mdash; out of scope for this prototype.</div></div></div>
+    <div class="card"><div class="empty">This screen already exists in the Admin App
+      (vendor, team, user, environment and application management). The prototype stops at the
+      certification module so the workflow under review stays legible.</div></div>`;
+}
+
+/* ---------------- VENDOR ---------------- */
+function vendorScreen(route){
+  switch (route.name){
+    case 'products':   return vendorProducts();
+    case 'submission': return vendorSubmission(route.args[0]);
+    case 'newrun':     return vendorNewRun(route.args[0]);
+    case 'run':        return runResults(route.args[0], false);
+    case 'runs':       return vendorRunHistory();
+    default:           return placeholder(route.name.charAt(0).toUpperCase() + route.name.slice(1));
+  }
+}
+
+function vendorProducts(){
+  const subs = mySubmissions();
+  const ready = subs.filter(s => s.status === 'ready').length;
+  const needsMe = subs.filter(s => ['draft','incomplete','changes'].includes(s.status)).length;
+  const inflight = APP.runs.filter(r => !product(r.productId).foreign &&
+    (r.state === 'queued' || r.state === 'running')).length;
+  return crumbs([['Home', '#/products'], ['My products']]) + `
+    <div class="pagehead">
+      <div><h1>My products</h1>
+        <div class="sub">Certifications are granted to products, not vendors (§8).</div></div>
+      <div class="acts"><button class="btn red" data-act="newsub">+ Create new</button></div>
+    </div>
+    <div class="kpis">
+      <div class="kpi"><div class="n">${needsMe}</div><div class="l">Submissions waiting on us</div></div>
+      <div class="kpi"><div class="n">${ready}</div><div class="l">Ready for Ed-Fi review</div></div>
+      <div class="kpi"><div class="n">${inflight}</div><div class="l">Runs executing now</div></div>
+    </div>
+    <div class="grid">${APP.products.filter(p => !p.foreign).map(p => {
+      const ps = subs.filter(s => s.productId === p.id);
+      return `<div class="tile">
+        <h3>${esc(p.name)}</h3>
+        <div class="meta">${esc(p.vendor)} &middot; environment <span class="tag">${esc(p.env)}</span></div>
+        ${ps.map(s => {
+          const g = gate(s);
+          return `<div class="row">
+            <span class="mdl">${esc(MODELS[s.model].label)}</span>
+            <span class="sp">${badge(s.status)}</span>
+            <a href="#/submission/${s.id}">Open</a>
+          </div>
+          <div class="row" style="border-top:0;padding-top:0;color:var(--muted);font-size:12.5px">
+            ${g.met ? 'All gate conditions met.'
+              : (g.missing.length ? 'Missing: ' + g.missing.map(a => esc(a.label)).join(', ')
+                                  : 'Artifacts complete — no qualifying run yet.')}
+          </div>`;
+        }).join('') || '<div class="row muted">No submissions yet.</div>'}
+      </div>`;
+    }).join('')}</div>`;
+}
+
+function vendorRunHistory(){
+  const rows = APP.runs.filter(r => !product(r.productId).foreign)
+    .sort((a,b) => new Date(b.started) - new Date(a.started));
+  return crumbs([['Home', '#/products'], ['Run history']]) + `
+    <div class="pagehead"><div><h1>Run history</h1>
+      <div class="sub">Every run across every product. Immutable (FR11).</div></div></div>
+    <div class="card">${runTable(rows, {showProduct:true, sub:null})}</div>`;
+}
+
+function vendorSubmission(id){
+  const sub = submission(id);
+  if (!sub) return placeholder('Submission');
+  const p = product(sub.productId), g = gate(sub), m = MODELS[sub.model];
+  const runs = runsFor(sub);
+  const busy = busyRun(sub.productId);
+  return crumbs([['Home', '#/products'], ['My products', '#/products'], [p.name], [m.label]]) + `
+    <div class="pagehead">
+      <div><h1>${esc(m.label)} certification</h1>
+        <div class="sub">${esc(p.name)} &middot; ${esc(p.vendor)} &middot;
+          environment <span class="tag">${esc(p.env)}</span></div></div>
+      <div class="acts">
+        <button class="btn ghost sm" data-act="export">&#8682; Export</button>
+        <button class="btn" data-act="gotorun" data-sub="${sub.id}">Start a certification run</button>
+      </div>
+    </div>
+    ${statusBanner(sub, g, busy)}
+    <div class="card">
+      <div class="summary">
+        <div><div class="k">Status</div><div class="v">${badge(sub.status)}</div></div>
+        <div><div class="k">Cleared by</div><div class="v">${esc(STATUS[sub.status].who)}</div></div>
+        <div><div class="k">Created</div><div class="v">${fmt(sub.created)}</div></div>
+        <div><div class="k">Current qualifying run</div><div class="v">${
+          g.qualifying ? `<a href="#/run/${g.qualifying.id}">${esc(g.qualifying.id)}</a>` : 'None'}</div></div>
+        <div><div class="k">Scenario version</div><div class="v"><span class="tag">${esc(m.tag)}</span></div></div>
+      </div>
+      ${artifactCard(sub, false)}
+    </div>
+    ${sub.comments.length ? `<div class="card"><h2>Reviewer comments</h2>${
+      sub.comments.map(c => `<div class="banner orange" style="border-left-color:var(--amber);background:var(--amber-bg)">
+        <h3>${esc(c.by)} <span class="muted" style="font-weight:400">${fmt(c.at)}</span></h3>
+        <p>${esc(c.text)}</p></div>`).join('')}</div>` : ''}
+    <div class="card">
+      <div class="cardhead"><h2>Certification runs</h2>
+        <div class="right">
+          <label class="muted" style="font-size:12.5px">
+            <input type="checkbox" id="showTrial" ${APP.showTrial ? 'checked' : ''} /> Show trial runs
+          </label>
+        </div>
+      </div>
+      ${runTable(APP.showTrial ? runs : runs.filter(r => r.completeness === 'Complete'), {sub})}
+      ${!APP.showTrial && runs.some(r => r.completeness === 'Incomplete')
+        ? `<div class="muted" style="margin-top:12px;font-size:12.5px">${
+            runs.filter(r => r.completeness === 'Incomplete').length} trial run(s) hidden.
+            Trial runs show the same result detail; they are simply not admissible for review (§8.1).</div>` : ''}
+    </div>
+    ${historyCard(sub)}`;
+}
+
+function statusBanner(sub, g, busy){
+  if (sub.status === 'approved' || sub.status === 'rejected'){
+    const ok = sub.status === 'approved';
+    return `<div class="banner ${ok ? 'green' : 'red'}">
+      <h3>${badge(sub.status)} ${ok ? 'Certification approved' : 'Certification rejected'}</h3>
+      <p>${esc(sub.decision.by)} on ${fmt(sub.decision.at)}.${
+        sub.decision.reason ? ' Reason: ' + esc(sub.decision.reason) : ''}
+        This submission is terminal.</p></div>`;
+  }
+  if (sub.status === 'changes'){
+    return `<div class="banner amber"><h3>${badge('changes')} The reviewer has asked for changes</h3>
+      <p>Replace the artifacts named in the comment below, then start a new run. No intermediate
+      approval step is needed (FR14).</p></div>`;
+  }
+  if (sub.status === 'inreview'){
+    return `<div class="banner indigo"><h3>${badge('inreview')} A reviewer is looking at this now</h3>
+      <p>You may still replace artifacts. The reviewer will see an indicator that something changed
+      since they last looked (FR16).</p></div>`;
+  }
+  if (g.met){
+    return `<div class="banner green"><h3>${badge('ready')} All gate conditions met</h3>
+      <p>All three required artifact types are present and run
+      <a href="#/run/${g.qualifying.id}">${esc(g.qualifying.id)}</a> is a finished run stamped
+      <strong>Complete</strong>. Waiting on an Ed-Fi reviewer to pick it up.</p></div>`;
+  }
+  const bullets = [];
+  g.missing.forEach(a => bullets.push('<strong>Missing artifact:</strong> ' + esc(a.label) +
+    ' <span class="muted">— ' + esc(a.validation) + '</span>'));
+  if (g.artifactsComplete && !g.qualifying){
+    bullets.push('<strong>No qualifying run:</strong> artifacts are complete, but no finished run stamped ' +
+      '<em>Complete</em> exists yet. Start one more run — earlier runs stay <em>Incomplete</em> ' +
+      'because they did not execute against the package as it now stands (D14).');
+  }
+  return `<div class="banner amber">
+    <h3>${badge(sub.status)} ${sub.status === 'draft' ? 'Assembling artifacts' : 'Not yet ready for review'}</h3>
+    <p>The readiness gate is a deterministic rules check (FR13). Unmet conditions:</p>
+    <ul>${bullets.map(b => '<li>' + b + '</li>').join('')}</ul>
+    ${busy ? `<p class="muted">Run ${esc(busy.id)} is executing now and holds this product’s
+      single execution slot (D22).</p>` : ''}
+  </div>`;
+}
+
+function artifactCard(sub, reviewerView){
+  return `<h2>Required artifacts <span class="hint">All three gate <em>review</em>, not execution (§9).</span></h2>
+    <table class="t">
+      <thead><tr><th>Artifact</th><th>Current version</th><th>Uploaded by</th><th>Uploaded</th>
+        <th>Validated on upload</th><th class="act">Action</th></tr></thead>
+      <tbody>${ARTIFACTS.map(a => {
+        const cur = currentVersion(sub, a.id);
+        const versions = sub.artifacts[a.id].length;
+        return `<tr>
+          <td><strong>${esc(a.label)}</strong><div class="muted" style="font-size:12px">${esc(a.note)}</div></td>
+          <td>${cur ? `v${cur.v} <span class="muted">${esc(cur.name)}</span>${
+              versions > 1 ? `<div class="muted" style="font-size:12px">${versions} versions — prior versions retained in audit history</div>` : ''}`
+            : '<span class="badge b-amber">Missing</span>'}</td>
+          <td class="muted">${cur ? esc(cur.by) : '—'}</td>
+          <td class="muted nowrap">${cur ? fmtShort(cur.at) : '—'}</td>
+          <td class="muted">${esc(a.validation)}</td>
+          <td class="act">${reviewerView
+            ? (cur ? '<button class="btn ghost sm" data-act="viewartifact">View</button>' : '<span class="muted">—</span>')
+            : `<button class="btn sm" data-act="upload" data-sub="${sub.id}" data-type="${a.id}">${
+                cur ? 'Replace' : 'Upload'}</button>`}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>
+    ${reviewerView ? `<div class="muted" style="margin-top:12px;font-size:12.5px">
+      Reviewers do not upload artifacts on a vendor’s behalf (§8).</div>` : ''}`;
+}
+
+function runTable(rows, opts){
+  opts = opts || {};
+  if (!rows.length) return '<div class="empty">No runs yet.</div>';
+  return `<table class="t">
+    <thead><tr>
+      ${opts.showProduct ? '<th>Product</th>' : ''}
+      <th>Run</th><th>Scenario set</th><th>Completeness</th><th>State / outcome</th>
+      <th>Pinned artifacts</th><th>Tag &middot; SHA</th><th>Started by</th><th class="act"></th>
+    </tr></thead>
+    <tbody>${rows.map(r => {
+      const sub = submission(r.submissionId);
+      const stale = opts.sub ? isStale(opts.sub, r) : isStale(sub, r);
+      return `<tr>
+        ${opts.showProduct ? `<td>${esc(product(r.productId).name)}</td>` : ''}
+        <td><a href="#/run/${r.id}" class="mono">${esc(r.id)}</a>
+          ${stale && r.state === 'completed' ? '<div class="badge b-gray stale">Stale — artifacts have changed since</div>' : ''}</td>
+        <td>${esc(MODELS[r.model].label)}</td>
+        <td>${completenessBadge(r.completeness)}</td>
+        <td>${runStateHTML(r)}</td>
+        <td class="mono muted">${ARTIFACTS.map(a =>
+          a.id + ':' + (r.pinned && r.pinned[a.id] ? 'v' + r.pinned[a.id] : '—')).join('<br/>')}</td>
+        <td><span class="tag">${esc(r.tag)}</span><div class="mono muted">${esc(r.sha)}</div></td>
+        <td class="muted">${esc(r.initiator)}<div style="font-size:12px">${fmtShort(r.started)}
+          ${r.ended ? ' · ' + dur(r.started, r.ended) : ''}</div></td>
+        <td class="act"><a href="#/run/${r.id}">Results</a></td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table>
+  <div class="pager"><button>&laquo;</button><button>&lsaquo;</button>
+    <span>1 of 1</span><button>&rsaquo;</button><button>&raquo;</button>
+    <select><option>Show 10</option><option>Show 25</option></select></div>
+  <div class="legend">
+    <span class="badge b-green">Complete</span>
+    <span class="badge b-amber">Incomplete &middot; trial run</span>
+    <span class="badge b-gray">Stale — pinned versions superseded</span>
+    <span class="muted" style="font-size:12.5px">Designations are fixed at run start and never recalculated (D14).</span>
+  </div>`;
+}
+
+function runStateHTML(r){
+  if (r.state === 'queued')  return '<span class="dotstate">Queued</span>';
+  if (r.state === 'running') return '<span class="dotstate run"><i></i>Running…</span>';
+  const map = {
+    passed:['ok','All checks passed'],
+    failed:['bad','Checks failed'],
+    'infra-error':['warn','Infrastructure error'],
+    'auth-error':['warn','Authentication failure']
+  }[r.outcome] || ['','Completed'];
+  return `<span class="dotstate ${map[0]}"><i></i>${esc(map[1])}</span>`;
+}
+
+function historyCard(sub){
+  return `<div class="card"><h2>Audit history
+    <span class="hint">Append-only; actor and timestamp on every entry (FR17).</span></h2>
+    <ul class="hist">${sub.history.map(h => `<li>
+      <span class="when">${fmtShort(h.at)}</span>
+      <span>${esc(h.what)}</span>
+      <span class="who">${esc(h.who)}</span></li>`).join('')}</ul></div>`;
+}
+
+/* ---- start-a-run screen: keeps the existing Request Certification layout ---- */
+function vendorNewRun(id){
+  const sub = submission(id);
+  if (!sub) return placeholder('Start a run');
+  const p = product(sub.productId), m = MODELS[sub.model], g = gate(sub);
+  const busy = busyRun(sub.productId);
+  const mapping = currentVersion(sub, 'mapping');
+  const assessmentsBlocked = m.kind === 'assessments' && !mapping;
+  const stamp = wouldStamp(sub);
+  const blocked = !!busy || assessmentsBlocked;
+
+  let precondition = '';
+  if (busy){
+    precondition = `<div class="banner red"><h3>Another run is holding this product’s execution slot</h3>
+      <p>Run <a href="#/run/${busy.id}">${esc(busy.id)}</a> (${esc(MODELS[busy.model].label)}, started by
+      ${esc(busy.initiator)} at ${fmtShort(busy.started)}) is ${esc(busy.state)}. Only one run per product may
+      execute at a time, across all certification models (D22). Submissions may still be open concurrently.</p></div>`;
+  } else if (assessmentsBlocked){
+    precondition = `<div class="banner red"><h3>Assessments validation needs a mapping CSV first</h3>
+      <p>This is not the generic artifact gate. The mapping CSV is the input that tells the validator
+      <em>which resources and elements to check</em>, so without it there is nothing to validate against (D15).
+      Sample data and product documentation are <strong>not</strong> required to start an Assessments run.</p>
+      <p><button class="btn sm" data-act="upload" data-sub="${sub.id}" data-type="mapping">Upload mapping CSV</button></p></div>`;
+  } else {
+    precondition = `<div class="banner ${stamp === 'Complete' ? 'green' : 'amber'}">
+      <h3>This run will be stamped ${completenessBadge(stamp)}</h3>
+      <p>${stamp === 'Complete'
+        ? 'All required artifact types are present, so the run qualifies for the readiness gate (FR13).'
+        : 'Missing at start: <strong>' + g.missing.map(a => esc(a.label)).join(', ') +
+          '</strong>. Results will be real and fully displayed, but the run cannot make this submission ' +
+          'Ready for Review. Uploading the missing artifacts later does not upgrade it (§8.1).'}</p>
+      <p class="muted">The designation is assigned once, at start, and pinned to the artifact versions present
+      right now: ${ARTIFACTS.map(a => { const c = currentVersion(sub, a.id);
+        return esc(a.label) + ' ' + (c ? 'v' + c.v : '—'); }).join(' · ')}</p></div>`;
+  }
+
+  const scenarioTable = m.kind === 'bruno' ? `
+    <div class="card">
+      <div class="cardhead"><h2>Scenarios</h2>
+        <div class="right muted" style="font-size:12.5px">${SCENARIOS[sub.model].length} scenarios in
+          <span class="tag">${esc(m.tag)}</span></div></div>
+      <div class="tools">
+        <div class="search"><input placeholder="Search" id="scenSearch" /></div>
+        <button class="linkish">More options</button>
+        <span class="chip">Area or group filter
+          <select id="areaFilter">
+            <option value="">All area or group values</option>
+            ${[...new Set(SCENARIOS[sub.model].map(s => s[0]))].map(a =>
+              `<option ${APP.areaFilter === a ? 'selected' : ''}>${esc(a)}</option>`).join('')}
+          </select></span>
+      </div>
+      <table class="t">
+        <thead><tr><th>Area or group</th><th>Scenario</th><th>Steps</th><th class="act">Action</th></tr></thead>
+        <tbody>${SCENARIOS[sub.model]
+          .filter(s => !APP.areaFilter || s[0] === APP.areaFilter)
+          .map(([area, scenario]) => `<tr>
+            <td>${esc(area)}</td><td>${esc(scenario)}</td>
+            <td class="muted">4</td>
+            <td class="act"><button class="btn sm" ${blocked ? 'disabled' : ''}
+              data-act="onescenario">Validate Scenario</button></td></tr>`).join('')}</tbody>
+      </table>
+      <div class="pager"><button>&laquo;</button><button>&lsaquo;</button><span>1 of 1</span>
+        <button>&rsaquo;</button><button>&raquo;</button>
+        <select><option>Show 10</option><option>Show 25</option></select></div>
+    </div>` : `
+    <div class="card">
+      <h2>In-scope resources <span class="hint">Read from the mapping CSV — the platform does not derive the mapping (§5).</span></h2>
+      ${mapping ? `<div class="muted" style="margin-bottom:12px">From
+        <strong>${esc(mapping.name)}</strong> (v${mapping.v}, uploaded ${fmtShort(mapping.at)} by ${esc(mapping.by)}).</div>
+      <table class="t"><thead><tr><th>Domain</th><th>Resource</th><th>Declared elements</th><th>Checks</th></tr></thead>
+        <tbody>${ASSESSMENT_RESULTS.map(g2 => `<tr>
+          <td>${esc(g2.domain)}</td><td class="mono">${esc(g2.resource)}</td>
+          <td>${g2.elements.length}</td>
+          <td class="muted">presence &middot; descriptor validity &middot; value reconciliation</td></tr>`).join('')}</tbody>
+      </table>
+      <div class="muted" style="margin-top:12px;font-size:12.5px">GET requests only; no writes or updates (§5).
+        A declared resource the environment returns nothing for is a run <em>failure</em>, not a refusal to
+        run (D24).</div>`
+      : '<div class="empty">No mapping CSV uploaded, so no resources are in scope.</div>'}
+    </div>`;
+
+  return crumbs([['Home', '#/products'], ['My products', '#/products'],
+                 [p.name, '#/submission/' + sub.id], ['Start a run']]) + `
+    <div class="pagehead">
+      <div><h1>Request Certification</h1>
+        <div class="sub">${esc(p.name)} &middot; ${esc(m.label)} &middot;
+          environment <span class="tag">${esc(p.env)}</span></div></div>
+      <div class="acts"><a class="btn ghost sm" href="#/submission/${sub.id}">Back to submission</a></div>
+    </div>
+    ${precondition}
+    <div class="card">
+      <div class="field"><label>Scenario set</label>
+        <select id="modelSel">${Object.values(MODELS).map(x =>
+          `<option value="${x.id}" ${x.id === sub.model ? 'selected' : ''}>${esc(x.label)}</option>`).join('')}</select>
+        <div class="help">This submission is a ${esc(m.label)} submission. Switching the set here is
+          illustrative only — in the product you would open that model’s submission.</div></div>
+      <div class="field"><label>Environment credentials</label>
+        <div class="muted">Resolved automatically from Admin App’s existing tenant-environment mechanism
+          for <span class="tag">${esc(p.env)}</span> and handed to the executor out-of-band (D20, FR8).
+          Client ID and secret are never displayed here, written to run logs, or included in run output.</div></div>
+      <div class="field"><label>Scenarios version</label>
+        <div>Tag <span class="tag">${esc(m.tag)}</span> &rarr; resolves to commit
+          <span class="mono">${esc(m.sha)}</span></div>
+        <div class="help">Runs execute a named tag promoted by the Product Owner; the resolved SHA is recorded
+          on the run so it stays reproducible to an exact commit (D21).</div></div>
+      <div class="field"><label>Simulated outcome <span class="muted">(prototype only)</span></label>
+        <select id="outcomeSel">
+          <option value="realistic">Realistic first run — some checks fail</option>
+          <option value="pass">All checks pass</option>
+          <option value="infra">Infrastructure error — executor cannot reach the environment</option>
+          <option value="auth">Authentication failure — 401 from the environment</option>
+        </select>
+        <div class="help">Real runs have no such switch. It is here because FR8 requires scenario failures,
+          infrastructure failures and authentication failures to be told apart.</div></div>
+      <div class="btnrow">
+        <button class="btn" data-act="startrun" data-sub="${sub.id}" ${blocked ? 'disabled' : ''}>
+          Start ${esc(m.label)} run</button>
+        ${blocked ? `<span class="muted">${busy ? 'Blocked: run ' + esc(busy.id) + ' is still executing.'
+          : 'Blocked: a valid mapping CSV is required.'}</span>` : ''}
+      </div>
+    </div>
+    ${scenarioTable}`;
+}
+
+/* ---- run results ---- */
+function runResults(id, reviewerView){
+  const r = run(id);
+  if (!r) return placeholder('Run');
+  const sub = submission(r.submissionId), p = product(r.productId), m = MODELS[r.model];
+  const t = resultTally(r.results);
+  const stale = isStale(sub, r);
+  const home = reviewerView ? '#/queue' : '#/products';
+  const back = reviewerView ? '#/review/' + sub.id : '#/submission/' + sub.id;
+
+  let body;
+  if (r.state !== 'completed'){
+    body = `<div class="card"><h2>Execution</h2>
+      <div class="banner blue"><h3>${runStateHTML(r)}</h3>
+        <p>${r.state === 'queued'
+          ? 'Queued — waiting for the executor. This product’s single execution slot is held by this run (D22).'
+          : 'The executor is running ' + esc(m.tag) + ' against ' + esc(r.env) + '. Output is ingested and persisted, not just streamed (FR8).'}</p></div>
+      <div class="muted">This page refreshes itself; no need to reload.</div></div>`;
+  } else if (r.outcome === 'infra-error'){
+    body = `<div class="card"><h2>Execution result</h2>
+      <div class="banner red"><h3><span class="badge b-amber">Infrastructure error</span></h3>
+      <p>The executor could not reach environment <span class="tag">${esc(r.env)}</span>
+      (connection timed out after 30s). <strong>No scenarios were executed</strong>, so this is not a
+      statement about the vendor’s integration. FR8 requires this to be distinguishable from a
+      scenario failure and from an authentication failure.</p></div>
+      <div class="muted">Recorded in run history like any other run. Nothing is deleted or retried silently.</div></div>`;
+  } else if (r.outcome === 'auth-error'){
+    body = `<div class="card"><h2>Execution result</h2>
+      <div class="banner red"><h3><span class="badge b-amber">Authentication failure</span></h3>
+      <p>The environment returned <strong>401 Unauthorized</strong> for the credentials resolved for
+      <span class="tag">${esc(r.env)}</span>. Scenarios did not run. If the application credentials were
+      regenerated, that rotation is recorded in audit history (FR5) so a failure after a rotation is explicable.</p>
+      <p class="muted">Credential values are never shown here or written to run output (§13).</p></div></div>`;
+  } else if (r.results.kind === 'bruno'){
+    body = brunoResultsHTML(r);
+  } else {
+    body = assessmentResultsHTML(r);
+  }
+
+  return crumbs([['Home', home], [p.name, back], ['Run ' + r.id]]) + `
+    <div class="pagehead">
+      <div><h1>Run results</h1>
+        <div class="sub">${esc(p.name)} &middot; ${esc(m.label)} &middot; run
+          <span class="mono">${esc(r.id)}</span></div></div>
+      <div class="acts"><a class="btn ghost sm" href="${back}">Back to submission</a></div>
+    </div>
+    ${r.completeness === 'Incomplete' ? `<div class="banner amber">
+      <h3>${completenessBadge('Incomplete')} Trial run — not admissible as certification evidence</h3>
+      <p>Artifacts missing when this run started: <strong>${ARTIFACTS.filter(a => !r.pinned[a.id])
+        .map(a => esc(a.label)).join(', ') || 'none recorded'}</strong>.
+      Results below carry the same level of detail as a qualifying run — they simply cannot satisfy the
+      readiness gate (§8.1).</p></div>` : ''}
+    ${stale ? `<div class="banner"><h3><span class="badge b-gray">Stale</span> Artifacts have changed since this run</h3>
+      <p>This run pinned ${ARTIFACTS.map(a => esc(a.label) + ' ' +
+        (r.pinned[a.id] ? 'v' + r.pinned[a.id] : '—')).join(', ')}. The submission now carries
+        ${ARTIFACTS.map(a => { const c = currentVersion(sub, a.id);
+          return esc(a.label) + ' ' + (c ? 'v' + c.v : '—'); }).join(', ')}.
+        A reviewer should not treat it as evidence for artifacts it never saw (FR11).</p></div>` : ''}
+    <div class="card">
+      <div class="summary">
+        <div><div class="k">Completeness</div><div class="v">${completenessBadge(r.completeness)}</div></div>
+        <div><div class="k">Outcome</div><div class="v">${runStateHTML(r)}</div></div>
+        <div><div class="k">Started by</div><div class="v">${esc(r.initiator)}</div></div>
+        <div><div class="k">Started / ended</div><div class="v">${fmtShort(r.started)} →
+          ${r.ended ? fmtShort(r.ended) : 'running'} <span class="muted">(${dur(r.started, r.ended)})</span></div></div>
+        <div><div class="k">Environment</div><div class="v"><span class="tag">${esc(r.env)}</span></div></div>
+        <div><div class="k">Tag &rarr; commit</div><div class="v"><span class="tag">${esc(r.tag)}</span>
+          <span class="mono muted">${esc(r.sha)}</span></div></div>
+        ${r.results ? `<div><div class="k">Checks</div><div class="v">${t.pass} passed,
+          ${t.fail} failed <span class="muted">of ${t.total} ${esc(t.unit)}</span></div></div>` : ''}
+      </div>
+      <div class="muted" style="font-size:12.5px">Determinism: re-running this submission against an unchanged
+        environment produces the same result (§13). Run records are immutable (FR11).</div>
+    </div>
+    ${body}`;
+}
+
+function brunoResultsHTML(r){
+  const sel = APP.openScenario || null;
+  const scen = sel ? r.results.scenarios.find(s => s.area + '/' + s.scenario === sel) : null;
+  if (scen){
+    return `<div class="card">
+      <div class="scenariohead">
+        <div><div class="k">Group or area</div><div class="v">${esc(scen.area)}</div></div>
+        <div><div class="k">Scenario</div><div class="v">${esc(scen.scenario)}</div></div>
+        <div style="margin-left:auto"><div class="k">Result</div>
+          <div class="v">${scen.st === 'pass'
+            ? '<span class="dotstate ok"><i></i>Passed</span>'
+            : '<span class="dotstate bad"><i></i>Failed</span>'}</div></div>
+      </div>
+      <table class="t">
+        <thead><tr><th>Step</th><th>Status</th><th>Detail</th></tr></thead>
+        <tbody>${scen.steps.map(s => `<tr>
+          <td>${esc(s.label)}</td>
+          <td>${s.st === 'pass' ? '<span class="dotstate ok"><i></i>Passed</span>'
+              : s.st === 'fail' ? '<span class="dotstate bad"><i></i>Failed</span>'
+              : '<span class="dotstate">Not executed</span>'}</td>
+          <td class="muted">${esc(s.msg) || (s.st === 'skipped' ? 'Skipped — a prior step in the scenario failed.' : '')}</td>
+        </tr>`).join('')}</tbody>
+      </table>
+      <div style="margin-top:16px"><button class="linkish" data-act="closescenario">Back to all scenarios</button></div>
+      <div class="summary" style="margin-top:18px;border-bottom:0;padding-bottom:0">
+        <div><div class="k">Execution result</div><div class="v">${scen.st === 'pass' ? 'Passed' : 'Failed'}</div></div>
+      </div>
+    </div>`;
+  }
+  const failed = r.results.scenarios.filter(s => s.st !== 'pass');
+  return `<div class="card">
+    <div class="cardhead"><h2>Scenario results <span class="hint">Bruno-based results are shown by scenario (FR10).</span></h2>
+      <div class="right muted" style="font-size:12.5px">${r.results.scenarios.length - failed.length} passed
+        &middot; ${failed.length} failed</div></div>
+    ${failed.length ? `<div class="banner red"><h3>${failed.length} scenario(s) failed</h3>
+      <ul>${failed.map(s => `<li><strong>${esc(s.area)}/${esc(s.scenario)}</strong> —
+        ${esc((s.steps.find(x => x.st === 'fail') || {}).msg || '')}</li>`).join('')}</ul></div>` : ''}
+    <table class="t">
+      <thead><tr><th>Area or group</th><th>Scenario</th><th>Steps passed</th><th>Status</th><th class="act">Action</th></tr></thead>
+      <tbody>${r.results.scenarios.map(s => {
+        const okCount = s.steps.filter(x => x.st === 'pass').length;
+        return `<tr>
+          <td>${esc(s.area)}</td><td>${esc(s.scenario)}</td>
+          <td class="muted">${okCount} of ${s.steps.length}</td>
+          <td>${s.st === 'pass' ? '<span class="dotstate ok"><i></i>Passed</span>'
+                                : '<span class="dotstate bad"><i></i>Failed</span>'}</td>
+          <td class="act"><button class="btn ghost sm" data-act="openscenario"
+            data-key="${esc(s.area + '/' + s.scenario)}">View steps</button></td></tr>`;
+      }).join('')}</tbody>
+    </table>
+    <div class="pager"><button>&laquo;</button><button>&lsaquo;</button><span>1 of 1</span>
+      <button>&rsaquo;</button><button>&raquo;</button>
+      <select><option>Show 25</option></select></div>
+  </div>`;
+}
+
+function assessmentResultsHTML(r){
+  const kinds = {};
+  r.results.groups.forEach(g => g.elements.forEach(e => {
+    if (e.st !== 'pass') kinds[e.st] = (kinds[e.st] || 0) + 1; }));
+  return `<div class="card">
+    <div class="cardhead"><h2>Validation results
+      <span class="hint">By domain, resource and element (FR10). GET requests only.</span></h2></div>
+    ${Object.keys(kinds).length ? `<div class="banner red"><h3>Failures by kind</h3>
+      <ul>${Object.entries(kinds).map(([k, n]) =>
+        `<li><strong>${esc(ST_LABEL[k][1])}</strong> &mdash; ${n}</li>`).join('')}</ul>
+      <p class="muted">A type error and a value mismatch mean different things to a vendor fixing them, so they
+      are reported separately (§9.1).</p></div>`
+      : `<div class="banner green"><h3>All element checks passed</h3>
+         <p>Every element declared in the mapping CSV was present and populated, every descriptor resolved to a
+         legitimate Ed-Fi URI, and every value reconciled to the submitted sample data (D8).</p></div>`}
+    ${r.results.groups.map(g => `
+      <h2 style="margin-top:22px">${esc(g.domain)} <span class="hint">/ <span class="mono">${esc(g.resource)}</span></span></h2>
+      ${g.emptyResource ? `<div class="banner amber"><h3>Declared resource returned no data</h3>
+        <p><span class="mono">GET /ed-fi/${esc(g.resource)}</span> returned <strong>200 with an empty
+        collection</strong>. The mapping declares this resource, so the run <em>fails loudly</em> rather than
+        refusing to start — "this resource returned nothing" is the actionable feedback (D24).</p></div>` : ''}
+      <table class="t">
+        <thead><tr><th>Element</th><th>Ed-Fi type</th><th>Expected (sample data)</th>
+          <th>Observed (API response)</th><th>Result</th></tr></thead>
+        <tbody>${g.elements.map(e => `<tr>
+          <td class="mono">${esc(e.el)}</td>
+          <td class="muted">${esc(e.type)}</td>
+          <td class="mono">${esc(e.expected)}</td>
+          <td class="mono ${e.st === 'pass' ? '' : 'err'}">${esc(e.observed)}</td>
+          <td><span class="dotstate ${ST_LABEL[e.st][0]}"><i></i>${esc(ST_LABEL[e.st][1])}</span>
+            ${e.why ? `<div class="muted" style="font-size:12px">${esc(e.why)}</div>` : ''}</td>
+        </tr>`).join('')}</tbody>
+      </table>`).join('')}
+    <div class="legend">
+      <span class="badge b-green">Pass</span><span class="badge b-red">Missing element</span>
+      <span class="badge b-red">Invalid descriptor</span><span class="badge b-red">Value mismatch</span>
+      <span class="badge b-red">Type error</span><span class="badge b-red">No data returned</span>
+      <span class="muted" style="font-size:12.5px">Normalization is applied symmetrically to both sides and is
+        versioned with the validator — never configurable per vendor (§9.1).</span>
+    </div>
+  </div>`;
+}
+
+/* ---------------- REVIEWER ---------------- */
+function reviewerScreen(route){
+  switch (route.name){
+    case 'dashboard': return reviewerDashboard();
+    case 'queue':     return reviewerQueue();
+    case 'review':    return reviewerSubmission(route.args[0]);
+    case 'run':       return runResults(route.args[0], true);
+    default:          return placeholder(route.name.charAt(0).toUpperCase() + route.name.slice(1));
+  }
+}
+
+function reviewerDashboard(){
+  const newlyReady = APP.submissions.filter(s => s.status === 'ready');
+  const changed = APP.submissions.filter(hasUnseenChanges);
+  const inflight = APP.runs.filter(r => r.state === 'queued' || r.state === 'running');
+  const recentFail = APP.runs.filter(r => r.state === 'completed' && r.outcome !== 'passed')
+    .sort((a,b) => new Date(b.ended) - new Date(a.ended)).slice(0, 6);
+  const rowLink = s => `<a href="#/review/${s.id}">${esc(product(s.productId).name)}</a>`;
+
+  return crumbs([['Home', '#/dashboard'], ['Certification dashboard']]) + `
+    <div class="pagehead">
+      <div><h1>Certification dashboard</h1>
+        <div class="sub">No outbound email in the MVP (D12), so pending work has to be discoverable here (FR12).</div></div>
+      <div class="acts"><a class="btn ghost sm" href="#/queue">Open review queue</a></div>
+    </div>
+    <div class="asof">Accurate as of page load &mdash; ${fmt(APP.loadedAt)}. This surface is not required to
+      update live; the operating assumption is a same-business-day check as part of a normal workday (D23).</div>
+    <div class="kpis">
+      <div class="kpi ${newlyReady.length ? 'hot' : ''}"><div class="n">${newlyReady.length}</div>
+        <div class="l">Newly Ready for Review</div></div>
+      <div class="kpi ${changed.length ? 'hot' : ''}"><div class="n">${changed.length}</div>
+        <div class="l">Artifacts changed during review</div></div>
+      <div class="kpi"><div class="n">${inflight.length}</div><div class="l">Runs in flight</div></div>
+      <div class="kpi"><div class="n">${recentFail.length}</div><div class="l">Runs recently failed</div></div>
+    </div>
+
+    <div class="card"><h2>Newly Ready for Review
+      <span class="hint">All required artifacts present and a qualifying run exists.</span></h2>
+      ${newlyReady.length ? `<table class="t">
+        <thead><tr><th>Product</th><th>Vendor</th><th>Certification model</th><th>Qualifying run</th>
+          <th>Waiting since</th><th class="act">Action</th></tr></thead>
+        <tbody>${newlyReady.map(s => { const g = gate(s);
+          return `<tr><td>${rowLink(s)}</td><td>${esc(product(s.productId).vendor)}</td>
+            <td>${esc(MODELS[s.model].label)}</td>
+            <td><a href="#/run/${g.qualifying.id}" class="mono">${esc(g.qualifying.id)}</a>
+              ${isStale(s, g.qualifying) ? ' <span class="badge b-gray stale">Stale</span>' : ''}</td>
+            <td class="muted">${fmtShort(s.history[0] ? s.history[0].at : s.created)}</td>
+            <td class="act"><button class="btn sm" data-act="pickup" data-sub="${s.id}">Pick up</button></td></tr>`;
+        }).join('')}</tbody></table>` : '<div class="empty">Nothing new. Queue is clear.</div>'}
+    </div>
+
+    <div class="card"><h2>Changed while I was reviewing
+      <span class="hint">Artifacts replaced since my last review action (FR16).</span></h2>
+      ${changed.length ? `<table class="t">
+        <thead><tr><th>Product</th><th>Status</th><th>Last looked at</th><th>Artifacts changed</th><th class="act"></th></tr></thead>
+        <tbody>${changed.map(s => `<tr><td>${rowLink(s)}</td><td>${badge(s.status)}</td>
+          <td class="muted">${fmtShort(s.reviewerSeenAt)}</td>
+          <td><span class="badge b-orange">Changed ${fmtShort(s.artifactsChangedAt)}</span></td>
+          <td class="act"><a href="#/review/${s.id}">Re-open</a></td></tr>`).join('')}</tbody></table>`
+        : '<div class="empty">No mid-review changes.</div>'}
+    </div>
+
+    <div class="card"><h2>Runs in flight or recently failed</h2>
+      ${(inflight.length + recentFail.length) ? `<table class="t">
+        <thead><tr><th>Run</th><th>Product</th><th>Model</th><th>Completeness</th><th>State</th><th>When</th></tr></thead>
+        <tbody>${inflight.concat(recentFail).map(r => `<tr>
+          <td><a href="#/run/${r.id}" class="mono">${esc(r.id)}</a></td>
+          <td>${esc(product(r.productId).name)}</td><td>${esc(MODELS[r.model].label)}</td>
+          <td>${completenessBadge(r.completeness)}</td><td>${runStateHTML(r)}</td>
+          <td class="muted nowrap">${fmtShort(r.ended || r.started)}</td></tr>`).join('')}</tbody></table>`
+        : '<div class="empty">No runs in flight and none recently failed.</div>'}
+    </div>`;
+}
+
+function reviewerQueue(){
+  const q = (APP.queueSearch || '').toLowerCase();
+  let rows = APP.submissions.filter(s => {
+    if (APP.queueStatus && s.status !== APP.queueStatus) return false;
+    if (!q) return true;
+    const p = product(s.productId);
+    return (p.name + ' ' + p.vendor + ' ' + MODELS[s.model].label).toLowerCase().includes(q);
+  });
+  const order = {ready:0, inreview:1, changes:2, incomplete:3, draft:4, approved:5, rejected:6};
+  rows.sort((a, b) => order[a.status] - order[b.status]);
+
+  return crumbs([['Home', '#/dashboard'], ['Review queue']]) + `
+    <div class="pagehead">
+      <div><h1>Certification management</h1>
+        <div class="sub">Work through a queue rather than chase vendors (FR12).</div></div>
+      <div class="acts"><button class="btn ghost sm" data-act="export">&#8682; Export</button></div>
+    </div>
+    <div class="card">
+      <div class="tools">
+        <div class="search"><input id="queueSearch" placeholder="Search" value="${esc(APP.queueSearch || '')}" /></div>
+        <button class="linkish">Hide options</button>
+        <span class="chip">Add sort +</span>
+        <span class="chip">Status
+          <select id="queueStatus">
+            <option value="">All statuses</option>
+            ${Object.keys(STATUS).map(k => `<option value="${k}" ${APP.queueStatus === k ? 'selected' : ''}>${
+              esc(STATUS[k].label)}</option>`).join('')}
+          </select></span>
+      </div>
+      ${rows.length ? `<table class="t">
+        <thead><tr><th>Product</th><th>Vendor</th><th>Model</th><th>Status</th><th>Qualifying run</th>
+          <th>Artifacts</th><th>Last activity</th><th class="act">Action</th></tr></thead>
+        <tbody>${rows.map(s => {
+          const g = gate(s), p = product(s.productId);
+          return `<tr>
+            <td><a href="#/review/${s.id}">${esc(p.name)}</a>
+              ${hasUnseenChanges(s) ? '<div class="badge b-orange stale">Changed since you last looked</div>' : ''}</td>
+            <td>${esc(p.vendor)}</td>
+            <td>${esc(MODELS[s.model].label)}</td>
+            <td>${badge(s.status)}</td>
+            <td>${g.qualifying ? `<a href="#/run/${g.qualifying.id}" class="mono">${esc(g.qualifying.id)}</a>${
+                isStale(s, g.qualifying) ? ' <span class="badge b-gray stale">Stale</span>' : ''}`
+              : '<span class="muted">None</span>'}</td>
+            <td>${g.artifactsComplete ? '<span class="badge b-green">3 of 3</span>'
+              : `<span class="badge b-amber">${3 - g.missing.length} of 3</span>`}</td>
+            <td class="muted nowrap">${fmtShort(s.history[0] ? s.history[0].at : s.created)}</td>
+            <td class="act">${['ready'].includes(s.status)
+              ? `<button class="btn sm" data-act="pickup" data-sub="${s.id}">Pick up</button>`
+              : `<a href="#/review/${s.id}">Open</a>`}</td></tr>`;
+        }).join('')}</tbody></table>
+      <div class="pager"><button>&laquo;</button><button>&lsaquo;</button><span>1 of 1</span>
+        <button>&rsaquo;</button><button>&raquo;</button>
+        <select><option>Show 10</option><option>Show 25</option></select></div>
+      <div class="legend">${Object.keys(STATUS).map(k => badge(k)).join('')}</div>`
+      : '<div class="empty">No submissions match this filter.</div>'}
+    </div>`;
+}
+
+function reviewerSubmission(id){
+  const sub = submission(id);
+  if (!sub) return placeholder('Submission');
+  const p = product(sub.productId), m = MODELS[sub.model], g = gate(sub);
+  const runs = runsFor(sub);
+  const shown = APP.showTrial ? runs : runs.filter(r => r.completeness === 'Complete');
+  const terminal = ['approved','rejected'].includes(sub.status);
+  const changedFlag = hasUnseenChanges(sub);
+
+  return crumbs([['Home', '#/dashboard'], ['Review queue', '#/queue'], [p.name], [m.label]]) + `
+    <div class="pagehead">
+      <div><h1>${esc(p.name)}</h1>
+        <div class="sub">${esc(p.vendor)} &middot; ${esc(m.label)} &middot;
+          environment <span class="tag">${esc(p.env)}</span></div></div>
+      <div class="acts">
+        <button class="btn ghost sm" data-act="export">&#8682; Export</button>
+        ${terminal ? '' : `
+        <button class="btn ghost sm" data-act="changes" data-sub="${sub.id}">Request changes</button>
+        <button class="btn red sm" data-act="reject" data-sub="${sub.id}">Reject</button>
+        <button class="btn sm" data-act="approve" data-sub="${sub.id}">Approve</button>`}
+      </div>
+    </div>
+    ${changedFlag ? `<div class="banner amber"><h3><span class="badge b-orange">Changed</span>
+      Artifacts changed since your last review action</h3>
+      <p>You last looked at this submission on ${fmt(sub.reviewerSeenAt)}; artifacts were replaced on
+      ${fmt(sub.artifactsChangedAt)}. Check whether the qualifying run still reflects what is attached now.</p></div>` : ''}
+    ${terminal ? `<div class="banner ${sub.status === 'approved' ? 'green' : 'red'}">
+      <h3>${badge(sub.status)} Decision recorded</h3>
+      <p>${esc(sub.decision.by)} on ${fmt(sub.decision.at)}.${
+        sub.decision.reason ? ' Reason: ' + esc(sub.decision.reason) : ''} Terminal for this submission (FR15).</p></div>` : ''}
+    ${!terminal && !g.met ? `<div class="banner amber"><h3>${badge(sub.status)} Not admissible yet</h3>
+      <p>The readiness gate is unmet: ${g.missing.length
+        ? 'missing ' + g.missing.map(a => esc(a.label)).join(', ') + '.'
+        : 'artifacts are complete but no finished run stamped <em>Complete</em> exists.'}
+      Reviewers never spend time on an incomplete package (FR13).</p></div>` : ''}
+
+    <div class="card">
+      <div class="summary">
+        <div><div class="k">Status</div><div class="v">${badge(sub.status)}</div></div>
+        <div><div class="k">Cleared by</div><div class="v">${esc(STATUS[sub.status].who)}</div></div>
+        <div><div class="k">Qualifying run</div><div class="v">${g.qualifying
+          ? `<a href="#/run/${g.qualifying.id}">${esc(g.qualifying.id)}</a>` : 'None'}</div></div>
+        <div><div class="k">Runs recorded</div><div class="v">${runs.length}
+          <span class="muted">(${runs.filter(r => r.completeness === 'Complete').length} qualifying)</span></div></div>
+        <div><div class="k">Submitted</div><div class="v">${fmt(sub.created)}</div></div>
+      </div>
+      ${artifactCard(sub, true)}
+      <div class="banner" style="margin:18px 0 0">
+        <h3>Reviewer judgment, not platform judgment</h3>
+        <p>The platform has checked what it can check. Semantic alignment &mdash; whether this mapping is a
+        defensible representation of the product &mdash; is human judgment and is deliberately not automated
+        (§10.3, §12). Spot-check the results; the platform is trusted to have executed the checks
+        correctly. The platform never approves or rejects a certification.</p>
+      </div>
+    </div>
+
+    ${sub.comments.length ? `<div class="card"><h2>Review comments</h2>
+      <ul class="hist">${sub.comments.map(c => `<li><span class="when">${fmtShort(c.at)}</span>
+        <span>${esc(c.text)}</span><span class="who">${esc(c.by)}</span></li>`).join('')}</ul></div>` : ''}
+
+    <div class="card">
+      <div class="cardhead"><h2>Runs <span class="hint">Defaults to qualifying runs (FR12).</span></h2>
+        <div class="right"><label class="muted" style="font-size:12.5px">
+          <input type="checkbox" id="showTrial" ${APP.showTrial ? 'checked' : ''} /> Include trial runs</label></div>
+      </div>
+      ${runTable(shown, {sub})}
+    </div>
+    ${historyCard(sub)}`;
+}
+
+/* ==============================================================
+   Modals, toasts, event binding
+   ============================================================== */
+function closeModal(){ $('#overlay').innerHTML = ''; }
+function modal(title, bodyHTML, footerHTML){
+  $('#overlay').innerHTML = `<div class="veil" data-veil="1"><div class="modal">
+    <div class="mh">${title}</div><div class="mb">${bodyHTML}</div>
+    <div class="mf">${footerHTML}</div></div></div>`;
+  $('#overlay').querySelector('[data-veil]').addEventListener('click', e => {
+    if (e.target.dataset.veil) closeModal();
+  });
+  bindOverlay();
+}
+let toastTimer = null;
+function toast(msg){
+  const t = document.createElement('div');
+  t.className = 'toast'; t.innerHTML = msg;
+  document.body.appendChild(t);
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.remove(), 4200);
+}
+
+function uploadModal(sub, type){
+  const a = ARTIFACTS.find(x => x.id === type);
+  const cur = currentVersion(sub, type);
+  const isMapping = type === 'mapping';
+  modal((cur ? 'Replace ' : 'Upload ') + esc(a.label), `
+    <div class="drop">Drag a file here, or</div>
+    <div class="field"><label>File</label><input type="text" id="fileName"
+      value="${esc(suggestName(sub, type, cur))}" /></div>
+    <div class="field"><label>Validation on upload</label>
+      <div class="muted">${esc(a.validation)}. ${esc(a.note)}</div></div>
+    ${isMapping ? `<div class="field radios"><label style="font-weight:700;display:block;margin-bottom:8px">
+      Simulate <span class="muted" style="font-weight:400">(prototype only — no file is really parsed)</span></label>
+      <label><input type="radio" name="sim" value="ok" checked /> A file that conforms to the published
+        mapping CSV template</label>
+      <label><input type="radio" name="sim" value="bad" /> A malformed file — to see structural
+        validation reject it (D9, FR6)</label></div>` : ''}
+    ${cur ? `<div class="banner"><h3>This creates version ${cur.v + 1}</h3>
+      <p>Prior versions remain visible in audit history, and any run that pinned v${cur.v} keeps pointing at
+      v${cur.v} — it will simply be marked stale (D14, FR11).</p></div>` : ''}
+  `, `<button class="btn ghost" data-act="cancel">Cancel</button>
+      <button class="btn" data-act="douploadconfirm" data-sub="${sub.id}" data-type="${type}">
+        ${cur ? 'Replace artifact' : 'Upload artifact'}</button>`);
+}
+function suggestName(sub, type, cur){
+  const slug = MODELS[sub.model].id;
+  const n = (sub.artifacts[type].length + 1);
+  return {mapping:'vendorb-' + slug + '-mapping-v' + n + '.csv',
+          sample:'vendorb-' + slug + '-sample-data.json',
+          docs:'VendorB-' + slug.toUpperCase() + '-Score-Report.pdf'}[type];
+}
+
+function bind(){
+  const main = $('#main');
+
+  main.querySelectorAll('[data-act]').forEach(node => {
+    node.addEventListener('click', ev => {
+      const act = node.dataset.act;
+      const sub = node.dataset.sub ? submission(node.dataset.sub) : null;
+      switch (act){
+        case 'upload': ev.preventDefault(); uploadModal(sub, node.dataset.type); break;
+        case 'gotorun': go('#/newrun/' + sub.id); break;
+        case 'startrun': {
+          const mode = $('#outcomeSel') ? $('#outcomeSel').value : 'realistic';
+          const r = startRun(sub, mode);
+          toast('Run <strong>' + r.id + '</strong> queued and stamped <strong>' + r.completeness +
+            '</strong>. Completeness is fixed now and never recalculated.');
+          go('#/run/' + r.id);
+          render();
+          break;
+        }
+        case 'openscenario': APP.openScenario = node.dataset.key; render(); break;
+        case 'closescenario': APP.openScenario = null; render(); break;
+        case 'onescenario':
+          toast('In the product this runs the single scenario and loads its dynamic parameters. ' +
+                'The prototype only simulates whole runs.');
+          break;
+        case 'pickup':
+          reviewerOpen(sub);
+          go('#/review/' + sub.id);
+          render();
+          toast('Submission moved to <strong>In Review</strong> and is now visible to the vendor as such.');
+          break;
+        case 'changes': changesModal(sub); break;
+        case 'approve': decisionModal(sub, 'approved'); break;
+        case 'reject': decisionModal(sub, 'rejected'); break;
+        case 'newsub': newSubmissionModal(); break;
+        case 'export':
+        case 'viewartifact':
+          toast('Not implemented in the prototype — the button is here because the existing Admin App ' +
+                'page furniture has it.');
+          break;
+      }
+    });
+  });
+
+  const st = $('#showTrial');
+  if (st) st.addEventListener('change', e => { APP.showTrial = e.target.checked; render(); });
+  const af = $('#areaFilter');
+  if (af) af.addEventListener('change', e => { APP.areaFilter = e.target.value; render(); });
+  const qs = $('#queueSearch');
+  if (qs) qs.addEventListener('input', e => {
+    APP.queueSearch = e.target.value;
+    const pos = e.target.selectionStart;
+    render();
+    const nx = $('#queueSearch');
+    if (nx){ nx.focus(); nx.setSelectionRange(pos, pos); }
+  });
+  const qst = $('#queueStatus');
+  if (qst) qst.addEventListener('change', e => { APP.queueStatus = e.target.value; render(); });
+
+  /* auto-refresh while a run is in flight */
+  if (APP.runs.some(r => r.state === 'queued' || r.state === 'running')){
+    clearTimeout(APP.poll);
+    APP.poll = setTimeout(render, 1200);
+  }
+}
+
+function bindOverlay(){
+  $('#overlay').querySelectorAll('[data-act]').forEach(node => {
+    node.addEventListener('click', () => {
+      const act = node.dataset.act;
+      const sub = node.dataset.sub ? submission(node.dataset.sub) : null;
+      if (act === 'cancel'){ closeModal(); return; }
+      if (act === 'douploadconfirm'){
+        const type = node.dataset.type;
+        const name = ($('#fileName') && $('#fileName').value.trim()) || 'upload.dat';
+        const simBad = !!$('#overlay').querySelector('input[name=sim][value=bad]:checked');
+        const res = uploadArtifact(sub, type, name, simBad);
+        if (!res.ok){
+          modal('Mapping CSV rejected', `
+            <div class="banner red"><h3>Structural validation failed — ${esc(name)}</h3>
+              <p>The file was <strong>not stored</strong> as the active mapping, and no run can be started
+              against it. Malformed files are rejected on upload (D9, FR6).</p>
+              <ul>${res.errors.map(e => '<li>' + esc(e) + '</li>').join('')}</ul></div>
+            <div class="muted">The rejection itself is recorded in audit history, so a vendor asking
+              "did my upload land?" has an answer.</div>`,
+            `<button class="btn ghost" data-act="cancel">Close</button>
+             <button class="btn" data-act="retryupload" data-sub="${sub.id}" data-type="${type}">Try another file</button>`);
+          render();
+          return;
+        }
+        closeModal();
+        render();
+        const g = gate(sub);
+        toast(g.met
+          ? 'Artifact stored. Readiness gate now <strong>met</strong> — status moved to Ready for Review.'
+          : (g.artifactsComplete
+            ? 'Artifact stored. All three artifacts present, but the gate still needs a finished run stamped <strong>Complete</strong>.'
+            : 'Artifact stored. Still missing: ' + g.missing.map(a => a.label).join(', ') + '.'));
+        return;
+      }
+      if (act === 'retryupload'){ uploadModal(sub, node.dataset.type); return; }
+      if (act === 'dochanges'){
+        const text = ($('#commentBox') && $('#commentBox').value.trim()) || '';
+        if (!text){ $('#commentErr').textContent = 'A comment is required to request changes (FR14).'; return; }
+        requestChanges(sub, text);
+        closeModal(); render();
+        toast('Moved to <strong>Changes Requested</strong>. The vendor can replace artifacts or start a new run without an intermediate approval step.');
+        return;
+      }
+      if (act === 'dodecide'){
+        const kind = node.dataset.kind;
+        const reason = ($('#reasonBox') && $('#reasonBox').value.trim()) || '';
+        if (kind === 'rejected' && !reason){
+          $('#reasonErr').textContent = 'A rejection requires a reason (FR15).'; return;
+        }
+        decide(sub, kind, reason);
+        closeModal(); render();
+        toast('Decision recorded: <strong>' + STATUS[kind].label + '</strong>. Terminal for this submission.');
+        return;
+      }
+      if (act === 'donewsub'){
+        closeModal();
+        toast('Creating products and submissions is part of the same module, but the prototype ships with three seeded submissions so the workflow states are all visible at once.');
+        return;
+      }
+    });
+  });
+}
+
+function changesModal(sub){
+  modal('Request changes', `
+    <div class="field wide"><label>Comment <span class="muted" style="font-weight:400">(required)</span></label>
+      <textarea id="commentBox" rows="5" placeholder="Name the artifact or run that needs to change and why."></textarea>
+      <div class="help err" id="commentErr"></div>
+      <div class="help">The vendor sees this comment, and it is retained in the submission history (FR14).</div></div>
+  `, `<button class="btn ghost" data-act="cancel">Cancel</button>
+      <button class="btn" data-act="dochanges" data-sub="${sub.id}">Request changes</button>`);
+}
+function decisionModal(sub, kind){
+  const g = gate(sub);
+  modal(kind === 'approved' ? 'Approve submission' : 'Reject submission', `
+    ${!g.met ? `<div class="banner amber"><h3>The readiness gate is not met</h3>
+      <p>${g.missing.length ? 'Missing ' + g.missing.map(a => esc(a.label)).join(', ') + '.'
+        : 'No finished run stamped Complete.'} The platform surfaces this; the decision is still yours (§12).</p></div>` : ''}
+    <p>${kind === 'approved'
+      ? 'Approval is terminal for this submission and is recorded with your identity and a timestamp (FR15, FR17).'
+      : 'Rejection is terminal for this submission and requires a reason.'}</p>
+    <div class="field wide"><label>Reason ${kind === 'rejected'
+      ? '<span class="muted" style="font-weight:400">(required)</span>'
+      : '<span class="muted" style="font-weight:400">(optional)</span>'}</label>
+      <textarea id="reasonBox" rows="4"></textarea>
+      <div class="help err" id="reasonErr"></div></div>
+  `, `<button class="btn ghost" data-act="cancel">Cancel</button>
+      <button class="btn ${kind === 'rejected' ? 'red' : ''}" data-act="dodecide"
+        data-kind="${kind}" data-sub="${sub.id}">${kind === 'approved' ? 'Approve' : 'Reject'}</button>`);
+}
+function newSubmissionModal(){
+  modal('Create new', `
+    <div class="field"><label>Product</label><select>${APP.products.filter(p => !p.foreign)
+      .map(p => `<option>${esc(p.name)}</option>`).join('')}</select></div>
+    <div class="field"><label>Certification model</label><select>${Object.values(MODELS)
+      .map(m => `<option>${esc(m.label)}</option>`).join('')}</select>
+      <div class="help">A product may hold concurrent open submissions across different models — SIS,
+        Assessments and MTSS are distinct certification models (§8).</div></div>
+    <div class="field"><label>Environment</label>
+      <div class="muted">Ed-Fi provisions and operates the certification environment on the vendor’s behalf;
+        vendors cannot register an arbitrary external base URL (D6, FR4).</div></div>
+  `, `<button class="btn ghost" data-act="cancel">Cancel</button>
+      <button class="btn red" data-act="donewsub">Create submission</button>`);
+}
+
+/* boot */
+if (!location.hash) location.hash = '#/products';
+render();
+</script>
+</body>
+</html>
