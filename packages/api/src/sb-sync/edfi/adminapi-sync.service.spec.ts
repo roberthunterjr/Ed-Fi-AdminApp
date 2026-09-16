@@ -571,6 +571,71 @@ describe('AdminApiSyncService', () => {
     });
 
     describe('orphaned tenant cleanup', () => {
+      // Regression guard. On 2026-09-15 an Admin API upgrade moved the tenant
+      // list off the root endpoint; discovery silently degraded to ['default'],
+      // and this cleanup then deleted the environment's real tenants -- and
+      // their ODS rows by FK cascade. Removal must not act on a discovery it
+      // has no reason to trust.
+      it('should not delete any tenants when the Admin API returned no tenants at all', async () => {
+        const environment = mockSbEnvironmentV1 as SbEnvironment;
+        adminApiServiceV1.getTenants.mockResolvedValue([]);
+
+        const realTenant = { id: 42, name: 'tenant-one', sbEnvironmentId: 1 };
+        edfiTenantsRepository.find.mockResolvedValue([realTenant as EdfiTenant]);
+        edfiTenantsRepository.delete = jest.fn().mockResolvedValue({ affected: 0 });
+
+        await service.syncEnvironmentData(environment);
+
+        expect(edfiTenantsRepository.delete).not.toHaveBeenCalled();
+      });
+
+      it('should not delete any tenants when none of the discovered tenants synced successfully', async () => {
+        const environment = mockSbEnvironmentV1 as SbEnvironment;
+        // Discovery returns a tenant, but it is not one we can actually sync --
+        // exactly the shape of the 2026-09-15 incident, which logged
+        // "Processed 0/1 tenant(s)" and then deleted the real tenants anyway.
+        adminApiServiceV1.getTenants.mockResolvedValue([
+          { ...mockTenantDto, id: 'ghost', name: 'ghost-tenant' },
+        ]);
+
+        jest
+          .spyOn(service as any, 'processTenantData')
+          .mockRejectedValue(new Error('no credentials for ghost-tenant'));
+
+        const realTenant = { id: 42, name: 'tenant-one', sbEnvironmentId: 1 };
+        edfiTenantsRepository.find.mockResolvedValue([realTenant as EdfiTenant]);
+        edfiTenantsRepository.delete = jest.fn().mockResolvedValue({ affected: 0 });
+
+        await service.syncEnvironmentData(environment);
+
+        expect(edfiTenantsRepository.delete).not.toHaveBeenCalled();
+      });
+
+      it('should not delete any tenants in a v2 environment when no discovered tenant synced successfully', async () => {
+        const environment = mockSbEnvironmentV2 as SbEnvironment;
+        adminApiServiceV2.getTenants.mockResolvedValue([
+          { ...mockTenantDto, id: 'ghost', name: 'ghost-tenant' },
+        ]);
+        edfiTenantsRepository.findOne.mockResolvedValue(null);
+        edfiTenantsRepository.save.mockResolvedValue({
+          ...mockEdfiTenant,
+          id: 7,
+          name: 'ghost-tenant',
+        } as EdfiTenant);
+        jest
+          .spyOn(service as any, 'syncTenantData')
+          .mockResolvedValue({ status: 'ERROR', message: 'no credentials' });
+        adminApiServiceV2.triggerEdOrgRefresh.mockResolvedValue(null);
+
+        const realTenant = { id: 42, name: 'tenant1', sbEnvironmentId: 1 };
+        edfiTenantsRepository.find.mockResolvedValue([realTenant as EdfiTenant]);
+        edfiTenantsRepository.delete = jest.fn().mockResolvedValue({ affected: 0 });
+
+        await service.syncEnvironmentData(environment);
+
+        expect(edfiTenantsRepository.delete).not.toHaveBeenCalled();
+      });
+
       it('should delete tenants in DB that are no longer returned by the Admin API', async () => {
         const environment = mockSbEnvironmentV1 as SbEnvironment;
         adminApiServiceV1.getTenants.mockResolvedValue([mockTenantDto]); // only tenant-one

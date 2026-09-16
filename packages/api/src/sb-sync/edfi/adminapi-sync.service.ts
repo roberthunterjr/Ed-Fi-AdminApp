@@ -311,6 +311,7 @@ export class AdminApiSyncService {
 
         // Remove tenants that exist in the DB but were not returned by the API.
         // Their ODS and EdOrgs cascade-delete via FK (onDelete: 'CASCADE').
+        const mayPruneV2 = this.canPruneOrphans(processedCount, tenants.length);
         const apiTenantNamesV2 = new Set(tenants.map(t => t.name));
         const dbTenantsV2 = await this.edfiTenantsRepository.find({
           where: { sbEnvironmentId: sbEnvironment.id },
@@ -318,7 +319,7 @@ export class AdminApiSyncService {
         const orphanedV2Ids = dbTenantsV2
           .filter(t => !apiTenantNamesV2.has(t.name))
           .map(t => t.id);
-        if (orphanedV2Ids.length > 0) {
+        if (mayPruneV2 && orphanedV2Ids.length > 0) {
           this.logger.log(
             `Removing ${orphanedV2Ids.length} orphaned tenant(s): ` +
             dbTenantsV2.filter(t => !apiTenantNamesV2.has(t.name)).map(t => t.name).join(', ')
@@ -357,6 +358,7 @@ export class AdminApiSyncService {
       );
 
       // Remove tenants in DB that the API no longer returns.
+      const mayPrune = this.canPruneOrphans(processedCount, tenants.length);
       const apiTenantNames = new Set(tenants.map(t => t.name));
       const dbTenants = await this.edfiTenantsRepository.find({
         where: { sbEnvironmentId: sbEnvironment.id },
@@ -364,7 +366,7 @@ export class AdminApiSyncService {
       const orphanedTenantIds = dbTenants
         .filter(t => !apiTenantNames.has(t.name))
         .map(t => t.id);
-      if (orphanedTenantIds.length > 0) {
+      if (mayPrune && orphanedTenantIds.length > 0) {
         this.logger.log(
           `Removing ${orphanedTenantIds.length} orphaned tenant(s) no longer returned by Admin API: ` +
           dbTenants.filter(t => !apiTenantNames.has(t.name)).map(t => t.name).join(', ')
@@ -654,4 +656,33 @@ export class AdminApiSyncService {
       };
     }
   }
+
+  /**
+   * Whether an orphan sweep may act on this run's discovered tenant list.
+   *
+   * Removal infers "this tenant no longer exists upstream" from absence, which
+   * is only sound if discovery is trustworthy. When nothing synced, the more
+   * likely explanation is that discovery itself is wrong -- and acting on it
+   * deletes real tenants along with their ODS rows by FK cascade.
+   *
+   * That is not hypothetical: on 2026-09-15 an Admin API upgrade moved the
+   * tenant list off the root endpoint, discovery degraded to ['default'], and
+   * the sweep removed the environment's real tenants immediately after logging
+   * "Processed 0/1 tenant(s)".
+   *
+   * An empty discovery needs no check here -- syncEnvironmentData already
+   * returns before reaching either sweep.
+   */
+  private canPruneOrphans(processedCount: number, discoveredCount: number): boolean {
+    if (processedCount === 0) {
+      this.logger.warn(
+        `Skipping orphaned-tenant cleanup: none of the ${discoveredCount} discovered ` +
+          `tenant(s) synced successfully, so the discovered list is not trustworthy ` +
+          `evidence that any tenant was removed upstream.`
+      );
+      return false;
+    }
+    return true;
+  }
+
 }
