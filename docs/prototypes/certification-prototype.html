@@ -763,6 +763,73 @@ const COLLECTION = {sis: SIS_V5, mtss: MTSS_V1};
    02 and 05). Ten scenarios document no tasks at all, so their step list stands
    in — those show verification without prose instructions, which is a content
    gap upstream rather than something the platform can invent. */
+/* The collection's steps carry [ENTER …] placeholders the vendor fills with the
+   identifiers they used. A scenario's steps share variables — 01 writes
+   firstSectionUniqueId and 03 reads it back through validateDependency() — so the
+   parameter set belongs to the scenario, not the step (ID4). */
+const PARAM_LABELS = {
+  schoolId:'School ID', secondSchoolId:'Second School ID', schoolYear:'School Year',
+  localCourseCode:'Local Course Code', sessionName:'Session Name',
+  sectionIdentifier:'Section Identifier', studentUniqueId:'Student Unique ID',
+  secondStudentUniqueId:'Second Student Unique ID', staffUniqueId:'Staff Unique ID',
+  contactUniqueId:'Contact Unique ID', educationOrganizationId:'Education Organization ID',
+  beginDate:'Begin Date (YYYY-MM-DD)', programName:'Program Name',
+  programTypeDescriptor:'Program Type Descriptor', cohortIdentifier:'Cohort Identifier',
+  gradingPeriodName:'Grading Period Name', gradingPeriodDescriptor:'Grading Period Descriptor',
+  interventionIdentificationCode:'Intervention Identification Code'
+};
+/* Scenarios absent from this map declare no parameters and are trivially
+   complete. The prototype demonstrates the mechanism; enumerating all 45 would
+   add bulk without adding meaning. */
+const SCENARIO_PARAMS = {
+  'MasterSchedule/Sections':['schoolId','schoolYear','localCourseCode','sessionName','sectionIdentifier'],
+  'MasterSchedule/CourseOfferings':['schoolId','schoolYear','localCourseCode','sessionName'],
+  'MasterSchedule/BellSchedules':['schoolId'],
+  'EducationOrganization/ClassPeriods':['schoolId'],
+  'EducationOrganization/Courses':['educationOrganizationId'],
+  'EducationOrganization/Locations':['schoolId'],
+  'EducationOrganization/Programs':['educationOrganizationId','programName','programTypeDescriptor'],
+  'EducationOrganization/Schools':['schoolId','secondSchoolId'],
+  'EducationOrganizationCalendar/Calendars':['schoolId','schoolYear'],
+  'EducationOrganizationCalendar/CalendarDates':['schoolId','schoolYear'],
+  'EducationOrganizationCalendar/GradingPeriods':['schoolId','schoolYear','gradingPeriodName','gradingPeriodDescriptor'],
+  'EducationOrganizationCalendar/Sessions':['schoolId','schoolYear','sessionName'],
+  'Student/Students':['studentUniqueId','secondStudentUniqueId'],
+  'Contact/Contacts':['contactUniqueId'],
+  'Contact/StudentContactAssociations':['studentUniqueId','contactUniqueId'],
+  'StaffAssociation/Staffs':['staffUniqueId'],
+  'StaffAssociation/StaffEdOrgAssociations':['staffUniqueId','educationOrganizationId'],
+  'StaffAssociation/StaffSchoolAssociations':['staffUniqueId','schoolId'],
+  'StaffAssociation/StaffSectionAssociations':['staffUniqueId','schoolId','schoolYear','localCourseCode','sessionName','sectionIdentifier'],
+  'StudentEnrollment/StudentSchoolAssociations':['studentUniqueId','schoolId','beginDate'],
+  'StudentEnrollment/StudentSectionAssociations':['studentUniqueId','schoolId','schoolYear','localCourseCode','sessionName','sectionIdentifier','beginDate'],
+  'StudentEnrollment/StudentEdOrgAssociations':['studentUniqueId','educationOrganizationId'],
+  'StudentEnrollment/StudentEdOrgResponsibilityAssocs':['studentUniqueId','educationOrganizationId','beginDate'],
+  'StudentEnrollment/GraduationPlans':['educationOrganizationId','schoolYear'],
+  'StudentAttendance/StudentSchoolAttendanceEvents':['studentUniqueId','schoolId','schoolYear','sessionName'],
+  'StudentAttendance/StudentSectionAttendanceEvents':['studentUniqueId','schoolId','schoolYear','localCourseCode','sessionName','sectionIdentifier'],
+  'StudentGrade/Grades':['studentUniqueId','schoolId','schoolYear','localCourseCode','sessionName','sectionIdentifier','gradingPeriodDescriptor'],
+  'StudentCohort/Cohorts':['educationOrganizationId','cohortIdentifier'],
+  'StudentCohort/StudentCohortAssociations':['studentUniqueId','educationOrganizationId','cohortIdentifier'],
+  'StudentCohort/StaffCohortAssociations':['staffUniqueId','educationOrganizationId','cohortIdentifier'],
+  'StudentProgram/StudentProgramAssociations':['studentUniqueId','educationOrganizationId','programName','programTypeDescriptor','beginDate'],
+  'StudentTranscript/StudentAcademicRecords':['studentUniqueId','educationOrganizationId','schoolYear'],
+  'StudentTranscript/CourseTranscript':['studentUniqueId','educationOrganizationId','schoolYear','localCourseCode'],
+  'Intervention/Interventions':['educationOrganizationId','interventionIdentificationCode'],
+  'Intervention/InterventionPrescriptions':['educationOrganizationId'],
+  'Cohort/Cohorts':['educationOrganizationId','cohortIdentifier'],
+  'Cohort/StudentCohortAssociations':['studentUniqueId','educationOrganizationId','cohortIdentifier'],
+  'StudentIntervention/StudentInterventionAssociations':['studentUniqueId','educationOrganizationId','interventionIdentificationCode'],
+  'StudentIntervention/StudentInterventionAttendanceEvents':['studentUniqueId','educationOrganizationId','interventionIdentificationCode'],
+  'Goal/StudentGoals':['studentUniqueId','educationOrganizationId'],
+  'ProgressMonitoring/StudentProgressMonitoringResults':['studentUniqueId','educationOrganizationId']
+};
+const scenarioParamDefs = key => (SCENARIO_PARAMS[key] || [])
+  .map(k => ({key:k, label: PARAM_LABELS[k] || k}));
+const scenarioParamsComplete = scen =>
+  scenarioParamDefs(scen.area + '/' + scen.scenario)
+    .every(d => (scen.params[d.key] || '').trim() !== '');
+
 function scenarioTasks(rawSteps, meta){
   const stepNumber = s => parseInt(s[0], 10);
   if (!meta.tasks.length){
@@ -2504,8 +2571,11 @@ function suggestName(sub, type, cur){
 function bind(){
   const main = $('#main');
 
+  /* Most actions are clicks, but a typed parameter fires input and a filter
+     checkbox fires change, so the event is chosen per action. */
+  const ACTION_EVENT = {setparam:'input', toggleopenruns:'change'};
   main.querySelectorAll('[data-act]').forEach(node => {
-    node.addEventListener('click', ev => {
+    node.addEventListener(ACTION_EVENT[node.dataset.act] || 'click', ev => {
       const act = node.dataset.act;
       const sub = node.dataset.sub ? submission(node.dataset.sub) : null;
       switch (act){
@@ -2518,6 +2588,12 @@ function bind(){
             '</strong>. Completeness is fixed now and never recalculated.');
           go('#/run/' + r.id);
           render();
+          break;
+        }
+        case 'setparam': {
+          const run = APP.runs.find(x => x.id === node.dataset.run);
+          const scen = scenarioOf(run, node.dataset.key);
+          scen.params[node.dataset.param] = node.value;
           break;
         }
         case 'openscenario': APP.openScenario = node.dataset.key; APP.openSteps = {}; render(); break;

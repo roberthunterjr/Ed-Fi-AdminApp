@@ -327,3 +327,55 @@ test('sealing and abandoning are one-way', () => {
   assert.equal(run.state, 'sealed', 'a sealed run cannot be re-sealed or abandoned');
   assert.equal(run.ended, ended);
 });
+
+test('a scenario declares the parameters its steps need', () => {
+  const p = loadPrototype();
+  const defs = p.scenarioParamDefs('MasterSchedule/Sections');
+  const keys = defs.map(d => d.key);
+  assert.ok(keys.includes('schoolId'));
+  assert.ok(keys.includes('sectionIdentifier'));
+  assert.ok(defs.every(d => d.label), 'every parameter has a human label');
+});
+
+test('parameters are complete only when all are supplied', () => {
+  const p = loadPrototype();
+  const {run, key} = sectionsRun(p);
+  const scen = p.scenarioOf(run, key);
+  assert.equal(p.scenarioParamsComplete(scen), false, 'nothing supplied yet');
+  p.scenarioParamDefs(key).forEach(d => { scen.params[d.key] = 'x'; });
+  assert.equal(p.scenarioParamsComplete(scen), true);
+  scen.params[p.scenarioParamDefs(key)[0].key] = '';
+  assert.equal(p.scenarioParamsComplete(scen), false, 'blank is not supplied');
+});
+
+test('a scenario with no declared parameters is trivially complete', () => {
+  const p = loadPrototype();
+  const run = openSisRun(p);
+  const scen = p.scenarioOf(run, 'DescriptorMapping/Mappings');
+  assert.deepEqual(p.scenarioParamDefs('DescriptorMapping/Mappings'), []);
+  assert.equal(p.scenarioParamsComplete(scen), true);
+});
+
+test('parameters are per scenario, not shared across them', () => {
+  const p = loadPrototype();
+  const run = openSisRun(p);
+  p.scenarioOf(run, 'MasterSchedule/Sections').params.schoolId = '255901107';
+  assert.equal(p.scenarioOf(run, 'Student/Students').params.schoolId, undefined);
+});
+
+test('every declared parameter key has a label', () => {
+  const p = loadPrototype();
+  for (const key of Object.keys(p.SCENARIO_PARAMS)){
+    for (const d of p.scenarioParamDefs(key)){
+      assert.notEqual(p.PARAM_LABELS[d.key], undefined, `${d.key} (in ${key}) has no label`);
+    }
+  }
+});
+
+test('every SCENARIO_PARAMS key names a real scenario', () => {
+  const p = loadPrototype();
+  const known = new Set(['sis', 'mtss'].flatMap(m => p.COLLECTION[m].map(s => s[0] + '/' + s[1])));
+  for (const key of Object.keys(p.SCENARIO_PARAMS)){
+    assert.ok(known.has(key), `${key} is not a scenario in the collection`);
+  }
+});
