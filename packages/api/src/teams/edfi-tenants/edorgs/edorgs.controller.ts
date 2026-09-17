@@ -171,7 +171,7 @@ export class EdorgsController {
 
     const edorg = await this.edorgsRepository.findOne({
       where: { edfiTenantId, id: edorgId },
-      relations: ['ods'],
+      relations: { ods: true },
     });
     if (edorg === null) {
       throw new NotFoundException();

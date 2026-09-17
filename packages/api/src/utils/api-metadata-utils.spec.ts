@@ -7,6 +7,7 @@ import {
   fetchOdsApiMetadata,
   fetchAdminApiInfo,
   validateAdminApiUrl,
+  resolveTenantNames,
 } from './api-metadata-utils';
 import { ValidationHttpException } from './customExceptions';
 import { OdsApiMeta, PostSbEnvironmentDto } from '@edanalytics/models';
@@ -114,15 +115,21 @@ describe('api-metadata-utils', () => {
       },
     };
 
-    it('should prioritize Admin API multitenantMode field when available (MultiTenant)', () => {
-      const adminApiInfo = { tenancy: { multitenantMode: true } };
-      const result = determineTenantModeFromMetadata(mockOdsApiMetaSingleTenant, adminApiInfo);
+    it('should prioritize the Admin API tenancy result when available (MultiTenant)', () => {
+      const result = determineTenantModeFromMetadata(mockOdsApiMetaSingleTenant, {
+        supported: true,
+        tenants: ['tenant-a'],
+        mode: 'MultiTenant',
+      });
       expect(result).toBe('MultiTenant');
     });
 
-    it('should prioritize Admin API multitenantMode field when available (SingleTenant)', () => {
-      const adminApiInfo = { tenancy: { multitenantMode: false } };
-      const result = determineTenantModeFromMetadata(mockOdsApiMetaMultiTenant, adminApiInfo);
+    it('should prioritize the Admin API tenancy result when available (SingleTenant)', () => {
+      const result = determineTenantModeFromMetadata(mockOdsApiMetaMultiTenant, {
+        supported: true,
+        tenants: [],
+        mode: 'SingleTenant',
+      });
       expect(result).toBe('SingleTenant');
     });
 
@@ -136,15 +143,13 @@ describe('api-metadata-utils', () => {
       expect(result).toBe('SingleTenant');
     });
 
-    it('should fall back to ODS API URL pattern when Admin API info has no tenancy field', () => {
-      const adminApiInfo = {};
-      const result = determineTenantModeFromMetadata(mockOdsApiMetaMultiTenant, adminApiInfo);
+    it('should fall back to ODS API URL pattern when tenancy is not supported (v1)', () => {
+      const result = determineTenantModeFromMetadata(mockOdsApiMetaMultiTenant, { supported: false });
       expect(result).toBe('MultiTenant');
     });
 
-    it('should fall back to ODS API URL pattern when Admin API info has no multitenantMode field', () => {
-      const adminApiInfo = { tenancy: {} };
-      const result = determineTenantModeFromMetadata(mockOdsApiMetaSingleTenant, adminApiInfo);
+    it('should fall back to ODS API URL pattern when no tenancy result is provided', () => {
+      const result = determineTenantModeFromMetadata(mockOdsApiMetaSingleTenant);
       expect(result).toBe('SingleTenant');
     });
   });
@@ -220,38 +225,27 @@ describe('api-metadata-utils', () => {
   });
 
   describe('getAdminApiTenantMode', () => {
-    it('should return MultiTenant when multitenantMode is true', () => {
-      const adminApiInfo = { tenancy: { multitenantMode: true } };
-      const result = getAdminApiTenantMode(adminApiInfo);
+    it('should return MultiTenant when the tenancy result is multi-tenant', () => {
+      const result = getAdminApiTenantMode({
+        supported: true,
+        tenants: ['tenant-a'],
+        mode: 'MultiTenant',
+      });
       expect(result).toBe('MultiTenant');
     });
 
-    it('should return SingleTenant when multitenantMode is false', () => {
-      const adminApiInfo = { tenancy: { multitenantMode: false } };
-      const result = getAdminApiTenantMode(adminApiInfo);
+    it('should return SingleTenant when the tenancy result is single-tenant', () => {
+      const result = getAdminApiTenantMode({ supported: true, tenants: [], mode: 'SingleTenant' });
       expect(result).toBe('SingleTenant');
     });
 
-    it('should return undefined when multitenantMode is not provided', () => {
-      const adminApiInfo = { tenancy: {} };
-      const result = getAdminApiTenantMode(adminApiInfo);
+    it('should return undefined when tenancy is not supported (v1)', () => {
+      const result = getAdminApiTenantMode({ supported: false });
       expect(result).toBeUndefined();
     });
 
-    it('should return undefined when tenancy is not provided', () => {
-      const adminApiInfo = {};
-      const result = getAdminApiTenantMode(adminApiInfo);
-      expect(result).toBeUndefined();
-    });
-
-    it('should return undefined when adminApiInfo is undefined', () => {
-      const result = getAdminApiTenantMode(undefined);
-      expect(result).toBeUndefined();
-    });
-
-    it('should return undefined when adminApiInfo is null', () => {
-      const result = getAdminApiTenantMode(null as unknown as { tenancy?: { multitenantMode?: boolean } });
-      expect(result).toBeUndefined();
+    it('should return undefined when no tenancy result is provided', () => {
+      expect(getAdminApiTenantMode(undefined)).toBeUndefined();
     });
   });
 
@@ -417,10 +411,10 @@ describe('api-metadata-utils', () => {
       },
     });
 
-    const makeAdminMeta = (specVersion: 'v1' | 'v2' | 'v3', multitenantMode?: boolean) => ({
+    const makeAdminMeta = (specVersion: 'v1' | 'v2' | 'v3', tenancyUrl?: string) => ({
       version: specVersion === 'v1' ? '1.4' : specVersion === 'v2' ? '2.0' : '3.0',
       specificationVersion: specVersion,
-      ...(multitenantMode !== undefined ? { tenancy: { multitenantMode } } : {}),
+      urls: { tenancy: tenancyUrl ?? (specVersion === 'v1' ? '' : `${adminApiUrl}/${specVersion}/tenancy`) },
     });
 
     it('should throw ValidationHttpException when admin metadata has no version', async () => {
@@ -456,7 +450,7 @@ describe('api-metadata-utils', () => {
     // Compatible version combinations: ODS 6.2 + Admin v1
     it('should validate successfully: ODS 6.2 + Admin v1 (SingleTenant)', async () => {
       mockedAxios.get
-        .mockResolvedValueOnce({ status: 200, data: makeAdminMeta('v1', false) })
+        .mockResolvedValueOnce({ status: 200, data: makeAdminMeta('v1') })
         .mockResolvedValueOnce({ status: 200, data: makeOdsMeta('6.2', false) });
 
       await expect(validateAdminApiUrl(adminApiUrl, odsApiDiscoveryUrl)).resolves.toBeDefined();
@@ -467,8 +461,9 @@ describe('api-metadata-utils', () => {
       'should validate successfully: ODS %s + Admin v2 (SingleTenant)',
       async (odsVersion) => {
         mockedAxios.get
-          .mockResolvedValueOnce({ status: 200, data: makeAdminMeta('v2', false) })
-          .mockResolvedValueOnce({ status: 200, data: makeOdsMeta(odsVersion, false) });
+          .mockResolvedValueOnce({ status: 200, data: makeAdminMeta('v2') })
+          .mockResolvedValueOnce({ status: 200, data: makeOdsMeta(odsVersion, false) })
+          .mockResolvedValueOnce({ status: 200, data: { tenants: [] } });
 
         await expect(validateAdminApiUrl(adminApiUrl, odsApiDiscoveryUrl)).resolves.toBeDefined();
       }
@@ -479,8 +474,9 @@ describe('api-metadata-utils', () => {
       'should validate successfully: ODS %s + Admin v3 (SingleTenant)',
       async (odsVersion) => {
         mockedAxios.get
-          .mockResolvedValueOnce({ status: 200, data: makeAdminMeta('v3', false) })
-          .mockResolvedValueOnce({ status: 200, data: makeOdsMeta(odsVersion, false) });
+          .mockResolvedValueOnce({ status: 200, data: makeAdminMeta('v3') })
+          .mockResolvedValueOnce({ status: 200, data: makeOdsMeta(odsVersion, false) })
+          .mockResolvedValueOnce({ status: 200, data: { tenants: [] } });
 
         await expect(validateAdminApiUrl(adminApiUrl, odsApiDiscoveryUrl)).resolves.toBeDefined();
       }
@@ -519,45 +515,50 @@ describe('api-metadata-utils', () => {
     // Tenant mode compatibility checks
     it('should validate successfully when Admin API and ODS are both MultiTenant (ODS 7.2 + Admin v2)', async () => {
       mockedAxios.get
-        .mockResolvedValueOnce({ status: 200, data: makeAdminMeta('v2', true) })
-        .mockResolvedValueOnce({ status: 200, data: makeOdsMeta('7.2', true) });
+        .mockResolvedValueOnce({ status: 200, data: makeAdminMeta('v2') })
+        .mockResolvedValueOnce({ status: 200, data: makeOdsMeta('7.2', true) })
+        .mockResolvedValueOnce({ status: 200, data: { tenants: ['tenant-a'] } });
 
       await expect(validateAdminApiUrl(adminApiUrl, odsApiDiscoveryUrl)).resolves.toBeDefined();
     });
 
     it('should throw ValidationHttpException when Admin API is MultiTenant but ODS is SingleTenant', async () => {
       mockedAxios.get
-        .mockResolvedValueOnce({ status: 200, data: makeAdminMeta('v2', true) })
-        .mockResolvedValueOnce({ status: 200, data: makeOdsMeta('7.2', false) });
+        .mockResolvedValueOnce({ status: 200, data: makeAdminMeta('v2') })
+        .mockResolvedValueOnce({ status: 200, data: makeOdsMeta('7.2', false) })
+        .mockResolvedValueOnce({ status: 200, data: { tenants: ['tenant-a'] } });
 
       await expect(validateAdminApiUrl(adminApiUrl, odsApiDiscoveryUrl)).rejects.toThrow(ValidationHttpException);
     });
 
     it('should throw ValidationHttpException when Admin API is SingleTenant but ODS is MultiTenant', async () => {
       mockedAxios.get
-        .mockResolvedValueOnce({ status: 200, data: makeAdminMeta('v2', false) })
-        .mockResolvedValueOnce({ status: 200, data: makeOdsMeta('7.2', true) });
+        .mockResolvedValueOnce({ status: 200, data: makeAdminMeta('v2') })
+        .mockResolvedValueOnce({ status: 200, data: makeOdsMeta('7.2', true) })
+        .mockResolvedValueOnce({ status: 200, data: { tenants: [] } });
 
       await expect(validateAdminApiUrl(adminApiUrl, odsApiDiscoveryUrl)).rejects.toThrow(ValidationHttpException);
     });
 
-    it('should skip tenant mode check when Admin API does not provide multitenantMode (ODS 7.0 + Admin v2)', async () => {
+    it('should skip tenant mode check when Admin API does not expose a tenancy endpoint (ODS 7.0 + Admin v2)', async () => {
       mockedAxios.get
-        .mockResolvedValueOnce({ status: 200, data: makeAdminMeta('v2') })
+        .mockResolvedValueOnce({ status: 200, data: makeAdminMeta('v2', '') })
         .mockResolvedValueOnce({ status: 200, data: makeOdsMeta('7.0', false) });
 
       await expect(validateAdminApiUrl(adminApiUrl, odsApiDiscoveryUrl)).resolves.toBeDefined();
     });
 
     it('should return the admin API metadata on a successful validation', async () => {
-      const adminMeta = makeAdminMeta('v2', false);
+      const adminMeta = makeAdminMeta('v2', '');
       mockedAxios.get
         .mockResolvedValueOnce({ status: 200, data: adminMeta })
         .mockResolvedValueOnce({ status: 200, data: makeOdsMeta('7.0', false) });
 
       const result = await validateAdminApiUrl(adminApiUrl, odsApiDiscoveryUrl);
 
-      expect(result).toEqual(adminMeta);
+      // validateAdminApiUrl() now also returns the tenancy result it fetched for its
+      // own compatibility check, so callers can reuse it instead of re-fetching.
+      expect(result).toEqual({ ...adminMeta, tenancy: { supported: false } });
     });
 
     it('should re-throw ValidationHttpException preserving the original error details', async () => {
@@ -569,6 +570,107 @@ describe('api-metadata-utils', () => {
       expect(error).toBeInstanceOf(ValidationHttpException);
       const errorString = JSON.stringify(error.getResponse?.() ?? '');
       expect(errorString).toContain('adminApiUrl');
+    });
+
+    it('validates tenant mode compatibility using the tenancy endpoint', async () => {
+      mockedAxios.get.mockImplementation((url: string) => {
+        if (url === adminApiUrl) {
+          return Promise.resolve({ status: 200, data: makeAdminMeta('v2') });
+        }
+        if (url === `${adminApiUrl}/v2/tenancy`) {
+          return Promise.resolve({ status: 200, data: { tenants: [] } });
+        }
+        return Promise.resolve({ status: 200, data: makeOdsMeta('7.2', true) });
+      });
+
+      await expect(validateAdminApiUrl(adminApiUrl, odsApiDiscoveryUrl)).rejects.toThrow(
+        ValidationHttpException
+      );
+    });
+
+    it('surfaces the Admin API 503 message as a validation error', async () => {
+      const detail =
+        'MultiTenancy is enabled but no tenants are configured. Check the Tenants section of appsettings.';
+      mockedAxios.get.mockImplementation((url: string) => {
+        if (url === adminApiUrl) {
+          return Promise.resolve({ status: 200, data: makeAdminMeta('v3') });
+        }
+        if (url === `${adminApiUrl}/v3/tenancy`) {
+          return Promise.reject({ response: { status: 503, data: { detail } } });
+        }
+        return Promise.resolve({ status: 200, data: makeOdsMeta('7.2', true) });
+      });
+
+      const error = await validateAdminApiUrl(adminApiUrl, odsApiDiscoveryUrl).catch((e) => e);
+
+      expect(error).toBeInstanceOf(ValidationHttpException);
+      expect(JSON.stringify(error.getResponse())).toContain(detail);
+    });
+
+    it('skips the tenant mode check for v1 without calling a tenancy endpoint', async () => {
+      mockedAxios.get.mockImplementation((url: string) => {
+        if (url === adminApiUrl) {
+          return Promise.resolve({ status: 200, data: makeAdminMeta('v1') });
+        }
+        return Promise.resolve({ status: 200, data: makeOdsMeta('6.1', true) });
+      });
+
+      await expect(validateAdminApiUrl(adminApiUrl, odsApiDiscoveryUrl)).resolves.toBeDefined();
+      expect(mockedAxios.get).not.toHaveBeenCalledWith(
+        expect.stringContaining('/tenancy'),
+        expect.anything()
+      );
+    });
+  });
+
+  describe('resolveTenantNames', () => {
+    // These exercise the real (non-mocked) fetchAdminApiTenancy() — only axios is
+    // mocked — unlike the v2/v3 getTenants() specs, which mock fetchAdminApiTenancy
+    // directly and so never exercise this integration boundary.
+    const adminApiUrl = 'https://admin-api.example.com';
+
+    it('returns the discovered tenant list when the tenancy endpoint reports tenants', async () => {
+      mockedAxios.get
+        .mockResolvedValueOnce({
+          status: 200,
+          data: { specificationVersion: 'v2', urls: { tenancy: `${adminApiUrl}/tenancy` } },
+        })
+        .mockResolvedValueOnce({ status: 200, data: { tenants: ['tenant-a', 'tenant-b'] } });
+
+      await expect(resolveTenantNames(adminApiUrl)).resolves.toEqual(['tenant-a', 'tenant-b']);
+    });
+
+    it("returns ['default'] when urls.tenancy is empty (no tenancy endpoint, e.g. v1)", async () => {
+      mockedAxios.get.mockResolvedValueOnce({
+        status: 200,
+        data: { specificationVersion: 'v1', urls: { tenancy: '' } },
+      });
+
+      await expect(resolveTenantNames(adminApiUrl)).resolves.toEqual(['default']);
+      // fetchAdminApiTenancy() skips the HTTP call entirely when urls.tenancy is empty.
+      expect(mockedAxios.get).toHaveBeenCalledTimes(1);
+    });
+
+    it("returns ['default'] when the tenancy endpoint answers with an empty tenant list", async () => {
+      mockedAxios.get
+        .mockResolvedValueOnce({
+          status: 200,
+          data: { specificationVersion: 'v2', urls: { tenancy: `${adminApiUrl}/tenancy` } },
+        })
+        .mockResolvedValueOnce({ status: 200, data: { tenants: [] } });
+
+      await expect(resolveTenantNames(adminApiUrl)).resolves.toEqual(['default']);
+    });
+
+    it('propagates a tenancy failure rather than falling back to default', async () => {
+      mockedAxios.get
+        .mockResolvedValueOnce({
+          status: 200,
+          data: { specificationVersion: 'v2', urls: { tenancy: `${adminApiUrl}/tenancy` } },
+        })
+        .mockRejectedValueOnce({ response: { status: 401, data: {} } });
+
+      await expect(resolveTenantNames(adminApiUrl)).rejects.toThrow();
     });
   });
 });

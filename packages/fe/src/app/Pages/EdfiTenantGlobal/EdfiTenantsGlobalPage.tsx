@@ -7,7 +7,7 @@ import {
   ValueAsDate,
 } from '@edanalytics/common-ui';
 import { GetEdfiTenantDto } from '@edanalytics/models';
-import { useQuery } from '@tanstack/react-query';
+import { UseQueryResult, useQuery } from '@tanstack/react-query';
 import { CellContext } from '@tanstack/react-table';
 import omit from 'lodash/omit';
 import { edfiTenantQueriesGlobal, userQueries } from '../../api';
@@ -17,17 +17,15 @@ import { EdfiTenantGlobalLink, UserGlobalLink } from '../../routes';
 import { useEdfiTenantGlobalActions } from './useEdfiTenantGlobalActions';
 import { useEdfiTenantsGlobalActions } from './useEdfiTenantsGlobalActions';
 
-const EdfiTenantsNameCell = (info: CellContext<GetEdfiTenantDto, unknown>) => {
-  const { sbEnvironmentId } = useSbEnvironmentNavContext();
-  const edfiTenants = useQuery(
-    edfiTenantQueriesGlobal.getAll({
-      sbEnvironmentId,
-    })
-  );
+const EdfiTenantsNameCell = (
+  info: CellContext<GetEdfiTenantDto, unknown> & {
+    edfiTenants: Pick<UseQueryResult<Record<string | number, GetEdfiTenantDto>>, 'data'>;
+  }
+) => {
   const actions = useEdfiTenantGlobalActions(info.row.original);
   return (
     <HStack justify="space-between">
-      <EdfiTenantGlobalLink id={info.row.original.id} query={edfiTenants} />
+      <EdfiTenantGlobalLink id={info.row.original.id} query={info.edfiTenants} />
       <TableRowActions actions={actions} />
     </HStack>
   );
@@ -52,7 +50,7 @@ export const EdfiTenantsGlobalTable = () => {
       columns={[
         {
           accessorKey: 'displayName',
-          cell: EdfiTenantsNameCell,
+          cell: (info) => <EdfiTenantsNameCell {...info} edfiTenants={edfiTenants} />,
           header: 'Name',
         },
         {

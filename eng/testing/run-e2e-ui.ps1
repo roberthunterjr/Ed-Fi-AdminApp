@@ -152,27 +152,39 @@ function Set-AdminAppEnvFile {
   $script:mssqlSaPassword = $mssqlPassword
   $content = Get-Content -Path $envPath
 
-  $substitutionsFired = 0
+  # Counted per rewrite, not in aggregate: a bare total cannot tell "all seven fired once"
+  # from "one line is duplicated and another vanished". Each must match exactly once, which
+  # also rejects a duplicated key in compose/.env.example.
+  $fired = [ordered]@{
+    'DB_ENGINE=pgsql'                   = 0
+    '# MSSQL_PORT_EXPOSED=1433'         = 0
+    '# MSSQL_ACCEPT_EULA=Y'             = 0
+    '# MSSQL_SA_PASSWORD='              = 0
+    '# MSSQL_IMAGE_TAG=2022-latest'     = 0
+    'DB_SECRET_VALUE (PostgreSQL)'      = 0
+    'DB_SECRET_VALUE (SQL Server)'      = 0
+  }
 
   $content = $content | ForEach-Object {
     switch -Regex ($_) {
-      '^DB_ENGINE=pgsql$' { $substitutionsFired++; 'DB_ENGINE=mssql' }
-      '^# MSSQL_PORT_EXPOSED=1433$' { $substitutionsFired++; 'MSSQL_PORT_EXPOSED=1433' }
-      '^# MSSQL_ACCEPT_EULA=Y$' { $substitutionsFired++; 'MSSQL_ACCEPT_EULA=Y' }
-      '^# MSSQL_SA_PASSWORD=.*$' { $substitutionsFired++; "MSSQL_SA_PASSWORD=$mssqlPassword" }
-      '^# MSSQL_IMAGE_TAG=2022-latest$' { $substitutionsFired++; 'MSSQL_IMAGE_TAG=2022-latest' }
-      '^DB_SECRET_VALUE=\{"DB_HOST".*$' { $substitutionsFired++; "# $_" }
+      '^DB_ENGINE=pgsql$' { $fired['DB_ENGINE=pgsql']++; 'DB_ENGINE=mssql' }
+      '^# MSSQL_PORT_EXPOSED=1433$' { $fired['# MSSQL_PORT_EXPOSED=1433']++; 'MSSQL_PORT_EXPOSED=1433' }
+      '^# MSSQL_ACCEPT_EULA=Y$' { $fired['# MSSQL_ACCEPT_EULA=Y']++; 'MSSQL_ACCEPT_EULA=Y' }
+      '^# MSSQL_SA_PASSWORD=.*$' { $fired['# MSSQL_SA_PASSWORD=']++; "MSSQL_SA_PASSWORD=$mssqlPassword" }
+      '^# MSSQL_IMAGE_TAG=2022-latest$' { $fired['# MSSQL_IMAGE_TAG=2022-latest']++; 'MSSQL_IMAGE_TAG=2022-latest' }
+      '^DB_SECRET_VALUE=\{"DB_HOST".*$' { $fired['DB_SECRET_VALUE (PostgreSQL)']++; "# $_" }
       '^# DB_SECRET_VALUE=\{"MSSQL_DB_HOST".*$' {
-        $substitutionsFired++
+        $fired['DB_SECRET_VALUE (SQL Server)']++
         ($_ -replace '^# ', '') -replace '"MSSQL_DB_PASSWORD":"[^"]*"', "`"MSSQL_DB_PASSWORD`":`"$mssqlPassword`""
       }
       default { $_ }
     }
   }
 
-  $expectedSubstitutions = 6
-  if ($substitutionsFired -lt $expectedSubstitutions) {
-    throw "compose/.env.example did not match the expected MSSQL patch patterns: only $substitutionsFired of $expectedSubstitutions substitutions fired. compose/.env.example may have been reformatted; update the regex patterns in Set-AdminAppEnvFile."
+  $wrong = $fired.GetEnumerator() | Where-Object { $_.Value -ne 1 }
+  if ($wrong) {
+    $detail = ($wrong | ForEach-Object { "'$($_.Key)' matched $($_.Value) time(s), expected 1" }) -join '; '
+    throw "compose/.env.example did not match the expected MSSQL patch patterns: $detail. compose/.env.example may have been reformatted, or a key duplicated; update the regex patterns in Set-AdminAppEnvFile."
   }
 
   Set-Content -Path $envPath -Value $content

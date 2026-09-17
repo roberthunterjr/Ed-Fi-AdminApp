@@ -33,7 +33,10 @@ export const EditVendor = (props: { vendor: VendorEntity }) =>
   });
 
 function EditVendorForm<D extends PutVendorDtoV2 | PutVendorDtoV3>(props: {
-  config: { queries: { put: typeof vendorQueriesV2.put }; PutDto: new () => D };
+  config: {
+    queries: { put: typeof vendorQueriesV2.put };
+    PutDto: new () => D;
+  };
   vendor: VendorEntity;
 }) {
   const popBanner = usePopBanner();

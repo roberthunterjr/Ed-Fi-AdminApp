@@ -10,7 +10,6 @@ import {
 import { PageTemplate } from '@edanalytics/common-ui';
 import { PostUserTeamMembershipDto, RoleType } from '@edanalytics/models';
 import { classValidatorResolver } from '@hookform/resolvers/class-validator';
-import { useQueryClient } from '@tanstack/react-query';
 import { noop } from '@tanstack/react-table';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router';
@@ -32,7 +31,6 @@ const getDefaults = (dict: { userId?: string; teamId?: string; roleId?: string }
 
 export const CreateUtmGlobal = () => {
   const popBanner = usePopBanner();
-  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const goToView = (id: string | number) => navigate(`/user-team-memberships/${id}`);
   const parentPath = useNavToParent();
@@ -59,10 +57,7 @@ export const CreateUtmGlobal = () => {
               .mutateAsync(
                 { entity: data },
                 {
-                  onSuccess: (result) => {
-                    queryClient.invalidateQueries({ queryKey: ['me', 'user-team-memberships'] });
-                    goToView(result.id);
-                  },
+                  onSuccess: (result) => goToView(result.id),
                   ...mutationErrCallback({ setFormError: setError, popGlobalBanner: popBanner }),
                 }
               )

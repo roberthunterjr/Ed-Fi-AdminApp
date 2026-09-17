@@ -1,6 +1,49 @@
 # This compose file defines the Ed-Fi ODS / API services required by the
 # Ed-Fi Admin App for local development and testing.
 
+# Healthcheck definitions shared by the services below. Compose ignores top-level
+# x-* keys, so these exist only as YAML anchors: a service writes
+# `healthcheck: *healthcheck-api` instead of repeating the same five lines.
+#
+# These anchors are scoped to THIS file. Services in adminapp-services.yml and
+# nginx-compose.yml cannot reference them, and keep their own inline healthchecks.
+#
+# Which one to use:
+#   *healthcheck-api          ODS/API and Admin API containers.
+#   *healthcheck-api-tenant1  Multi-tenant Admin API containers, which need a
+#                             tenant header on the probe.
+#   *healthcheck-db-socket    PostgreSQL containers - the default. Probes over the
+#                             local socket. Used by every Admin database and by the
+#                             v6 ODS databases.
+#   *healthcheck-db-tcp       PostgreSQL containers probed over TCP on
+#                             ${POSTGRES_PORT}. Used only by the six v7 ODS
+#                             databases. The socket/TCP split is historical drift
+#                             rather than a design decision - see the AC-520 audit
+#                             in docs/design/ before copying either one.
+x-healthcheck-api: &healthcheck-api
+  test: 'wget --no-check-certificate --spider http://localhost/health'
+  start_period: 30s
+  retries: 30
+  interval: 30s
+
+x-healthcheck-api-tenant1: &healthcheck-api-tenant1
+  test: 'wget --no-check-certificate  --header="tenant: tenant1" --spider http://localhost/health'
+  start_period: 30s
+  retries: 30
+  interval: 30s
+
+x-healthcheck-db-socket: &healthcheck-db-socket
+  test: ['CMD-SHELL', 'pg_isready  -U ${POSTGRES_USER}']
+  start_period: 30s
+  retries: 30
+  interval: 30s
+
+x-healthcheck-db-tcp: &healthcheck-db-tcp
+  test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -h localhost -p ${POSTGRES_PORT:-5432}']
+  start_period: 30s
+  retries: 30
+  interval: 30s
+
 services:
   # Ed-Fi v7.x - Single tenant
   odsV7-adminV2-single-db-ods:
@@ -19,11 +62,7 @@ services:
     volumes:
       - vol-odsV7-adminV2-single-db-ods:/var/lib/postgresql/data
       - ${SQL_BACKUPS_FOLDER:-./db-backup}:/var/opt/pgsql/data/sql-backups/:ro
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -h localhost -p ${POSTGRES_PORT:-5432}']
-      start_period: 30s
-      retries: 30
-      interval: 30s
+    healthcheck: *healthcheck-db-tcp
     networks:
       - edfiadminapp-network
 
@@ -42,11 +81,7 @@ services:
       - ./settings/bootstrap.sh:/docker-entrypoint-initdb.d/2-bootstrap.sh
       - vol-odsV7-adminV2-single-db-admin:/var/lib/postgresql/data
     restart: always
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready  -U ${POSTGRES_USER}']
-      start_period: 30s
-      retries: 30
-      interval: 30s
+    healthcheck: *healthcheck-db-socket
     networks:
       - edfiadminapp-network
 
@@ -76,11 +111,7 @@ services:
       - odsV7-adminV2-single-db-admin
     restart: always
     hostname: ${ODS_V7_ADMIN_V2_SINGLE_API_VIRTUAL_NAME}
-    healthcheck:
-      test: ${ODS_V7_ADMIN_V2_SINGLE_API_HEALTHCHECK}
-      start_period: 30s
-      retries: 30
-      interval: 30s
+    healthcheck: *healthcheck-api
     networks:
       - edfiadminapp-network
 
@@ -113,6 +144,8 @@ services:
       ConnectionStrings__EdFi_Security: 'host=odsV7-adminV2-single-db-admin;port=5432;username=${POSTGRES_USER};password=${POSTGRES_PASSWORD};database=EdFi_Security;'
       ConnectionStrings__EdFi_Ods: 'host=odsV7-adminV2-single-db-ods;port=${POSTGRES_PORT:-5432};username=${POSTGRES_USER};password=${POSTGRES_PASSWORD};database=EdFi_Ods;pooling=true'
       ConnectionStrings__EdFi_Master: 'host=odsV7-adminV2-single-db-ods;port=${POSTGRES_PORT:-5432};username=${POSTGRES_USER};password=${POSTGRES_PASSWORD};database=postgres;pooling=true'
+      ReverseProxy__UseForwardedHeaders: "true"
+      ReverseProxy__KnownNetworks: "172.16.0.0/12,192.168.0.0/16"
       EdFiApiDiscoveryUrl: ${ODS_V7_ADMIN_V2_SINGLE_API_DISCOVERY_URL}
     volumes:
       - ./settings/log4net.config:/app/log4net/log4net.config
@@ -121,11 +154,7 @@ services:
       - odsV7-adminV2-single-db-ods
     restart: always
     hostname: ${ODS_V7_ADMIN_V2_SINGLE_ADMIN_API_VIRTUAL_NAME}
-    healthcheck:
-      test: ${ODS_V7_ADMIN_V2_SINGLE_ADMIN_API_HEALTHCHECK}
-      start_period: 30s
-      retries: 30
-      interval: 30s
+    healthcheck: *healthcheck-api
     networks:
       - edfiadminapp-network
 
@@ -146,11 +175,7 @@ services:
     volumes:
       - vol-odsV7-adminV2-tenant1-db-ods:/var/lib/postgresql/data
       - ${SQL_BACKUPS_FOLDER:-./db-backup}:/var/opt/pgsql/data/sql-backups/:ro
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -h localhost -p ${POSTGRES_PORT:-5432}']
-      start_period: 30s
-      retries: 30
-      interval: 30s
+    healthcheck: *healthcheck-db-tcp
     networks:
       - edfiadminapp-network
 
@@ -170,11 +195,7 @@ services:
     volumes:
       - vol-odsV7-adminV2-tenant2-db-ods:/var/lib/postgresql/data
       - ${SQL_BACKUPS_FOLDER:-./db-backup}:/var/opt/pgsql/data/sql-backups/:ro
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -h localhost -p ${POSTGRES_PORT:-5432}']
-      start_period: 30s
-      retries: 30
-      interval: 30s
+    healthcheck: *healthcheck-db-tcp
     networks:
       - edfiadminapp-network
 
@@ -194,11 +215,7 @@ services:
       - ./settings/bootstrap.sh:/docker-entrypoint-initdb.d/2-bootstrap.sh
       - vol-odsV7-adminV2-tenant1-db-admin:/var/lib/postgresql/data
     restart: always
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready  -U ${POSTGRES_USER}']
-      start_period: 30s
-      retries: 30
-      interval: 30s
+    healthcheck: *healthcheck-db-socket
     networks:
       - edfiadminapp-network
 
@@ -218,11 +235,7 @@ services:
       - ./settings/bootstrap.sh:/docker-entrypoint-initdb.d/2-bootstrap.sh
       - vol-odsV7-adminV2-tenant2-db-admin:/var/lib/postgresql/data
     restart: always
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready  -U ${POSTGRES_USER}']
-      start_period: 30s
-      retries: 30
-      interval: 30s
+    healthcheck: *healthcheck-db-socket
     networks:
       - edfiadminapp-network
 
@@ -258,11 +271,7 @@ services:
       - odsV7-adminV2-tenant2-db-admin
     restart: always
     hostname: ${ODS_V7_ADMIN_V2_MULTI_API_VIRTUAL_NAME}
-    healthcheck:
-      test: ${ODS_V7_ADMIN_V2_MULTI_API_HEALTHCHECK_TEST}
-      start_period: 30s
-      retries: 30
-      interval: 30s
+    healthcheck: *healthcheck-api
     networks:
       - edfiadminapp-network
 
@@ -294,6 +303,8 @@ services:
       # Increase rate limiting for Connect/Register endpoint
       IpRateLimiting__GeneralRules__0__Limit: 25
       EdFiApiDiscoveryUrl: ${ODS_V7_ADMIN_V2_MULTI_API_DISCOVERY_URL}
+      ReverseProxy__UseForwardedHeaders: "true"
+      ReverseProxy__KnownNetworks: "172.16.0.0/12,192.168.0.0/16"
     volumes:
       - ./settings/appsettings.v2.dockertemplate.json:/app/appsettings.v2.dockertemplate.json
       - ./settings/log4net.config:/app/log4net/log4net.config
@@ -310,11 +321,7 @@ services:
       - odsV7-adminV2-tenant2-db-admin
     restart: always
     hostname: ${ODS_V7_ADMIN_V2_MULTI_ADMIN_API_VIRTUAL_NAME}
-    healthcheck:
-      test: ${ODS_V7_ADMIN_V2_MULTI_ADMIN_API_HEALTHCHECK_TEST}
-      start_period: 30s
-      retries: 30
-      interval: 30s
+    healthcheck: *healthcheck-api-tenant1
     networks:
       - edfiadminapp-network
 
@@ -335,11 +342,7 @@ services:
     volumes:
       - vol-odsV7-adminV3-single-db-ods:/var/lib/postgresql/data
       - ${SQL_BACKUPS_FOLDER:-./db-backup}:/var/opt/pgsql/data/sql-backups/:ro
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -h localhost -p ${POSTGRES_PORT:-5432}']
-      start_period: 30s
-      retries: 30
-      interval: 30s
+    healthcheck: *healthcheck-db-tcp
     networks:
       - edfiadminapp-network
 
@@ -358,11 +361,7 @@ services:
       - ./settings/bootstrap.sh:/docker-entrypoint-initdb.d/2-bootstrap.sh
       - vol-odsV7-adminV3-single-db-admin:/var/lib/postgresql/data
     restart: always
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready  -U ${POSTGRES_USER}']
-      start_period: 30s
-      retries: 30
-      interval: 30s
+    healthcheck: *healthcheck-db-socket
     networks:
       - edfiadminapp-network
 
@@ -392,11 +391,7 @@ services:
       - odsV7-adminV3-single-db-admin
     restart: always
     hostname: ${ODS_V7_ADMIN_V3_SINGLE_API_VIRTUAL_NAME}
-    healthcheck:
-      test: ${ODS_V7_ADMIN_V3_SINGLE_API_HEALTHCHECK}
-      start_period: 30s
-      retries: 30
-      interval: 30s
+    healthcheck: *healthcheck-api
     networks:
       - edfiadminapp-network
 
@@ -430,6 +425,8 @@ services:
       ConnectionStrings__EdFi_Ods: 'host=odsV7-adminV3-single-db-ods;port=${POSTGRES_PORT:-5432};username=${POSTGRES_USER};password=${POSTGRES_PASSWORD};database=EdFi_Ods;pooling=true'
       ConnectionStrings__EdFi_Master: 'host=odsV7-adminV3-single-db-ods;port=${POSTGRES_PORT:-5432};username=${POSTGRES_USER};password=${POSTGRES_PASSWORD};database=postgres;pooling=true'
       EdFiApiDiscoveryUrl: ${ODS_V7_ADMIN_V3_SINGLE_API_DISCOVERY_URL}
+      ReverseProxy__UseForwardedHeaders: "true"
+      ReverseProxy__KnownNetworks: "172.16.0.0/12,192.168.0.0/16"
     volumes:
       - ./settings/log4net.config:/app/log4net/log4net.config
     depends_on:
@@ -437,11 +434,7 @@ services:
       - odsV7-adminV3-single-db-ods
     restart: always
     hostname: ${ODS_V7_ADMIN_V3_SINGLE_ADMIN_API_VIRTUAL_NAME}
-    healthcheck:
-      test: ${ODS_V7_ADMIN_V3_SINGLE_ADMIN_API_HEALTHCHECK}
-      start_period: 30s
-      retries: 30
-      interval: 30s
+    healthcheck: *healthcheck-api
     networks:
       - edfiadminapp-network
 
@@ -462,11 +455,7 @@ services:
     volumes:
       - vol-odsV7-adminV3-tenant1-db-ods:/var/lib/postgresql/data
       - ${SQL_BACKUPS_FOLDER:-./db-backup}:/var/opt/pgsql/data/sql-backups/:ro
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -h localhost -p ${POSTGRES_PORT:-5432}']
-      start_period: 30s
-      retries: 30
-      interval: 30s
+    healthcheck: *healthcheck-db-tcp
     networks:
       - edfiadminapp-network
 
@@ -486,11 +475,7 @@ services:
     volumes:
       - vol-odsV7-adminV3-tenant2-db-ods:/var/lib/postgresql/data
       - ${SQL_BACKUPS_FOLDER:-./db-backup}:/var/opt/pgsql/data/sql-backups/:ro
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -h localhost -p ${POSTGRES_PORT:-5432}']
-      start_period: 30s
-      retries: 30
-      interval: 30s
+    healthcheck: *healthcheck-db-tcp
     networks:
       - edfiadminapp-network
 
@@ -510,11 +495,7 @@ services:
       - ./settings/bootstrap.sh:/docker-entrypoint-initdb.d/2-bootstrap.sh
       - vol-odsV7-adminV3-tenant1-db-admin:/var/lib/postgresql/data
     restart: always
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready  -U ${POSTGRES_USER}']
-      start_period: 30s
-      retries: 30
-      interval: 30s
+    healthcheck: *healthcheck-db-socket
     networks:
       - edfiadminapp-network
 
@@ -534,11 +515,7 @@ services:
       - ./settings/bootstrap.sh:/docker-entrypoint-initdb.d/2-bootstrap.sh
       - vol-odsV7-adminV3-tenant2-db-admin:/var/lib/postgresql/data
     restart: always
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready  -U ${POSTGRES_USER}']
-      start_period: 30s
-      retries: 30
-      interval: 30s
+    healthcheck: *healthcheck-db-socket
     networks:
       - edfiadminapp-network
 
@@ -574,11 +551,7 @@ services:
       - odsV7-adminV3-tenant2-db-admin
     restart: always
     hostname: ${ODS_V7_ADMIN_V3_MULTI_API_VIRTUAL_NAME}
-    healthcheck:
-      test: ${ODS_V7_ADMIN_V3_MULTI_API_HEALTHCHECK_TEST}
-      start_period: 30s
-      retries: 30
-      interval: 30s
+    healthcheck: *healthcheck-api
     networks:
       - edfiadminapp-network
 
@@ -610,6 +583,8 @@ services:
       # Increase rate limiting for Connect/Register endpoint
       IpRateLimiting__GeneralRules__0__Limit: 25
       EdFiApiDiscoveryUrl: ${ODS_V7_ADMIN_V3_MULTI_API_DISCOVERY_URL}
+      ReverseProxy__UseForwardedHeaders: "true"
+      ReverseProxy__KnownNetworks: "172.16.0.0/12,192.168.0.0/16"
     volumes:
       - ./settings/appsettings.v3.dockertemplate.json:/app/appsettings.v3.dockertemplate.json
       - ./settings/log4net.config:/app/log4net/log4net.config
@@ -626,11 +601,7 @@ services:
       - odsV7-adminV3-tenant2-db-admin
     restart: always
     hostname: ${ODS_V7_ADMIN_V3_MULTI_ADMIN_API_VIRTUAL_NAME}
-    healthcheck:
-      test: ${ODS_V7_ADMIN_V3_MULTI_ADMIN_API_HEALTHCHECK_TEST}
-      start_period: 30s
-      retries: 30
-      interval: 30s
+    healthcheck: *healthcheck-api-tenant1
     networks:
       - edfiadminapp-network
 
@@ -644,11 +615,7 @@ services:
     restart: always
     volumes:
       - vol-db-admin-6x:/var/lib/postgresql/data
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready  -U ${POSTGRES_USER}']
-      start_period: 30s
-      retries: 30
-      interval: 30s
+    healthcheck: *healthcheck-db-socket
     networks:
       - edfiadminapp-network
 
@@ -663,11 +630,7 @@ services:
     restart: always
     volumes:
       - vol-db-ods-6x-255901:/var/lib/postgresql/data
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready  -U ${POSTGRES_USER}']
-      start_period: 30s
-      retries: 30
-      interval: 30s
+    healthcheck: *healthcheck-db-socket
     networks:
       - edfiadminapp-network
 
@@ -682,11 +645,7 @@ services:
     restart: always
     volumes:
       - vol-db-ods-6x-255902:/var/lib/postgresql/data
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready  -U ${POSTGRES_USER}']
-      start_period: 30s
-      retries: 30
-      interval: 30s
+    healthcheck: *healthcheck-db-socket
     networks:
       - edfiadminapp-network
 
@@ -702,7 +661,7 @@ services:
       ApiSettings__PathBase: '${V6_ODS_VIRTUAL_NAME}'
       TPDM_ENABLED: '${TPDM_ENABLED:-true}'
       ODS_WAIT_POSTGRES_HOSTS: 'v6-edfi-ods_255901 v6-edfi-ods_255902 '
-      API_HEALTHCHECK_TEST: ${V6_API_HEALTHCHECK_TEST}
+      API_HEALTHCHECK_TEST: 'wget --no-check-certificate --spider http://localhost/health'
       NPG_POOLING_ENABLED: '${NPG_POOLING_ENABLED:-true}'
       NPG_API_MAX_POOL_SIZE_ODS: '${NPG_API_MAX_POOL_SIZE_ODS:-20}'
       NPG_API_MAX_POOL_SIZE_ADMIN: '${NPG_API_MAX_POOL_SIZE_ADMIN:-20}'
@@ -716,11 +675,7 @@ services:
       - v6-edfi-ods_255902
     restart: always
     hostname: ${V6_ODS_VIRTUAL_NAME}
-    healthcheck:
-      test: ${V6_API_HEALTHCHECK_TEST}
-      start_period: 30s
-      retries: 30
-      interval: 30s
+    healthcheck: *healthcheck-api
     networks:
       - edfiadminapp-network
 
@@ -756,17 +711,15 @@ services:
       Tenants: null
       ConnectionStrings__EdFi_Admin: 'host=v6-db-admin;database=EdFi_Admin;username=${POSTGRES_USER};password=${POSTGRES_PASSWORD}'
       ConnectionStrings__EdFi_Security: 'host=v6-db-admin;database=EdFi_Security;username=${POSTGRES_USER};password=${POSTGRES_PASSWORD}'
+      ReverseProxy__UseForwardedHeaders: "true"
+      ReverseProxy__KnownNetworks: "172.16.0.0/12,192.168.0.0/16"
     volumes:
       - ./settings/log4net.config:/app/log4net/log4net.config
     depends_on:
       - v6-db-admin
     restart: always
     hostname: ${V6_ADMIN_API_VIRTUAL_NAME}
-    healthcheck:
-      test: ${V6_ADMIN_API_HEALTHCHECK_TEST}
-      start_period: 30s
-      retries: 30
-      interval: 30s
+    healthcheck: *healthcheck-api
     networks:
       - edfiadminapp-network
 

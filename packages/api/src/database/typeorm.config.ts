@@ -27,8 +27,8 @@ import {
   UserTeamMembership,
 } from '@edanalytics/models-server';
 
-import { PostgresConnectionOptions } from 'typeorm/driver/postgres/PostgresConnectionOptions';
-import { SqlServerConnectionOptions } from 'typeorm/driver/sqlserver/SqlServerConnectionOptions';
+import { PostgresDataSourceOptions } from 'typeorm/driver/postgres/PostgresDataSourceOptions';
+import { SqlServerDataSourceOptions } from 'typeorm/driver/sqlserver/SqlServerDataSourceOptions';
 import * as config from 'config';
 import { asBool } from '../utils';
 
@@ -185,7 +185,7 @@ const getMSSQLMigrations = () => [
   MssqlRenameDbInstanceIdToInstanceManageId1785365966591,
 ];
 
-const getDatabaseConfig = (): PostgresConnectionOptions | SqlServerConnectionOptions => {
+const getDatabaseConfig = (): PostgresDataSourceOptions | SqlServerDataSourceOptions => {
   const baseEntities = [
     EdfiTenant,
     Edorg,
@@ -232,7 +232,7 @@ const getDatabaseConfig = (): PostgresConnectionOptions | SqlServerConnectionOpt
         encrypt: asBool(config.DB_SSL),
         trustServerCertificate: asBool(config.DB_TRUST_CERTIFICATE),
       },
-    } as SqlServerConnectionOptions;
+    } as SqlServerDataSourceOptions;
   }
 
   return {
@@ -240,7 +240,7 @@ const getDatabaseConfig = (): PostgresConnectionOptions | SqlServerConnectionOpt
     migrations: getPostgreSQLMigrations(),
     type: 'postgres',
     // Add Postgres-specific options here if needed
-  } as PostgresConnectionOptions;
+  } as PostgresDataSourceOptions;
 };
 
 export default getDatabaseConfig();

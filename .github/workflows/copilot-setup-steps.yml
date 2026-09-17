@@ -16,11 +16,6 @@ jobs:
     permissions:
       contents: read
 
-    env:
-      DATABASE_USER: sa
-      DATABASE_PASSWORD: ${{ secrets.DATABASE_PASSWORD }}
-      DATABASE_NAME: sbaa
-
     # services:
       # Disabling the SQL Server work for now, with the assumption that Copilot
       # would have trouble working on MSSQL scripts in this repo.
@@ -41,15 +36,20 @@ jobs:
       #     MSSQL_SA_PASSWORD: ${{ env.DATABASE_PASSWORD }}
 
     steps:
+      # DATABASE_USER/DATABASE_NAME/DATABASE_PASSWORD are inlined directly in the
+      # commands below rather than passed through an `env:` block. Copilot code
+      # review's dynamic setup-step runner voids `env:` values on this step
+      # regardless of whether they come from a job-level block, a step-level
+      # block, or repo secrets - they all resolved empty in that context, even
+      # as plain literals - while the run script's own text is preserved as-is.
+      # The Postgres role/database only exist on this ephemeral runner and are
+      # never reachable outside it, so this credential is not a real secret.
+      # See AC-606.
       - run: |
           sudo systemctl start postgresql.service
           pg_isready
-          sudo -u postgres psql -c "CREATE ROLE ${DATABASE_USER} WITH LOGIN PASSWORD '${DATABASE_PASSWORD}';"
-          sudo -u postgres psql -c "CREATE DATABASE ${DATABASE_NAME}"
-        env:
-          DATABASE_USER: ${{ env.DATABASE_USER }}
-          DATABASE_NAME: ${{ env.DATABASE_NAME }}
-          DATABASE_PASSWORD: ${{ env.DATABASE_PASSWORD }}
+          sudo -u postgres psql -c "CREATE ROLE sa WITH LOGIN PASSWORD 'postgres_ci_only';"
+          sudo -u postgres psql -c "CREATE DATABASE sbaa"
 
       # - name: Install sqlcmd
       #   run: |

@@ -34,6 +34,7 @@ import {
 } from '@edanalytics/models';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { CellContext, ColumnFiltersState, SortingState } from '@tanstack/react-table';
+import { useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router';
 import { methods, queryKey } from '../../api';
 import { useIsStartingBlocksDeployment } from '../../helpers';
@@ -49,6 +50,23 @@ export const jobStateColorSchemes: Record<PgBossJobState, string> = {
   failed: 'red',
   retry: 'yellow',
 };
+
+/** Job states that indicate a sync queue row is still in-flight. */
+export const pendingSyncQueueStates: PgBossJobState[] = ['created', 'active', 'retry'];
+
+/** Interval (ms) to poll the sync queue at while any row is still pending. */
+export const syncQueuePollingIntervalMs = 3000;
+
+/** Whether any row in a paginated sync-queue result is still pending (not yet terminal). */
+export const hasPendingSyncQueueRows = (
+  data: SyncQueuePaginatedResults | undefined,
+  sbEnvironmentId?: number
+) =>
+  (data?.data ?? []).some(
+    (row) =>
+      pendingSyncQueueStates.includes(row.state) &&
+      (sbEnvironmentId === undefined || row.sbEnvironmentId === sbEnvironmentId)
+  );
 
 const urlStatePrefix = 'snc';
 
@@ -89,7 +107,18 @@ const fetchSyncQueues = (
 const fetchSyncQueueFacetedValuess = (filter: ColumnFiltersState) =>
   methods.getOne(makeFacetedValuesUrl(filter), SbSyncQueueFacetedValuesDto);
 
-export const SbSyncQueuesTable = ({ defaultFilters }: { defaultFilters: ColumnFiltersState }) => {
+export const SbSyncQueuesTable = ({
+  defaultFilters,
+  onSyncSettled,
+}: {
+  defaultFilters: ColumnFiltersState;
+  /**
+   * Called once each time this table's rows transition from having a pending
+   * row to having none (e.g. so a caller can refresh unrelated data, like a
+   * Tenants list, that the now-completed sync job may have changed).
+   */
+  onSyncSettled?: () => void;
+}) => {
   const [searchParams] = useSearchParams(
     new URLSearchParams(
       `?${getPrefixedName('colFilter', urlStatePrefix)}=${stringifyColumnFilters(defaultFilters)}`
@@ -112,6 +141,40 @@ export const SbSyncQueuesTable = ({ defaultFilters }: { defaultFilters: ColumnFi
     pageSize: paginationParams.pageSize ?? 10,
   };
 
+  // Pending state is checked against this separately, NOT against `queueData`
+  // below: `queueData` is scoped to whatever page/sort/column-filter the user
+  // currently has selected, so a pending row sitting on another page (or
+  // excluded by the user's own filter/sort) would make `queueData` alone look
+  // like nothing is pending, stopping all polling and permanently skipping
+  // `onSyncSettled` for that job. This query only applies `defaultFilters`
+  // (the caller's base scope, e.g. sbEnvironmentId) and fetches a page large
+  // enough to cover realistic queue depths, independent of the user's own
+  // table state.
+  const pendingCheckPageSize = 1000;
+  const pendingCheckData = useQuery({
+    queryKey: [
+      ...queryKey({
+        resourceName: 'SbSyncQueue',
+        id: makeDataUrl(0, [], defaultFilters, pendingCheckPageSize),
+      }),
+      'pending-check',
+    ],
+    queryFn: () => fetchSyncQueues(0, [], defaultFilters, pendingCheckPageSize),
+    // Also keep polling on its own error (see `queueData` below for why),
+    // rather than going silent forever after a single failed check.
+    refetchInterval: (query) =>
+      hasPendingSyncQueueRows(query.state.data) || query.state.error
+        ? syncQueuePollingIntervalMs
+        : false,
+  });
+  const isAutoRefreshing = hasPendingSyncQueueRows(pendingCheckData.data);
+  const wasPendingRef = useRef(false);
+  useEffect(() => {
+    if (wasPendingRef.current && !isAutoRefreshing) {
+      onSyncSettled?.();
+    }
+    wasPendingRef.current = isAutoRefreshing;
+  }, [isAutoRefreshing, onSyncSettled]);
   const queueData = useQuery({
     queryKey: queryKey({
       resourceName: 'SbSyncQueue',
@@ -130,6 +193,14 @@ export const SbSyncQueuesTable = ({ defaultFilters }: { defaultFilters: ColumnFi
         paginationState.pageSize
       ),
     placeholderData: keepPreviousData,
+    // Poll while anything matching the base scope is pending, not just while
+    // this specific page/sort/filter view happens to show a pending row --
+    // see `pendingCheckData` above.
+    // Also keep polling while this specific query is erroring, so "retrying"
+    // in the error message below is actually true rather than a one-shot
+    // failure that never gets attempted again.
+    refetchInterval: (query) =>
+      isAutoRefreshing || query.state.error ? syncQueuePollingIntervalMs : false,
   });
   const facetedValues = useQuery({
     queryKey: [
@@ -141,7 +212,13 @@ export const SbSyncQueuesTable = ({ defaultFilters }: { defaultFilters: ColumnFi
     ],
     queryFn: () => fetchSyncQueueFacetedValuess(columnFilters),
     placeholderData: keepPreviousData,
+    // Same scope as `pendingCheckData` above, so poll in lockstep to avoid
+    // stale filter option counts while rows are still in-flight. Also keeps
+    // retrying on its own error, same reasoning as `queueData` above.
+    refetchInterval: (query) =>
+      isAutoRefreshing || query.state.error ? syncQueuePollingIntervalMs : false,
   });
+  const hasRefreshError = queueData.isError || facetedValues.isError || pendingCheckData.isError;
 
   return (
     <SbaaTableProviderServerSide
@@ -283,6 +360,18 @@ export const SbSyncQueuesTable = ({ defaultFilters }: { defaultFilters: ColumnFi
       ]}
     >
       <Box mb={4}>
+        {isAutoRefreshing || hasRefreshError ? (
+          <HStack mb={2}>
+            {isAutoRefreshing ? (
+              <Badge colorScheme="blue">Auto-refreshing while a sync is in progress…</Badge>
+            ) : null}
+            {hasRefreshError ? (
+              <Text color="red.500" fontSize="sm">
+                Couldn't refresh — retrying…
+              </Text>
+            ) : null}
+          </HStack>
+        ) : null}
         <HStack align="end">
           {/* <SbaaTableSearch /> */}
           <SbaaTableAdvancedButton />

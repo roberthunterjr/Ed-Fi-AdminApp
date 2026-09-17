@@ -11,7 +11,9 @@ describe('SbEnvironmentEdfiTenantInterceptor - SbVersion allow-list', () => {
   let mockSbEnvironmentsRepository: Partial<Repository<SbEnvironment>>;
   let mockReflector: Partial<Reflector>;
 
-  const nextHandler: CallHandler = { handle: jest.fn().mockReturnValue('handled') } as unknown as CallHandler;
+  const nextHandler: CallHandler = {
+    handle: jest.fn().mockReturnValue('handled'),
+  } as unknown as CallHandler;
 
   const buildContext = (sbEnvironmentId = '5'): ExecutionContext => {
     const request: { params: Record<string, string> } = { params: { sbEnvironmentId } };
@@ -33,7 +35,7 @@ describe('SbEnvironmentEdfiTenantInterceptor - SbVersion allow-list', () => {
     interceptor = new SbEnvironmentEdfiTenantInterceptor(
       mockEdfiTenantsRepository as Repository<EdfiTenant>,
       mockSbEnvironmentsRepository as Repository<SbEnvironment>,
-      mockReflector as Reflector
+      mockReflector as Reflector,
     );
     jest.clearAllMocks();
   });
@@ -62,7 +64,7 @@ describe('SbEnvironmentEdfiTenantInterceptor - SbVersion allow-list', () => {
     });
 
     await expect(interceptor.intercept(buildContext(), nextHandler)).rejects.toThrow(
-      NotFoundException
+      NotFoundException,
     );
   });
 
@@ -76,7 +78,7 @@ describe('SbEnvironmentEdfiTenantInterceptor - SbVersion allow-list', () => {
     });
 
     await expect(interceptor.intercept(buildContext(), nextHandler)).rejects.toThrow(
-      NotFoundException
+      NotFoundException,
     );
   });
 
@@ -92,5 +94,64 @@ describe('SbEnvironmentEdfiTenantInterceptor - SbVersion allow-list', () => {
     const result = await interceptor.intercept(buildContext(), nextHandler);
 
     expect(result).toBe('handled');
+  });
+});
+
+describe('SbEnvironmentEdfiTenantInterceptor - edfiTenantId branch', () => {
+  let interceptor: SbEnvironmentEdfiTenantInterceptor;
+  let mockEdfiTenantsRepository: Partial<Repository<EdfiTenant>>;
+  let mockSbEnvironmentsRepository: Partial<Repository<SbEnvironment>>;
+  let mockReflector: Partial<Reflector>;
+
+  const nextHandler: CallHandler = {
+    handle: jest.fn().mockReturnValue('handled'),
+  } as unknown as CallHandler;
+
+  const buildContext = (params: Record<string, string>): ExecutionContext => {
+    const request: { params: Record<string, string> } = { params };
+    return {
+      switchToHttp: () => ({ getRequest: () => request }),
+      getHandler: () => ({}),
+      getClass: () => ({}),
+    } as unknown as ExecutionContext;
+  };
+
+  beforeEach(() => {
+    mockEdfiTenantsRepository = {
+      findOneOrFail: jest.fn().mockResolvedValue({
+        id: 9,
+        sbEnvironment: { id: 5, version: 'v3' },
+      }),
+    };
+    mockSbEnvironmentsRepository = {};
+    mockReflector = {
+      getAllAndOverride: jest.fn().mockReturnValue(undefined),
+    };
+    interceptor = new SbEnvironmentEdfiTenantInterceptor(
+      mockEdfiTenantsRepository as Repository<EdfiTenant>,
+      mockSbEnvironmentsRepository as Repository<SbEnvironment>,
+      mockReflector as Reflector,
+    );
+  });
+
+  it('loads the EdfiTenant with the { sbEnvironment: true } relations shape TypeORM 1.1.0 requires', async () => {
+    await interceptor.intercept(
+      buildContext({ edfiTenantId: '9', sbEnvironmentId: '5' }),
+      nextHandler,
+    );
+
+    expect(mockEdfiTenantsRepository.findOneOrFail).toHaveBeenCalledWith({
+      where: { id: 9, sbEnvironmentId: 5 },
+      relations: { sbEnvironment: true },
+    });
+  });
+
+  it('omits sbEnvironmentId from the where clause when it is absent, rather than passing it as undefined', async () => {
+    await interceptor.intercept(buildContext({ edfiTenantId: '9' }), nextHandler);
+
+    expect(mockEdfiTenantsRepository.findOneOrFail).toHaveBeenCalledWith({
+      where: { id: 9 },
+      relations: { sbEnvironment: true },
+    });
   });
 });

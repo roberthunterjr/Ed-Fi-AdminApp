@@ -8,6 +8,7 @@ import { Ownership } from '@edanalytics/models-server';
 import { Inject, Injectable } from '@nestjs/common';
 import { InjectEntityManager, InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
+import _ from 'lodash';
 import { AuthService } from '../auth/auth.service';
 import { applyDtoUpdates, throwNotFound } from '../utils';
 import { ValidationHttpException } from '../utils/customExceptions';
@@ -20,19 +21,24 @@ export class OwnershipsGlobalService {
     @InjectEntityManager()
     private readonly entityManager: EntityManager,
 
-    @Inject(AuthService) private readonly authService: AuthService
+    @Inject(AuthService) private readonly authService: AuthService,
   ) {}
   async create(createOwnershipDto: PostOwnershipDto) {
-    const isRedundant = !!(
-      await this.ownershipsRepository.findBy({
+    // TypeORM 1.1.0 throws when a `where` field is `undefined` instead of ignoring it
+    // (prior versions silently dropped it). The resource-id fields below are optional
+    // depending on `type`, so we must omit the absent ones rather than pass `undefined`.
+    const where = _.omitBy(
+      {
         teamId: createOwnershipDto.teamId,
         edorgId: createOwnershipDto.edorgId,
         odsId: createOwnershipDto.odsId,
         edfiTenantId: createOwnershipDto.edfiTenantId,
         sbEnvironmentId: createOwnershipDto.sbEnvironmentId,
         integrationProviderId: createOwnershipDto.integrationProviderId,
-      })
-    ).length;
+      },
+      _.isUndefined,
+    );
+    const isRedundant = !!(await this.ownershipsRepository.findBy(where)).length;
 
     if (isRedundant) {
       throw new ValidationHttpException({

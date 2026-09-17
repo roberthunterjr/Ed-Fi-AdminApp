@@ -225,6 +225,27 @@ describe('MssqlJobQueueService', () => {
       expect(retryCall).toBeUndefined();
     });
 
+    it('should preserve custom own-enumerable error properties (e.g. an HttpException response body) in output', async () => {
+      const job = buildMockJob({ retrycount: 3, retrylimit: 3 });
+      mockJobRepository.query.mockResolvedValue([]);
+      class FakeHttpException extends Error {
+        response = { message: 'Bad config', data: { status: 'ADMIN_API_MISCONFIGURED' } };
+      }
+      await service.work('test-queue', async () => { throw new FakeHttpException('sync failed'); });
+
+      await (service as any).executeJob(job);
+
+      const failCall = mockJobRepository.query.mock.calls.find(
+        ([sql]: [string]) => sql.includes("state='failed'")
+      );
+      const output = JSON.parse(failCall![1][1]);
+      expect(output.message).toBe('sync failed');
+      expect(output.response).toEqual({
+        message: 'Bad config',
+        data: { status: 'ADMIN_API_MISCONFIGURED' },
+      });
+    });
+
     it('should mark job as completed when handler succeeds', async () => {
       const job = buildMockJob();
       mockJobRepository.query.mockResolvedValue([]);

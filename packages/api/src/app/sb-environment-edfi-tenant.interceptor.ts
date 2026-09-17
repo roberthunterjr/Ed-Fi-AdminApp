@@ -48,7 +48,7 @@ export class SbEnvironmentEdfiTenantInterceptor implements NestInterceptor {
             id: edfiTenantId,
             ...(_.isFinite(sbEnvironmentId) ? { sbEnvironmentId } : {}),
           },
-          relations: ['sbEnvironment'],
+          relations: { sbEnvironment: true },
         })
         .catch(throwNotFound);
 

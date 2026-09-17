@@ -5,6 +5,10 @@ This folder contains two independent end-to-end test suites for the Admin App:
 - **[API Bruno E2E Tests](#api-bruno-e2e-tests)** (`run-bruno.ps1`) — Bruno CLI-driven API endpoint tests.
 - **[UI Playwright E2E Tests](#ui-playwright-e2e-tests)** (`run-e2e-ui.ps1`) — Playwright BDD-driven browser UI tests.
 
+It also holds one static check that starts nothing:
+
+- **[Compose Config Validation](#compose-config-validation)** (`check-compose-config.ps1`) — asserts the Docker Compose stack still renders from `compose/.env.example`.
+
 ## API Bruno E2E Tests
 
 Bruno CLI-driven end-to-end test suite for Admin App API App/Auth endpoints with Keycloak OIDC authentication bootstrap and local runner automation.
@@ -383,3 +387,41 @@ By default the stack is left running after the suite finishes (pass or fail), so
 
 - **Architecture:** See `docs/design/2026-08-03-mssql-e2e-ui-runner-design.md`
 - **Playwright BDD:** https://github.com/vitalets/playwright-bdd
+
+## Compose Config Validation
+
+`check-compose-config.ps1` renders the Docker Compose stack from `compose/.env.example`
+and asserts it is still coherent. It starts nothing and needs no Docker daemon —
+`docker compose config` only parses and interpolates. Takes ~15 s locally on Windows, less on CI.
+
+```bash
+npm run compose:check
+```
+
+CI runs the same script in the `Compose Config Validation` job of
+`.github/workflows/on-pullrequest.yml`, so local and CI behaviour cannot drift.
+
+### What it asserts
+
+1. **Every compose file parses on its own**, so a YAML error names the file it is in.
+2. **No referenced-but-undeclared variables**, for every profile. The failure names them.
+3. **Healthcheck commands match `compose-healthchecks.golden`**, which is what catches a service
+   pointed at the wrong `x-healthcheck-*` anchor - that renders as valid YAML and would otherwise
+   pass unnoticed.
+
+After a deliberate probe change, re-record the golden file and review the diff:
+
+```bash
+npm run compose:check:update
+```
+
+### Full documentation
+
+[COMPOSE-VALIDATION.md](./COMPOSE-VALIDATION.md) is the reference for this check: the dependency
+direction it asserts, what it deliberately does **not** catch, exactly when the golden file needs
+regenerating, and which files a new environment variable touches.
+
+### References
+
+- **Full reference:** [COMPOSE-VALIDATION.md](./COMPOSE-VALIDATION.md)
+- **Audit and rationale:** [`docs/design/2026-09-10-ac-520-env-example-audit.md`](../../docs/design/2026-09-10-ac-520-env-example-audit.md)

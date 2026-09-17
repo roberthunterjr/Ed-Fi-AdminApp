@@ -88,7 +88,7 @@ graph TD
 - The multi-tenant configuration includes two tenancies, each with own combination of "ODS" and "Admin" databases.
 - **NGiNX** serves as a reverse proxy.
 
-For v3 route and healthcheck configuration, see the `ODS_V7_ADMIN_V3_*` entries in `.env.example`.
+For v3 route configuration, see the `ODS_V7_ADMIN_V3_*` entries in `.env.example`.
 
 ### Containers for ODS/API 6.2
 
@@ -106,6 +106,42 @@ graph TD
 ```
 
 Because this is district-specific mode, and not a multi-tenant application, both districts' setups and client credentials are in the same "Admin" database instance, even though the two districts have distinct "ODS" databases.
+
+### Healthchecks
+
+The services in `edfi-services.yml` share four healthcheck definitions, declared once at
+the top of that file as YAML anchors (the `x-healthcheck-*` keys, which Compose ignores)
+and referenced per service as `healthcheck: *healthcheck-api`. Editing an anchor changes
+every service that references it.
+
+**These anchors are scoped to `edfi-services.yml`.** YAML anchors do not cross files, so
+services in `adminapp-services.yml` and `nginx-compose.yml` cannot reference them and keep
+their own inline healthchecks. Referencing one from another file fails with
+`unknown anchor ... referenced`.
+
+When adding a service, pick by what the container is, not by what the neighbouring service
+happens to use:
+
+| Anchor                     | Use it for                                                                            | Probe                                         |
+| -------------------------- | ------------------------------------------------------------------------------------- | --------------------------------------------- |
+| `*healthcheck-api`         | ODS/API and Admin API containers                                                      | `wget --spider http://localhost/health`       |
+| `*healthcheck-api-tenant1` | Multi-tenant Admin API containers only — the probe carries a `tenant: tenant1` header | as above, plus the header                     |
+| `*healthcheck-db-socket`   | **Default for PostgreSQL containers.** Every Admin database, and the v6 ODS databases | `pg_isready` over the local socket            |
+| `*healthcheck-db-tcp`      | The six v7 ODS databases (`odsV7-*-db-ods`) only                                      | `pg_isready -h localhost -p ${POSTGRES_PORT}` |
+
+The socket/TCP split among the database containers is historical drift rather than a design
+decision — the v6 and v7 ODS databases are probed differently for no recorded reason. Prefer
+`*healthcheck-db-socket` for anything new; see
+[the AC-520 audit](../docs/design/2026-09-10-ac-520-env-example-audit.md) for the details.
+
+Changes to these anchors are covered by `npm run compose:check`, which fails if a service's
+rendered healthcheck command stops matching `compose-healthchecks.golden` in this directory. After
+deliberately changing a probe, re-record that file with `npm run compose:check:update` and review
+the diff.
+
+See [COMPOSE-VALIDATION.md](../eng/testing/COMPOSE-VALIDATION.md) for what that check does and does
+not catch, when the golden file needs regenerating, and which files a new environment variable
+touches.
 
 ## Database Configuration
 

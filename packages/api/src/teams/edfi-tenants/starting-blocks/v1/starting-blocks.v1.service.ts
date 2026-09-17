@@ -4,10 +4,11 @@ import {
   SbV1MetaEnv,
 } from '@edanalytics/models';
 import { EdfiTenant, SbEnvironment } from '@edanalytics/models-server';
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectEntityManager, InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
 import { DeltaCounts, SyncableOds, persistSyncTenant } from '../../../../sb-sync/sync-ods';
+import { CacheService } from '../../../../app/cache.module';
 
 /* eslint @typescript-eslint/no-explicit-any: 0 */ // --> OFF
 @Injectable()
@@ -19,8 +20,20 @@ export class StartingBlocksServiceV1 {
     @InjectRepository(SbEnvironment)
     private sbEnvironmentsRepository: Repository<SbEnvironment>,
     @InjectEntityManager()
-    private readonly entityManager: EntityManager
+    private readonly entityManager: EntityManager,
+    @Inject(CacheService) private readonly cacheService: CacheService
   ) {}
+
+  /**
+   * Flushes the in-process team ownership cache so that UI requests
+   * immediately reflect a tenant created by a sync operation, mirroring
+   * AdminApiSyncService.flushOwnershipCache. The cache is keyed by teamId
+   * and rebuilt on the next request.
+   */
+  private flushOwnershipCache(): void {
+    this.cacheService.flushAll();
+    this.logger.log('Team ownership cache flushed after sync');
+  }
   async saveAdminApiCredentials(
     sbEnvironment: SbEnvironment,
     credentials: {
@@ -96,6 +109,7 @@ export class StartingBlocksServiceV1 {
         sbEnvironmentId: sbEnvironment.id,
       });
       result.tenant = 'created';
+      this.flushOwnershipCache();
     } else {
       edfiTenant = edfiTenants[0];
     }
@@ -103,6 +117,9 @@ export class StartingBlocksServiceV1 {
     if (treeSyncResult.status !== 'SUCCESS') {
       return treeSyncResult;
     }
+    // syncTenantResourceTree already flushes internally when it has changes,
+    // covering ODS/EdOrg changes on an already-existing tenant -- not just
+    // first-time tenant creation (handled above).
     result.edorg = treeSyncResult.data.edorg;
     result.ods = treeSyncResult.data.ods;
     return {
@@ -114,7 +131,7 @@ export class StartingBlocksServiceV1 {
   async syncTenantResourceTree(edfiTenant: EdfiTenant, meta: SbV1MetaEnv) {
     const sbEnvironment = await this.sbEnvironmentsRepository.findOne({
       where: { id: edfiTenant.sbEnvironmentId },
-      relations: ['edfiTenants'],
+      relations: { edfiTenants: true },
     });
 
     if (sbEnvironment.edfiTenants.length !== 1) {
@@ -133,9 +150,16 @@ export class StartingBlocksServiceV1 {
           edorgs: ods.edorgs,
         })
       );
-      return await this.entityManager.transaction((em) =>
+      const result = await this.entityManager.transaction((em) =>
         persistSyncTenant({ em, odss, edfiTenant })
       );
+      // Flush here (rather than only at the syncEnvironmentEverything call
+      // site) so this covers every caller uniformly, including the direct
+      // per-tenant sync job (SbSyncConsumer).
+      if (result.status === 'SUCCESS' && result.data.hasChanges) {
+        this.flushOwnershipCache();
+      }
+      return result;
     } catch (operationError) {
       this.logger.log(operationError);
       return {

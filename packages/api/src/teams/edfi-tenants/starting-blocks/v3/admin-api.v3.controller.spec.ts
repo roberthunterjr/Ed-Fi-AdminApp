@@ -106,6 +106,77 @@ describe('AdminApiControllerV3 - getDataStores', () => {
   });
 });
 
+describe('AdminApiControllerV3 - claimset validation call site', () => {
+  let controller: AdminApiControllerV3;
+  let mockSbService: { getClaimsetBasic: jest.Mock; getClaimset: jest.Mock };
+
+  const mockEdfiTenant = {
+    id: 1,
+    sbEnvironment: { envLabel: 'Test Env' },
+  } as unknown as EdfiTenant;
+
+  beforeEach(() => {
+    // Resolving as system-reserved makes both methods throw immediately
+    // after the claimset validation step, before touching any of the
+    // other collaborators (edorg repository, integration apps, etc.) —
+    // enough to prove which claimset lookup was used, without needing to
+    // mock the rest of either method's flow.
+    mockSbService = {
+      getClaimsetBasic: jest.fn().mockResolvedValue({ _isSystemReserved: true, name: 'Test' }),
+      getClaimset: jest.fn(),
+    };
+    controller = new AdminApiControllerV3(
+      null as unknown as IntegrationAppsTeamService,
+      mockSbService as unknown as AdminApiServiceV3,
+      null as unknown as Repository<Edorg>,
+      null as unknown as Repository<Ods>,
+      null as unknown as IJobQueueService,
+    );
+  });
+
+  it('putApplication validates the claimset via getClaimsetBasic, not the enriched getClaimset', async () => {
+    const application = { claimsetId: 5 } as unknown as Parameters<
+      AdminApiControllerV3['putApplication']
+    >[4];
+
+    await expect(
+      controller.putApplication(1, 1, mockEdfiTenant, 1, application, true),
+    ).rejects.toThrow(
+      new ValidationHttpException({
+        field: 'claimsetId',
+        message: 'Cannot use system-reserved claimset',
+      }),
+    );
+    expect(mockSbService.getClaimsetBasic).toHaveBeenCalledWith(mockEdfiTenant, 5);
+    expect(mockSbService.getClaimset).not.toHaveBeenCalled();
+  });
+
+  it('postApplication validates the claimset via getClaimsetBasic, not the enriched getClaimset', async () => {
+    const application = { claimsetId: 5 } as unknown as Parameters<
+      AdminApiControllerV3['postApplication']
+    >[5];
+
+    await expect(
+      controller.postApplication(
+        1,
+        1,
+        mockEdfiTenant,
+        {} as unknown as Parameters<AdminApiControllerV3['postApplication']>[3],
+        undefined,
+        application,
+        true,
+      ),
+    ).rejects.toThrow(
+      new ValidationHttpException({
+        field: 'claimsetId',
+        message: 'Cannot use system-reserved claimset',
+      }),
+    );
+    expect(mockSbService.getClaimsetBasic).toHaveBeenCalledWith(mockEdfiTenant, 5);
+    expect(mockSbService.getClaimset).not.toHaveBeenCalled();
+  });
+});
+
 describe('AdminApiControllerV3 - postProfile', () => {
   let controller: AdminApiControllerV3;
   let mockSbService: { postProfile: jest.Mock };
@@ -352,5 +423,94 @@ describe('AdminApiControllerV3 - deleteInstance', () => {
       new BadRequestException("ODS must be in 'Created' status to delete by instanceManageId")
     );
     expect(mockSbService.deleteInstance).not.toHaveBeenCalled();
+  });
+});
+
+describe('AdminApiControllerV3 - deleteApiClient last-credential guard', () => {
+  let controller: AdminApiControllerV3;
+  let mockSbService: {
+    getApiClient: jest.Mock;
+    getApplication: jest.Mock;
+    getApiClients: jest.Mock;
+    deleteApiClient: jest.Mock;
+  };
+
+  const mockEdfiTenant = { id: 1, sbEnvironmentId: 2 } as unknown as EdfiTenant;
+  const validIds: Ids = true;
+
+  beforeEach(() => {
+    mockSbService = {
+      getApiClient: jest.fn().mockResolvedValue({ id: 4, applicationId: 7 }),
+      getApplication: jest.fn().mockResolvedValue({
+        id: 7,
+        educationOrganizationIds: [255901107],
+        dataStoreIds: [1],
+      }),
+      getApiClients: jest.fn(),
+      deleteApiClient: jest.fn().mockResolvedValue(undefined),
+    };
+    controller = new AdminApiControllerV3(
+      null as unknown as IntegrationAppsTeamService,
+      mockSbService as unknown as AdminApiServiceV3,
+      null as unknown as Repository<Edorg>,
+      null as unknown as Repository<Ods>,
+      null as unknown as IJobQueueService
+    );
+  });
+
+  it('deletes the credential when the Application has more than one', async () => {
+    mockSbService.getApiClients.mockResolvedValue([{ id: 4 }, { id: 5 }]);
+
+    await controller.deleteApiClient(3, 1, mockEdfiTenant, 4, validIds);
+
+    expect(mockSbService.getApiClients).toHaveBeenCalledWith(mockEdfiTenant, 7);
+    expect(mockSbService.deleteApiClient).toHaveBeenCalledWith(mockEdfiTenant, 4);
+  });
+
+  it('rejects with 409 when it is the Application\'s only credential', async () => {
+    mockSbService.getApiClients.mockResolvedValue([{ id: 4 }]);
+
+    await expect(
+      controller.deleteApiClient(3, 1, mockEdfiTenant, 4, validIds)
+    ).rejects.toMatchObject({ status: 409 });
+  });
+
+  // The credential-count lookup must stay AFTER the edorg authorization check,
+  // so an unauthorized caller cannot use the guard as an oracle for how many
+  // credentials an Application has. `validIds = true` short-circuits `checkId`,
+  // so the tests above never enter the 403 branch — this one pins the ordering.
+  it('rejects with 403 before looking up the credential count when unauthorized', async () => {
+    mockSbService.getApiClients.mockResolvedValue([{ id: 4 }]);
+    const unauthorized: Ids = new Set<number | string>();
+
+    await expect(
+      controller.deleteApiClient(3, 1, mockEdfiTenant, 4, unauthorized)
+    ).rejects.toMatchObject({ status: 403 });
+
+    expect(mockSbService.getApiClients).not.toHaveBeenCalled();
+    expect(mockSbService.deleteApiClient).not.toHaveBeenCalled();
+  });
+
+  // The production guard is `<= 1`, not `=== 1`. An Application with zero
+  // credentials should be unreachable through Admin App (AC-616 blocks
+  // deleting the last one), but the design doc records it as a real state for
+  // Applications orphaned before that guard existed.
+  it('rejects with 409 when the Application has no credentials at all', async () => {
+    mockSbService.getApiClients.mockResolvedValue([]);
+
+    await expect(
+      controller.deleteApiClient(3, 1, mockEdfiTenant, 4, validIds)
+    ).rejects.toMatchObject({ status: 409 });
+
+    expect(mockSbService.deleteApiClient).not.toHaveBeenCalled();
+  });
+
+  it('does not forward the delete to AdminApi when it rejects', async () => {
+    mockSbService.getApiClients.mockResolvedValue([{ id: 4 }]);
+
+    await expect(
+      controller.deleteApiClient(3, 1, mockEdfiTenant, 4, validIds)
+    ).rejects.toBeInstanceOf(CustomHttpException);
+    expect(mockSbService.deleteApiClient).not.toHaveBeenCalled();
   });
 });

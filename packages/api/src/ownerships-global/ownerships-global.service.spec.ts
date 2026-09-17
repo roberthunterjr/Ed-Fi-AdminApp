@@ -53,6 +53,9 @@ describe('OwnershipsGlobalService', () => {
       roleId: 3,
     } as unknown as PostOwnershipDto;
     await expect(service.create(dto)).rejects.toThrow();
+    // Regression guard for the TypeORM 1.1.0 "where" fix: the conflict check itself must
+    // also build the where clause without `undefined` keys, not just the success path.
+    expect(mockRepo.findBy).toHaveBeenCalledWith({ teamId: 2, edorgId: 10 });
   });
 
   it('create() saves a new ownership and reloads cache', async () => {
@@ -68,8 +71,54 @@ describe('OwnershipsGlobalService', () => {
       integrationProviderId: undefined,
     } as unknown as PostOwnershipDto;
     await service.create(dto);
+    expect(mockRepo.findBy).toHaveBeenCalledWith({ teamId: 2, edorgId: 10 });
     expect(mockRepo.save).toHaveBeenCalled();
     expect(mockAuthService.reloadTeamOwnershipCache).toHaveBeenCalledWith(2);
+  });
+
+  // TypeORM 1.1.0 throws on an `undefined` value in a `where` clause. Ownership DTOs only
+  // ever populate one of these five optional resource-id fields at a time (per `type`), so
+  // each combination below regression-guards that the other four are omitted as keys
+  // entirely -- not merely set to `undefined` -- and that the invariant "where is never
+  // empty" holds (`teamId` is always present).
+  it.each([
+    ['edorgId', 10, OWNERSHIP_RESOURCE_TYPE.edorg],
+    ['odsId', 20, OWNERSHIP_RESOURCE_TYPE.ods],
+    ['edfiTenantId', 30, OWNERSHIP_RESOURCE_TYPE.edfiTenant],
+    ['sbEnvironmentId', 40, OWNERSHIP_RESOURCE_TYPE.sbEnvironment],
+    ['integrationProviderId', 50, OWNERSHIP_RESOURCE_TYPE.integrationProvider],
+  ] as const)(
+    'create() builds a where clause with only teamId + %s present (the other resource-id fields omitted, not undefined)',
+    async (fieldName, fieldValue, type) => {
+      const dto = {
+        teamId: 2,
+        type,
+        createdById: 1,
+        roleId: 3,
+        [fieldName]: fieldValue,
+      } as unknown as PostOwnershipDto;
+
+      await service.create(dto);
+
+      const where = (mockRepo.findBy as jest.Mock).mock.calls[0][0];
+      expect(where).toEqual({ teamId: 2, [fieldName]: fieldValue });
+      expect(Object.keys(where).sort()).toEqual(['teamId', fieldName].sort());
+    },
+  );
+
+  it('create() omits all five optional resource-id fields when none are provided, leaving only teamId', async () => {
+    const dto = {
+      teamId: 2,
+      type: OWNERSHIP_RESOURCE_TYPE.edorg,
+      createdById: 1,
+      roleId: 3,
+    } as unknown as PostOwnershipDto;
+
+    await service.create(dto);
+
+    expect(mockRepo.findBy).toHaveBeenCalledWith({ teamId: 2 });
+    const where = (mockRepo.findBy as jest.Mock).mock.calls[0][0];
+    expect(Object.keys(where)).toEqual(['teamId']);
   });
 
   it('findOne() returns an ownership by id', async () => {
@@ -93,6 +142,8 @@ describe('OwnershipsGlobalService', () => {
 
   it('remove() throws NotFoundException when ownership not found', async () => {
     const { NotFoundException } = await import('@nestjs/common');
-    await expect(service.remove(999, { id: 1 } as unknown as GetUserDto)).rejects.toThrow(NotFoundException);
+    await expect(service.remove(999, { id: 1 } as unknown as GetUserDto)).rejects.toThrow(
+      NotFoundException,
+    );
   });
 });

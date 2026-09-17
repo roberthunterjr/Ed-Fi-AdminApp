@@ -9,7 +9,7 @@ import {
 } from '@edanalytics/models';
 import { EdfiTenant, Ods, SbEnvironment } from '@edanalytics/models-server';
 import { createConcurrencyLimiter, wait } from '@edanalytics/utils';
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectEntityManager, InjectRepository } from '@nestjs/typeorm';
 import _ from 'lodash';
 import { EntityManager, In, Repository } from 'typeorm';
@@ -20,6 +20,7 @@ import {
   persistSyncOds,
   persistSyncTenant,
 } from '../../../../sb-sync/sync-ods';
+import { CacheService } from '../../../../app/cache.module';
 import { EdorgMgmtServiceV2 } from './edorg-mgmt.v2.service';
 import { OdsMgmtServiceV2 } from './ods-mgmt.v2.service';
 import { TenantMgmtServiceV2 } from './tenant-mgmt.v2.service';
@@ -43,8 +44,20 @@ export class StartingBlocksServiceV2 {
     @InjectRepository(SbEnvironment)
     private sbEnvironmentsRepository: Repository<SbEnvironment>,
     @InjectEntityManager()
-    private readonly entityManager: EntityManager
+    private readonly entityManager: EntityManager,
+    @Inject(CacheService) private readonly cacheService: CacheService
   ) {}
+
+  /**
+   * Flushes the in-process team ownership cache so that UI requests
+   * immediately reflect a tenant created by a sync operation, mirroring
+   * AdminApiSyncService.flushOwnershipCache. The cache is keyed by teamId
+   * and rebuilt on the next request.
+   */
+  private flushOwnershipCache(): void {
+    this.cacheService.flushAll();
+    this.logger.log('Team ownership cache flushed after sync');
+  }
 
   async getTenantResourceTree(edfiTenant: EdfiTenant) {
     const sbEnvironment = await this.sbEnvironmentsRepository.findOneBy({
@@ -157,6 +170,9 @@ export class StartingBlocksServiceV2 {
       ),
       this.edfiTenantsRepository.delete({ id: In(removedTenants.map((t) => t.id)) }),
     ]);
+    if (newTenants.length > 0 || removedTenants.length > 0) {
+      this.flushOwnershipCache();
+    }
 
     const newConfigPublic = _.cloneDeep(sbEnvironment.configPublic.values);
 
@@ -213,9 +229,16 @@ export class StartingBlocksServiceV2 {
           dbName: o.dbname,
         })
       );
-      return await this.entityManager.transaction((em) =>
+      const result = await this.entityManager.transaction((em) =>
         persistSyncTenant({ em, odss, edfiTenant })
       );
+      // Flush here (rather than only at call sites) so this covers every
+      // caller uniformly, including the direct per-tenant sync job
+      // (SbSyncConsumer) as well as the full-environment sync loop.
+      if (result.status === 'SUCCESS' && result.data.hasChanges) {
+        this.flushOwnershipCache();
+      }
+      return result;
     } catch (operationError) {
       this.logger.error(operationError);
       return {
@@ -235,9 +258,15 @@ export class StartingBlocksServiceV2 {
     const metaOds = metaTenant.odss?.find((o) => o.name === odsName);
 
     try {
-      return await this.entityManager.transaction((em) =>
+      const result = await this.entityManager.transaction((em) =>
         persistSyncOds({ em, ods: { ...metaOds, dbName: metaOds.dbname }, edfiTenant })
       );
+      // See syncTenantResourceTree above for why this flushes here rather
+      // than at each call site.
+      if (result.status === 'SUCCESS' && result.data.hasChanges) {
+        this.flushOwnershipCache();
+      }
+      return result;
     } catch (operationError) {
       this.logger.error(operationError);
       return {
@@ -294,6 +323,8 @@ export class StartingBlocksServiceV2 {
             success = false;
             return;
           }
+          // syncTenantResourceTree already flushes internally when it has
+          // changes, covering this loop too.
           if (!(tenant.name in resultsByTenant)) {
             resultsByTenant[tenant.name] = { action: null, hasChanges: false };
           }
@@ -457,6 +488,7 @@ export class StartingBlocksServiceV2 {
     if (syncResult.status !== 'SUCCESS') {
       return syncResult;
     }
+    // syncOdsResourceTree already flushes internally when it has changes.
     return {
       status: 'SUCCESS' as const,
       data: undefined,
@@ -479,6 +511,9 @@ export class StartingBlocksServiceV2 {
     const result = await this.entityManager.transaction((em) =>
       persistSyncDeleteOds({ ods, edfiTenant, em })
     );
+    if (result.status === 'SUCCESS' && result.data.hasChanges) {
+      this.flushOwnershipCache();
+    }
     return result;
   }
   async createEdorg(sbEnvironment: SbEnvironment, edfiTenant: EdfiTenant, dto: AddEdorgDtoV2) {
@@ -490,6 +525,7 @@ export class StartingBlocksServiceV2 {
     if (syncResult.status !== 'SUCCESS') {
       return syncResult;
     }
+    // syncTenantResourceTree already flushes internally when it has changes.
     return {
       status: 'SUCCESS' as const,
       data: undefined,
@@ -514,6 +550,7 @@ export class StartingBlocksServiceV2 {
     if (syncResult.status !== 'SUCCESS') {
       return syncResult;
     }
+    // syncTenantResourceTree already flushes internally when it has changes.
     return {
       status: 'SUCCESS' as const,
       data: undefined,

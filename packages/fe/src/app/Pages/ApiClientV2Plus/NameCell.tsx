@@ -4,28 +4,16 @@ import { CellContext } from '@tanstack/react-table';
 import omit from 'lodash/omit';
 import { useSingleApiClientActions } from './useApiClientActions';
 import { ApiClientLinkV2 } from '../../routes/apiClients.routes';
-import { useTeamEdfiTenantNavContextLoaded } from '../../helpers';
-import { ApiClientEntity, useApiClientConfig } from './apiClientConfig';
-import { UseQueryOptions, useQuery } from '@tanstack/react-query';
+import { ApiClientEntity } from './apiClientConfig';
+import { useApplicationApiClients } from './useApplicationApiClients';
 
-export const NameCell = (
-  info: CellContext<ApiClientEntity, unknown>
-) => {
-  const { teamId, edfiTenant } = useTeamEdfiTenantNavContextLoaded();
-  const { queries } = useApiClientConfig();
-  // TypeScript cannot resolve union-typed overloaded functions; cast to the
-  // actual return type. Same workaround as ClaimsetV2Plus/NameCell.tsx.
-  const apiClients = useQuery(
-    queries.getAll(
-      {
-        teamId,
-        edfiTenant,
-      },
-      {
-        applicationId: info.row.original.applicationId,
-      }
-    ) as UseQueryOptions<Record<string | number, ApiClientEntity>>
-  );
+export const NameCell = (info: CellContext<ApiClientEntity, unknown>) => {
+  // `throwOnError: true` keeps this cell's pre-existing behaviour: unlike the
+  // hook's other consumers, a failed load here has always propagated to an
+  // ErrorBoundary rather than rendering a link with no display name.
+  const { query: apiClientsQuery } = useApplicationApiClients(info.row.original.applicationId, {
+    throwOnError: true,
+  });
   const actions = useSingleApiClientActions({
     apiClient: info.row.original,
     applicationId: info.row.original.applicationId,
@@ -35,7 +23,7 @@ export const NameCell = (
       <ApiClientLinkV2
         id={info.row.original.id}
         applicationId={info.row.original.applicationId}
-        query={apiClients}
+        query={apiClientsQuery}
       />
       <TableRowActions actions={omit(actions, 'Create')} />
     </HStack>

@@ -16,7 +16,7 @@ import { classValidatorResolver } from '@hookform/resolvers/class-validator';
 import { PageTemplate } from '@edanalytics/common-ui';
 import { PostIntegrationProviderDto } from '@edanalytics/models';
 import { usePopBanner } from '../../Layout/FeedbackBanner';
-import { useNavToParent } from '../../helpers';
+import { useNavContext, useNavToParent } from '../../helpers';
 import { mutationErrCallback } from '../../helpers/mutationErrCallback';
 import { usePaths } from '../../routes/paths';
 import { QUERY_KEYS, useCreateIntegrationProvider } from '../../api-v2';
@@ -30,6 +30,7 @@ export const CreateIntegrationProviderPage = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const parentPath = useNavToParent();
+  const { asId: teamId } = useNavContext();
   const { mutateAsync: createIntegrationProvider } = useCreateIntegrationProvider();
 
   const {
@@ -43,7 +44,11 @@ export const CreateIntegrationProviderPage = () => {
     createIntegrationProvider(data, {
       ...mutationErrCallback({ popGlobalBanner, setFormError }),
       onSuccess: ({ id: integrationProviderId }) => {
-        queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.integrationProviders] });
+        queryClient.invalidateQueries({
+          queryKey: teamId
+            ? [QUERY_KEYS.asTeam, teamId, QUERY_KEYS.integrationProviders]
+            : [QUERY_KEYS.integrationProviders],
+        });
         navigate(paths.integrationProvider.view({ integrationProviderId }));
       },
     }).catch(() => undefined); // error already handled by mutationErrCallback's onError above

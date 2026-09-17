@@ -48,7 +48,7 @@ export const standardPath = (params: {
     : teamPath + sbEnvironmentPath + edfiTenantPath + adminApiPath + namePath + idPath;
 };
 
-type StandardQueryKeyParams = {
+export type StandardQueryKeyParams = {
   kebabCaseName: string;
   teamId?: number | string | undefined;
   edfiTenant?: GetEdfiTenantDto | undefined;

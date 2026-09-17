@@ -8,7 +8,7 @@ import {
 } from '@chakra-ui/react';
 import { PutUserTeamMembershipDto, RoleType } from '@edanalytics/models';
 import { classValidatorResolver } from '@hookform/resolvers/class-validator';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { noop } from '@tanstack/react-table';
 import { useForm } from 'react-hook-form';
 import { useNavigate, useParams } from 'react-router';
@@ -23,7 +23,6 @@ const resolver = classValidatorResolver(PutUserTeamMembershipDto);
 export const EditUtmGlobal = () => {
   const popBanner = usePopBanner();
 
-  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const params = useParams() as { userTeamMembershipId: string };
   const goToView = () => navigate(`/user-team-memberships/${params.userTeamMembershipId}`);
@@ -52,10 +51,7 @@ export const EditUtmGlobal = () => {
             { entity: data },
             {
               ...mutationErrCallback({ popGlobalBanner: popBanner, setFormError: setError }),
-              onSuccess: () => {
-                queryClient.invalidateQueries({ queryKey: ['me', 'userTeamMemberships'] });
-                goToView();
-              },
+              onSuccess: goToView,
             }
           )
           .catch(noop)

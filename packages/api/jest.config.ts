@@ -6,7 +6,7 @@ export default {
     '^.+\\.tsx?$': ['ts-jest', { tsconfig: '<rootDir>/tsconfig.spec.json' }],
   },
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx'],
-  transformIgnorePatterns: ['node_modules/(?!(jose)/)'],
+  transformIgnorePatterns: ['node_modules/'],
   moduleNameMapper: {
     '^config$': '<rootDir>/src/test/config.mock.ts',
   },

@@ -8,6 +8,7 @@ import { UseQueryOptions, useQuery } from '@tanstack/react-query';
 import { useTeamEdfiTenantNavContextLoaded } from '../../helpers';
 import { NameCell } from './NameCell';
 import { useMultiApiClientsActions } from './useApiClientActions';
+import { CredentialsRequiredLegend } from './CredentialsRequiredLegend';
 import { ApiClientEntity, useApiClientConfig } from './apiClientConfig';
 import { useParams } from 'react-router';
 
@@ -50,28 +51,31 @@ export const AllApiClientsTable = () => {
     ) as UseQueryOptions<Record<string | number, ApiClientEntity>>
   );
   return (
-    <SbaaTableAllInOne
-      data={Object.values(apiClients?.data || {})}
-      columns={[
-        {
-          accessorKey: 'name',
-          cell: NameCell,
-          header: 'Name',
-        },
-        {
-          accessorKey: 'key',
-          header: 'Key',
-        },
-        {
-          accessorKey: 'isApproved',
-          header: 'Enabled',
-          cell: (info) => (
-            <Badge colorScheme={info.row.original.isApproved ? 'green' : 'red'}>
-              {info.row.original.isApproved ? 'Enabled' : 'Disabled'}
-            </Badge>
-          ),
-        },
-      ]}
-    />
+    <>
+      <SbaaTableAllInOne
+        data={Object.values(apiClients?.data || {})}
+        columns={[
+          {
+            accessorKey: 'name',
+            cell: NameCell,
+            header: 'Name',
+          },
+          {
+            accessorKey: 'key',
+            header: 'Key',
+          },
+          {
+            accessorKey: 'isApproved',
+            header: 'Enabled',
+            cell: (info) => (
+              <Badge colorScheme={info.row.original.isApproved ? 'green' : 'red'}>
+                {info.row.original.isApproved ? 'Enabled' : 'Disabled'}
+              </Badge>
+            ),
+          },
+        ]}
+      />
+      <CredentialsRequiredLegend applicationId={Number(params.applicationId)} />
+    </>
   );
 };

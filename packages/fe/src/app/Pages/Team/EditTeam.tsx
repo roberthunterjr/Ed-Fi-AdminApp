@@ -10,7 +10,7 @@ import {
 } from '@chakra-ui/react';
 import { PutTeamDto } from '@edanalytics/models';
 import { classValidatorResolver } from '@hookform/resolvers/class-validator';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { usePopBanner } from '../../Layout/FeedbackBanner';
 
 import { noop } from '@tanstack/react-table';
@@ -24,7 +24,6 @@ const resolver = classValidatorResolver(PutTeamDto);
 export const EditTeam = () => {
   const popBanner = usePopBanner();
 
-  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const params = useParams() as { teamId: string };
   const goToView = () => navigate(`/teams/${params.teamId}`);
@@ -53,10 +52,7 @@ export const EditTeam = () => {
             { entity: data },
             {
               ...mutationErrCallback({ popGlobalBanner: popBanner, setFormError: setError }),
-              onSuccess: () => {
-                queryClient.invalidateQueries({ queryKey: ['me', 'teams'] });
-                goToView();
-              },
+              onSuccess: goToView,
             }
           )
           .catch(noop)

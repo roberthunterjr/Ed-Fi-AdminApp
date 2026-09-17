@@ -13,7 +13,6 @@ import {
 import { Icons, PageTemplate } from '@edanalytics/common-ui';
 import { PostVendorDto } from '@edanalytics/models';
 import { classValidatorResolver } from '@hookform/resolvers/class-validator';
-import { useQueryClient } from '@tanstack/react-query';
 import { noop } from '@tanstack/react-table';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router';
@@ -28,7 +27,6 @@ export const CreateVendor = () => {
   const { teamId, edfiTenant } = useTeamEdfiTenantNavContextLoaded();
   const popBanner = usePopBanner();
 
-  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const goToView = (id: string | number) =>
     navigate(
@@ -57,10 +55,7 @@ export const CreateVendor = () => {
                 { entity: data },
                 {
                   ...mutationErrCallback({ popGlobalBanner: popBanner, setFormError: setError }),
-                  onSuccess: (result) => {
-                    queryClient.invalidateQueries({ queryKey: ['me', 'vendors'] });
-                    goToView(result.id);
-                  },
+                  onSuccess: (result) => goToView(result.id),
                 }
               )
               .catch(noop)

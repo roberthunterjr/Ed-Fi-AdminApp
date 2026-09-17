@@ -181,6 +181,12 @@ export function SbaaTableProvider<
     getFacetedUniqueValues: getFacetedUniqueValues(),
     getFacetedMinMaxValues: getFacetedMinMaxValues(),
     getExpandedRowModel: props.useSubRows ? getExpandedRowModel() : undefined,
+    // Expanded sub-rows shouldn't count against the current page's row
+    // budget — otherwise expanding a parent can push its own children (or
+    // later siblings) onto a page the user isn't looking at, which reads as
+    // rows silently vanishing. Pagination should only ever page through the
+    // top-level rows; expanding one should just grow the table.
+    paginateExpandedRows: false,
     enableMultiRowSelection: props.enableRowSelection,
     getRowId: (row) => row.id,
     enableMultiSort: true,

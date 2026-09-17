@@ -11,7 +11,10 @@ import {
   SbEnvironmentConfigPublic,
   TenantDto,
 } from '@edanalytics/models';
-import axios, { AxiosInstance, AxiosResponse } from 'axios';
+import axios, { AxiosResponse } from 'axios';
+import * as adminApiTenancy from '../utils/admin-api-tenancy';
+import { AdminApiTenancyError } from '../utils/admin-api-tenancy';
+import * as apiMetadataUtils from '../utils/api-metadata-utils';
 
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
@@ -144,13 +147,18 @@ describe('V2AdminApiVersionStrategy', () => {
       expect(sbEnvironmentsRepository.save).not.toHaveBeenCalled();
     });
 
-    it('discovers tenants from the root endpoint and registers/saves credentials for each in multi-tenant mode', async () => {
+    it('discovers tenants from the tenancy endpoint and registers/saves credentials for each in multi-tenant mode', async () => {
       jest.clearAllMocks();
       sbEnvironmentsRepository.save = jest.fn();
-      const getMock = jest.fn().mockResolvedValue({
-        data: { tenancy: { multitenantMode: true, tenants: ['tenant-a', 'tenant-b'] } },
+      jest.spyOn(apiMetadataUtils, 'fetchAdminApiInfo').mockResolvedValue({
+        specificationVersion: 'v2',
+        urls: { tenancy: 'https://api.test.com/v2/tenancy' },
       });
-      mockedAxios.create.mockReturnValue({ get: getMock } as unknown as AxiosInstance);
+      const tenancySpy = jest.spyOn(adminApiTenancy, 'fetchAdminApiTenancy').mockResolvedValue({
+        supported: true,
+        tenants: ['tenant-a', 'tenant-b'],
+        mode: 'MultiTenant',
+      });
       mockedAxios.post.mockResolvedValue({ status: 200 } as unknown as AxiosResponse);
 
       const env = {
@@ -161,8 +169,7 @@ describe('V2AdminApiVersionStrategy', () => {
 
       await strategy.bootstrapCredentials(env);
 
-      expect(mockedAxios.create).toHaveBeenCalledWith({ baseURL: 'https://api.test.com' });
-      expect(getMock).toHaveBeenCalledWith('/');
+      expect(tenancySpy).toHaveBeenCalled();
       expect(mockedAxios.post).toHaveBeenCalledTimes(2);
 
       const values = (env.configPublic as unknown as { values: ISbEnvironmentConfigPublicV2 }).values;
@@ -177,32 +184,117 @@ describe('V2AdminApiVersionStrategy', () => {
       expect(sbEnvironmentsRepository.save).toHaveBeenCalledWith(env);
     });
 
-    it('falls back to the default tenant when the root endpoint response does not have the expected shape', async () => {
+    it('throws instead of provisioning a default tenant when a multi-tenant environment reports no tenancy support', async () => {
+      // tenancy.supported === false is a successful (non-throwing) result from
+      // fetchAdminApiTenancy — e.g. a 404 or misrouted proxy — not an error. For an
+      // environment stored as multi-tenant, that's a config/live mismatch, not
+      // evidence of single-tenant, and must not silently provision 'default'.
       jest.clearAllMocks();
       sbEnvironmentsRepository.save = jest.fn();
-      const getMock = jest.fn().mockResolvedValue({ data: {} });
-      mockedAxios.create.mockReturnValue({ get: getMock } as unknown as AxiosInstance);
+      jest.spyOn(apiMetadataUtils, 'fetchAdminApiInfo').mockResolvedValue({
+        specificationVersion: 'v2',
+        urls: { tenancy: 'https://api.test.com/v2/tenancy' },
+      });
+      jest.spyOn(adminApiTenancy, 'fetchAdminApiTenancy').mockResolvedValue({ supported: false });
+
+      const env = {
+        name: 'my-env',
+        adminApiUrl: 'https://api.test.com',
+        configPublic: { version: 'v2', values: { meta: { mode: 'MultiTenant' }, tenants: {} } },
+      } as unknown as SbEnvironment;
+
+      const error = await strategy.bootstrapCredentials(env).catch((e) => e);
+
+      expect(error).toBeInstanceOf(AdminApiTenancyError);
+      expect(error.kind).toBe('UNAVAILABLE');
+      expect(mockedAxios.post).not.toHaveBeenCalled();
+      expect(sbEnvironmentsRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('throws instead of provisioning a default tenant when a multi-tenant environment reports an empty tenant list', async () => {
+      jest.clearAllMocks();
+      sbEnvironmentsRepository.save = jest.fn();
+      jest.spyOn(apiMetadataUtils, 'fetchAdminApiInfo').mockResolvedValue({
+        specificationVersion: 'v2',
+        urls: { tenancy: 'https://api.test.com/v2/tenancy' },
+      });
+      jest.spyOn(adminApiTenancy, 'fetchAdminApiTenancy').mockResolvedValue({
+        supported: true,
+        tenants: [],
+        mode: 'SingleTenant',
+      });
+
+      const env = {
+        name: 'my-env',
+        adminApiUrl: 'https://api.test.com',
+        configPublic: { version: 'v2', values: { meta: { mode: 'MultiTenant' }, tenants: {} } },
+      } as unknown as SbEnvironment;
+
+      const error = await strategy.bootstrapCredentials(env).catch((e) => e);
+
+      expect(error).toBeInstanceOf(AdminApiTenancyError);
+      expect(error.kind).toBe('UNAVAILABLE');
+      expect(mockedAxios.post).not.toHaveBeenCalled();
+      expect(sbEnvironmentsRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('throws the original UNAVAILABLE error instead of provisioning a default tenant when the tenancy lookup is unreachable', async () => {
+      jest.clearAllMocks();
+      sbEnvironmentsRepository.save = jest.fn();
+      jest.spyOn(apiMetadataUtils, 'fetchAdminApiInfo').mockResolvedValue({
+        specificationVersion: 'v2',
+        urls: { tenancy: 'https://api.test.com/v2/tenancy' },
+      });
+      const tenancyError = new AdminApiTenancyError(
+        'UNAVAILABLE',
+        'Could not determine tenancy for this Management API.'
+      );
+      jest.spyOn(adminApiTenancy, 'fetchAdminApiTenancy').mockRejectedValue(tenancyError);
+
+      const env = {
+        name: 'my-env',
+        adminApiUrl: 'https://api.test.com',
+        configPublic: { version: 'v2', values: { meta: { mode: 'MultiTenant' }, tenants: {} } },
+      } as unknown as SbEnvironment;
+
+      await expect(strategy.bootstrapCredentials(env)).rejects.toBe(tenancyError);
+      expect(tenancyError.kind).toBe('UNAVAILABLE');
+      expect(tenancyError.detail).toBeUndefined();
+
+      expect(mockedAxios.post).not.toHaveBeenCalled();
+      expect(sbEnvironmentsRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('provisions the default tenant for a single-tenant environment without any tenancy call', async () => {
+      jest.clearAllMocks();
+      sbEnvironmentsRepository.save = jest.fn();
+      const tenancySpy = jest.spyOn(adminApiTenancy, 'fetchAdminApiTenancy');
       mockedAxios.post.mockResolvedValue({ status: 200 } as unknown as AxiosResponse);
 
       const env = {
         name: 'my-env',
         adminApiUrl: 'https://api.test.com',
-        configPublic: { version: 'v2', values: { meta: { mode: 'MultiTenant' }, tenants: {} } },
+        configPublic: { version: 'v2', values: { meta: { mode: 'SingleTenant' }, tenants: {} } },
       } as unknown as SbEnvironment;
 
       await strategy.bootstrapCredentials(env);
 
-      expect(mockedAxios.post).toHaveBeenCalledTimes(1);
+      expect(tenancySpy).not.toHaveBeenCalled();
       const values = (env.configPublic as unknown as { values: ISbEnvironmentConfigPublicV2 }).values;
       expect(values.tenants['default'].adminApiKey).toEqual(expect.any(String));
       expect(sbEnvironmentsRepository.save).toHaveBeenCalledTimes(1);
     });
 
-    it('logs and returns early without saving when the root Admin API call throws', async () => {
+    it('throws the original MISCONFIGURED error with its detail intact instead of provisioning a default tenant', async () => {
       jest.clearAllMocks();
       sbEnvironmentsRepository.save = jest.fn();
-      const getMock = jest.fn().mockRejectedValue(new Error('network unreachable'));
-      mockedAxios.create.mockReturnValue({ get: getMock } as unknown as AxiosInstance);
+      jest.spyOn(apiMetadataUtils, 'fetchAdminApiInfo').mockResolvedValue({
+        specificationVersion: 'v2',
+        urls: { tenancy: 'https://api.test.com/v2/tenancy' },
+      });
+      const detail = 'MultiTenancy is enabled but no tenants are configured. Check the Tenants section of appsettings.';
+      const tenancyError = new AdminApiTenancyError('MISCONFIGURED', detail, detail);
+      jest.spyOn(adminApiTenancy, 'fetchAdminApiTenancy').mockRejectedValue(tenancyError);
 
       const env = {
         name: 'my-env',
@@ -210,7 +302,9 @@ describe('V2AdminApiVersionStrategy', () => {
         configPublic: { version: 'v2', values: { meta: { mode: 'MultiTenant' }, tenants: {} } },
       } as unknown as SbEnvironment;
 
-      await strategy.bootstrapCredentials(env);
+      await expect(strategy.bootstrapCredentials(env)).rejects.toBe(tenancyError);
+      expect(tenancyError.kind).toBe('MISCONFIGURED');
+      expect(tenancyError.detail).toBe(detail);
 
       expect(mockedAxios.post).not.toHaveBeenCalled();
       expect(sbEnvironmentsRepository.save).not.toHaveBeenCalled();
@@ -219,10 +313,15 @@ describe('V2AdminApiVersionStrategy', () => {
     it('continues provisioning remaining tenants and still saves when one tenant registration fails', async () => {
       jest.clearAllMocks();
       sbEnvironmentsRepository.save = jest.fn();
-      const getMock = jest.fn().mockResolvedValue({
-        data: { tenancy: { multitenantMode: true, tenants: ['tenant-a', 'tenant-b'] } },
+      jest.spyOn(apiMetadataUtils, 'fetchAdminApiInfo').mockResolvedValue({
+        specificationVersion: 'v2',
+        urls: { tenancy: 'https://api.test.com/v2/tenancy' },
       });
-      mockedAxios.create.mockReturnValue({ get: getMock } as unknown as AxiosInstance);
+      jest.spyOn(adminApiTenancy, 'fetchAdminApiTenancy').mockResolvedValue({
+        supported: true,
+        tenants: ['tenant-a', 'tenant-b'],
+        mode: 'MultiTenant',
+      });
       mockedAxios.post
         .mockRejectedValueOnce(new Error('boom'))
         .mockResolvedValueOnce({ status: 200 } as unknown as AxiosResponse);

@@ -7,9 +7,17 @@ import { transformTenantData } from '../../utils/admin-api-data-adapter-utils';
 import { persistSyncTenant } from '../sync-ods';
 import { CacheService } from '../../app/cache.module';
 import { AdminApiVersionStrategyFactory } from '../../admin-api-version-strategy';
+import { AdminApiTenancyError, describeTenancyFailure } from '../../utils/admin-api-tenancy';
+import { ValidationHttpException } from '../../utils/customExceptions';
 
 export interface SyncResult {
-  status: 'SUCCESS' | 'ERROR' | 'NO_ADMIN_API_CONFIG' | 'INVALID_VERSION';
+  status:
+    | 'SUCCESS'
+    | 'ERROR'
+    | 'NO_ADMIN_API_CONFIG'
+    | 'INVALID_VERSION'
+    | 'ADMIN_API_MISCONFIGURED'
+    | 'TENANCY_UNAVAILABLE';
   message?: string;
   tenantsProcessed?: number;
   error?: Error;
@@ -110,7 +118,7 @@ export class AdminApiSyncService {
         name: transformedData.name,
         sbEnvironmentId: sbEnvironment.id,
       },
-      relations: ['odss', 'odss.edorgs'],
+      relations: { odss: { edorgs: true } },
     });
 
     if (!edfiTenant) {
@@ -194,7 +202,7 @@ export class AdminApiSyncService {
         this.logger.error(`Environment ${sbEnvironment.name} has invalid or missing version: ${sbEnvironment.version}`);
         return {
           status: 'INVALID_VERSION',
-          message: (error as Error).message,
+          message: error instanceof Error ? error.message : String(error),
         };
       }
 
@@ -202,14 +210,40 @@ export class AdminApiSyncService {
 
       // For brand-new environments (no stored credentials yet), register credentials
       // first so getTenants() can authenticate successfully.
-      await strategy.bootstrapCredentials(sbEnvironment);
-      const reloaded = await this.sbEnvironmentsRepository.findOne({ where: { id: sbEnvironment.id } });
-      if (reloaded) sbEnvironment = reloaded;
-
-      // Discover tenants from the Admin API
-      this.logger.log(`Discovering tenants for environment: ${sbEnvironment.name}`);
+      let tenants: TenantDto[];
       const adminApiService = strategy.getAdminApiService();
-      const tenants: TenantDto[] = await adminApiService.getTenants(sbEnvironment);
+      try {
+        await strategy.bootstrapCredentials(sbEnvironment);
+        const reloaded = await this.sbEnvironmentsRepository.findOne({ where: { id: sbEnvironment.id } });
+        if (reloaded) sbEnvironment = reloaded;
+
+        // Discover tenants from the Admin API
+        this.logger.log(`Discovering tenants for environment: ${sbEnvironment.name}`);
+        tenants = await adminApiService.getTenants(sbEnvironment);
+      } catch (error) {
+        if (error instanceof AdminApiTenancyError) {
+          this.logger.error(
+            `Environment ${sbEnvironment.name}: tenancy could not be determined (${error.kind}): ${error.message}`
+          );
+          const { isMisconfigured, detail } = describeTenancyFailure(error);
+          return {
+            status: isMisconfigured ? 'ADMIN_API_MISCONFIGURED' : 'TENANCY_UNAVAILABLE',
+            message: isMisconfigured ? detail : error.message,
+          };
+        }
+        if (error instanceof ValidationHttpException) {
+          this.logger.error(
+            `Environment ${sbEnvironment.name}: could not reach Admin API to determine tenancy: ${JSON.stringify(
+              error.getResponse()
+            )}`
+          );
+          return {
+            status: 'TENANCY_UNAVAILABLE',
+            message: 'Could not reach the Management API to determine tenancy for this environment.',
+          };
+        }
+        throw error;
+      }
 
       if (!tenants || tenants.length === 0) {
         this.logger.warn(`No tenants found for environment: ${sbEnvironment.name}`);
@@ -432,7 +466,7 @@ export class AdminApiSyncService {
       // Load the tenant with its parent environment
       const tenantWithEnvironment = await this.edfiTenantsRepository.findOne({
         where: { id: edfiTenant.id },
-        relations: ['sbEnvironment'],
+        relations: { sbEnvironment: true },
       });
 
       if (!tenantWithEnvironment || !tenantWithEnvironment.sbEnvironment) {
@@ -462,7 +496,7 @@ export class AdminApiSyncService {
         this.logger.error(`Environment for tenant ${edfiTenant.name} has invalid version: ${sbEnvironment.version}`);
         return {
           status: 'INVALID_VERSION',
-          message: (error as Error).message,
+          message: error instanceof Error ? error.message : String(error),
         };
       }
 

@@ -20,6 +20,7 @@ export const ActionBarButtons = {
       leftIcon={props.icon({})}
       onClick={props.onClick}
       title={props.title}
+      aria-label={props.ariaLabel}
     >
       {props.text}
     </Button>
@@ -36,6 +37,7 @@ export const ActionBarButtons = {
             confirmProps.onClick?.(e);
           }}
           title={props.title}
+          aria-label={props.ariaLabel}
         >
           {props.text}
         </Button>
@@ -124,7 +126,7 @@ export const TdIconButtons = {
       isDisabled={props.isDisabled}
       isLoading={props.isPending}
       to={props.to}
-      aria-label={props.text}
+      aria-label={props.ariaLabel ?? props.text}
       title={props.title}
       px="0.3rem"
       icon={<Icon as={props.icon} />}
@@ -132,7 +134,7 @@ export const TdIconButtons = {
   ),
   Standard: (props: ActionProps) => (
     <IconButton
-      aria-label={props.text}
+      aria-label={props.ariaLabel ?? props.text}
       title={props.title}
       px="0.3rem"
       icon={<Icon as={props.icon} />}
@@ -146,7 +148,7 @@ export const TdIconButtons = {
       {(confirmProps) => (
         <IconButton
           px="0.3rem"
-          aria-label={props.text}
+          aria-label={props.ariaLabel ?? props.text}
           title={props.title}
           icon={<Icon as={props.icon} />}
           onClick={(e) => {

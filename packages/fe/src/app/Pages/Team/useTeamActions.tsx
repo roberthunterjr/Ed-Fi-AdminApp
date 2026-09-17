@@ -1,6 +1,5 @@
 import { ActionsType, Icons } from '@edanalytics/common-ui';
 import { GetTeamDto } from '@edanalytics/models';
-import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { usePopBanner } from '../../Layout/FeedbackBanner';
 import { teamQueries } from '../../api';
@@ -11,7 +10,6 @@ export const useTeamActions = (team: GetTeamDto | undefined): ActionsType => {
   const navigate = useNavigate();
   const popBanner = usePopBanner();
   const to = (id: number | string) => `/teams/${id}`;
-  const queryClient = useQueryClient();
   const deleteTeam = teamQueries.delete({});
 
   const canAssume = useAuthorize(globalTeamAuthConfig('team:read'));
@@ -91,12 +89,7 @@ export const useTeamActions = (team: GetTeamDto | undefined): ActionsType => {
                     { id: team.id },
                     {
                       ...mutationErrCallback({ popGlobalBanner: popBanner }),
-                      onSuccess: () => {
-                        queryClient.invalidateQueries({
-                          queryKey: [],
-                        });
-                        navigate(`/teams`);
-                      },
+                      onSuccess: () => navigate(`/teams`),
                     }
                   ),
                 confirm: true,

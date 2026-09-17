@@ -25,6 +25,7 @@ import {
   useGetOneIntegrationProvider,
   useUpdateIntegrationProvider,
 } from '../../api-v2';
+import { useNavContext } from '../../helpers';
 import { ContentSection, PageContentCard } from '@edanalytics/common-ui';
 
 const resolver = classValidatorResolver(PutIntegrationProviderDto);
@@ -34,6 +35,7 @@ export const EditIntegrationProviderPage = () => {
   const popGlobalBanner = usePopBanner();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { asId: teamId } = useNavContext();
 
   const { integrationProviderId } = useParams() as { integrationProviderId: string };
 
@@ -58,7 +60,11 @@ export const EditIntegrationProviderPage = () => {
     updateIntegrationProvider(data, {
       ...mutationErrCallback({ popGlobalBanner, setFormError }),
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.integrationProviders] });
+        queryClient.invalidateQueries({
+          queryKey: teamId
+            ? [QUERY_KEYS.asTeam, teamId, QUERY_KEYS.integrationProviders]
+            : [QUERY_KEYS.integrationProviders],
+        });
         goToView();
       },
     }).catch(() => undefined); // error already handled by mutationErrCallback's onError above

@@ -7,6 +7,7 @@ import {
   GetApplicationDtoV3,
   GetDataStoreSummaryDtoV3,
   GetProfileDtoV3,
+  GetResourceClaimDetailDtoV3,
   GetVendorDtoV3,
   ISbEnvironmentConfigPrivateV2,
   Id,
@@ -32,6 +33,7 @@ import {
   toGetClaimsetSingleDtoV3,
   toGetDataStoreSummaryDtoV3,
   toGetProfileDtoV3,
+  toGetResourceClaimDetailDtoV3,
   toGetVendorDtoV3,
   toPostApiClientResponseDtoV3,
   toPostApplicationResponseDtoV3,
@@ -46,17 +48,8 @@ import {
   pollJobStatus,
   triggerEdOrgRefresh,
 } from '../admin-api-refresh-poll.util';
-
-/**
- * Response shape of the Admin API root endpoint (`GET /`), used to determine
- * whether the environment is running in multi-tenant mode.
- */
-interface TenancyResponse {
-  tenancy?: {
-    multitenantMode?: boolean;
-    tenants?: string[];
-  };
-}
+import { resolveTenantNames } from '../../../../utils/api-metadata-utils';
+import { mergeResourceClaimsV3 } from './resource-claims-merge.v3';
 
 /**
  * A single education organization as returned by the Admin API's
@@ -214,7 +207,8 @@ export class AdminApiServiceV3 {
         // Store token with tenant-specific composite key
         const tokenKey = this.getTenantTokenKey(id, tenantName);
         this.adminApiTokens.set(tokenKey, v.data.access_token, Number(v.data.expires_in) - 60);
-        // Also store an environment-level alias for callers that don't have a tenant context (e.g. tenancy discovery)
+        // Also store an environment-level alias: getAdminApiClientUsingEnv falls back to the
+        // bare environment.id key when called without a tenantName (e.g. via getAdminApiClientForEnvironment).
         this.adminApiTokens.set(id, v.data.access_token, Number(v.data.expires_in) - 60);
         this.logger.log(
           `Stored token for environment ${id} tenant ${tenantName} at key: ${tokenKey}`,
@@ -551,22 +545,75 @@ export class AdminApiServiceV3 {
     );
   }
 
-  async getClaimset(edfiTenant: EdfiTenant, claimSetId: number) {
+  // Raw single-endpoint fetch, shared by getClaimsetBasic and getClaimset.
+  // Kept separate (rather than having getClaimset call getClaimsetBasic)
+  // because the wire shape renames `claimSetName` to `name` on the way
+  // through toGetClaimsetSingleDtoV3 — merging onto the already-transformed
+  // DTO would drop `claimSetName` and break re-serialization.
+  private async fetchClaimset(edfiTenant: EdfiTenant, claimSetId: number) {
     const safeClaimSetId = this.sanitizeClaimSetId(claimSetId);
-    return toGetClaimsetSingleDtoV3(
+    return this.getAdminApiClient(edfiTenant)
+      // sanitizeClaimSetId already guarantees a positive integer (throws
+      // otherwise), so path-traversal/host-redirect via this segment is not
+      // actually reachable; encodeURIComponent is added on top so static
+      // analysis (CodeQL js/request-forgery) recognizes the URL segment as
+      // sanitized, since it doesn't model the custom integer check above.
+      .get<ClaimsetSingleWireDtoV3, ClaimsetSingleWireDtoV3>(
+        `claimSets/${encodeURIComponent(safeClaimSetId)}`,
+      )
+      .catch((err) => {
+        this.logger.error(
+          `Error getting claimset ${safeClaimSetId} for tenant ${edfiTenant.id}: ${err}`,
+        );
+        throw err;
+      });
+  }
+
+  // The plain single-endpoint fetch, without the AC-439 resourceClaims
+  // hierarchy merge below. Use this for callers that only need top-level
+  // claimset fields (e.g. validating `_isSystemReserved` before creating or
+  // updating an Application) — merging pulls up to 10,000 unrelated
+  // resourceClaims and would make those validation-only callers fail
+  // whenever that endpoint has trouble, for no benefit to them.
+  async getClaimsetBasic(edfiTenant: EdfiTenant, claimSetId: number) {
+    return toGetClaimsetSingleDtoV3(await this.fetchClaimset(edfiTenant, claimSetId));
+  }
+
+  async getClaimset(edfiTenant: EdfiTenant, claimSetId: number) {
+    const [claimset, allResourceClaims] = await Promise.all([
+      this.fetchClaimset(edfiTenant, claimSetId),
+      // AC-439: Admin Api excludes any resourceClaims item (at any depth)
+      // that has no actions associated. Fetch the complete hierarchy
+      // separately so those items can be merged back in as denied. If this
+      // fetch has trouble, fall back to the claimset's own (possibly
+      // pruned) resourceClaims instead of failing the whole request —
+      // losing the "denied" enrichment beats a blank claimset page.
+      this.getResourceClaims(edfiTenant).catch((err) => {
+        this.logger.warn(
+          `Could not fetch the full resourceClaims hierarchy for tenant ${edfiTenant.id}; showing claimset ${claimSetId} without AC-439 enrichment: ${err}`,
+        );
+        return null;
+      }),
+    ]);
+
+    if (allResourceClaims === null) {
+      return toGetClaimsetSingleDtoV3(claimset);
+    }
+
+    return toGetClaimsetSingleDtoV3({
+      ...claimset,
+      resourceClaims: mergeResourceClaimsV3(claimset.resourceClaims, allResourceClaims),
+    });
+  }
+
+  async getResourceClaims(edfiTenant: EdfiTenant) {
+    return toGetResourceClaimDetailDtoV3(
       await this.getAdminApiClient(edfiTenant)
-        // sanitizeClaimSetId already guarantees a positive integer (throws
-        // otherwise), so path-traversal/host-redirect via this segment is not
-        // actually reachable; encodeURIComponent is added on top so static
-        // analysis (CodeQL js/request-forgery) recognizes the URL segment as
-        // sanitized, since it doesn't model the custom integer check above.
-        .get<ClaimsetSingleWireDtoV3, ClaimsetSingleWireDtoV3>(
-          `claimSets/${encodeURIComponent(safeClaimSetId)}`,
+        .get<GetResourceClaimDetailDtoV3[], GetResourceClaimDetailDtoV3[]>(
+          `resourceClaims?offset=0&limit=10000`,
         )
         .catch((err) => {
-          this.logger.error(
-            `Error getting claimset ${safeClaimSetId} for tenant ${edfiTenant.id}: ${err}`,
-          );
+          this.logger.error(`Error getting resource claims for tenant ${edfiTenant.id}: ${err}`);
           throw err;
         }),
     );
@@ -837,8 +884,8 @@ export class AdminApiServiceV3 {
    * Retrieve all tenants with their DataStores and education organizations
    *
    * This method:
-   * 1. Calls the root endpoint (GET /) to get tenancy information
-   * 2. Determines tenant names based on multitenantMode setting
+   * 1. Calls Admin API's anonymous tenancy endpoint (advertised at `urls.tenancy`) to discover tenant names
+   * 2. Determines tenant names based on the discovered tenant list
    * 3. For each tenant, calls /v3/tenants/{tenantName}/dataStores/edOrgs to get detailed information
    * 4. Maps the response to TenantDto format
    *
@@ -849,58 +896,10 @@ export class AdminApiServiceV3 {
     this.logger.log(`Getting tenants for environment: ${environment.name}`);
 
     try {
-      // Step 1: Get tenancy information from root endpoint
-      const rootClient = axios.create({
-        baseURL: environment.adminApiUrl.replace(/\/$/, ''),
-      });
-
-      // Add auth token to root client (environment-level, no tenant)
-      let authToken = this.adminApiTokens.get(environment.id);
-      if (!authToken) {
-        // Login without tenant parameter to get environment-level token
-        const adminLogin = await this.login(environment, environment.id);
-        if (adminLogin.status !== 'SUCCESS') {
-          throw new CustomHttpException(
-            {
-              title: adminApiLoginStatusMsgs[adminLogin.status],
-              type: 'Error',
-            },
-            500,
-          );
-        }
-        authToken = this.adminApiTokens.get(environment.id);
-      }
-
-      const tenancyResponse = await rootClient
-        .get<TenancyResponse>('/', {
-          headers: {
-            Authorization: `Bearer ${authToken}`,
-          },
-        })
-        .then((res) => res.data)
-        .catch((err) => {
-          this.logger.error(`Error getting tenancy information: ${err}`);
-          throw err;
-        });
-
-      // Step 2: Determine tenant names from tenancy response
-      let tenantNames: string[];
-
-      if (
-        tenancyResponse?.tenancy?.multitenantMode === true &&
-        Array.isArray(tenancyResponse.tenancy.tenants) &&
-        tenancyResponse.tenancy.tenants.length > 0
-      ) {
-        // Multi-tenant mode
-        tenantNames = tenancyResponse.tenancy.tenants;
-        this.logger.log(
-          `Multi-tenant mode detected with ${tenantNames.length} tenants: ${tenantNames.join(', ')}`,
-        );
-      } else {
-        // Single-tenant mode
-        tenantNames = ['default'];
-        this.logger.log('Single-tenant mode detected, using default tenant');
-      }
+      // Step 1 & 2: Get the tenant list from Admin API's tenancy endpoint (anonymous,
+      // no login or bearer token needed) and determine tenant names. A failed lookup
+      // throws rather than falling back to 'default'.
+      const tenantNames = await resolveTenantNames(environment.adminApiUrl);
 
       // Log credential availability for discovered tenants
       const configPublic = environment.configPublic;
@@ -1049,24 +1048,11 @@ export class AdminApiServiceV3 {
 
       return tenantsWithDetails;
     } catch (error) {
-      // Only fall back to default tenant if the endpoint doesn't exist (404)
-      // This allows older Admin API versions that don't support multi-tenancy to work
-      if (isAxiosError(error) && error.response?.status === 404) {
-        this.logger.warn(
-          `Tenancy endpoint not found for environment ${environment.name} (404). Returning a default tenant for single-tenant API.`,
-        );
-        // V2 API without multi-tenant support, so we create a default tenant from environment data
-        const defaultTenant: TenantDto = {
-          id: 'default',
-          name: environment.name || 'Default Tenant',
-          odsInstances: [],
-        };
-
-        return [defaultTenant];
-      }
-
-      // For all other errors (auth failures, network issues, server errors), re-throw
-      // so administrators can identify and fix configuration problems
+      // Re-throw so administrators can identify and fix configuration problems.
+      // Tenant discovery failures (including "no tenancy endpoint"/404) are
+      // resolved by fetchAdminApiTenancy above, which returns { supported: false }
+      // rather than throwing — so any error reaching this point is a genuine
+      // failure and must never be papered over with a fabricated default tenant.
       const errorMessage = error instanceof Error ? error.message : String(error);
       const errorStack = error instanceof Error ? error.stack : undefined;
       this.logger.error(

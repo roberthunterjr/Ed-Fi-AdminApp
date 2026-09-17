@@ -6,7 +6,9 @@ import {
   PageSectionActions,
 } from '@edanalytics/common-ui';
 import { GetSbEnvironmentDto } from '@edanalytics/models';
+import { useQueryClient } from '@tanstack/react-query';
 import { AuthorizeComponent } from '../../helpers';
+import { edfiTenantQueriesGlobal } from '../../api';
 import { SbSyncQueuesTable } from '../SbSyncQueue/SbSyncQueuesPage';
 import { EdfiTenantsGlobalTable } from '../EdfiTenantGlobal/EdfiTenantsGlobalPage';
 import { Text } from '@chakra-ui/react';
@@ -15,6 +17,7 @@ import { useEdfiTenantsGlobalActions } from '../EdfiTenantGlobal/useEdfiTenantsG
 export const ViewSbEnvironmentGlobal = (props: { sbEnvironment: GetSbEnvironmentDto }) => {
   const { sbEnvironment } = props;
   const tenantsActions = useEdfiTenantsGlobalActions();
+  const queryClient = useQueryClient();
   return (
     <>
       <PageContentCard>
@@ -92,6 +95,13 @@ export const ViewSbEnvironmentGlobal = (props: { sbEnvironment: GetSbEnvironment
                 defaultFilters={[
                   { id: 'sbEnvironmentId', value: sbEnvironment.id },
                 ]}
+                onSyncSettled={() => {
+                  queryClient.invalidateQueries({
+                    queryKey: edfiTenantQueriesGlobal.getAll({
+                      sbEnvironmentId: sbEnvironment.id,
+                    }).queryKey,
+                  });
+                }}
               />
             </ContentSection>
           </PageContentCard>

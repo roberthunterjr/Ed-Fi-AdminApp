@@ -61,7 +61,13 @@ export interface AdminApiVersionStrategy {
   /** Builds the headers for the /connect/register call (adds `tenant` only when applicable). */
   getRegistrationHeaders(isMultitenant: boolean, tenant?: string): Record<string, string>;
 
-  /** First-time credential provisioning before getTenants() can authenticate. No-op for v1. */
+  /**
+   * First-time credential provisioning before getTenants() can authenticate. No-op for v1.
+   * Throws `AdminApiTenancyError` when a multi-tenant environment's tenant list cannot be
+   * determined, or `ValidationHttpException` when the Admin API Information endpoint is
+   * unreachable. Callers are expected to catch these and map them to failure statuses,
+   * not treat this as fire-and-forget.
+   */
   bootstrapCredentials(sbEnvironment: SbEnvironment): Promise<void>;
 
   /** Registers credentials for tenants discovered by the API but not yet configured. No-op for v1. */

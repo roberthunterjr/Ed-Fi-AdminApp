@@ -20,10 +20,6 @@ COPY package*.json ./
 COPY nx.json ./
 COPY tsconfig*.json ./
 
-# package.json's postinstall runs scripts/fix-ajv-keywords-peer.js, so scripts/
-# has to be present before npm ci, not alongside the rest of the source below.
-COPY scripts/ ./scripts/
-
 # Install all dependencies with cache mount for faster builds
 RUN --mount=type=cache,target=/root/.npm \
     --mount=type=cache,target=/root/.cache/nx \

@@ -11,6 +11,7 @@ import { usePopBanner } from '../../Layout/FeedbackBanner';
 import { ApiClientEntity, useApiClientConfig } from './apiClientConfig';
 import { mutationErrCallback } from '../../helpers/mutationErrCallback';
 import { useSearchParamsObject } from '../../helpers/useSearch';
+import { useApplicationApiClients } from './useApplicationApiClients';
 
 export const useSingleApiClientActions = ({
   apiClient,
@@ -38,6 +39,46 @@ export const useSingleApiClientActions = ({
     teamId: asId,
   });
 
+  // An Application with no credentials disappears from the UI entirely (AC-616),
+  // so the last one may not be deleted. NameCell already runs this exact query
+  // with the same key, so TanStack Query serves it from cache there rather than
+  // issuing a second request.
+  const {
+    query: apiClientsQuery,
+    count: apiClientCount,
+    isCountKnown,
+  } = useApplicationApiClients(applicationId);
+
+  // Enforcement threshold: <= 1, matching the BFF's own guard. Deliberately
+  // includes 0 so an Application that somehow reaches zero credentials cannot
+  // lose more. An unknown count (pending or errored) also blocks — failing
+  // closed costs the user a disabled button, whereas failing open could orphan
+  // the Application.
+  const blockDelete = !isCountKnown || apiClientCount <= 1;
+  // Display threshold: exactly one. Everything below that says "the only
+  // credential", which is false at 0, so this must never be widened to <= 1.
+  const isOnlyApiClient = isCountKnown && apiClientCount === 1;
+
+  // Four states, because a disabled button with a generic tooltip reads as
+  // broken. Pending and errored are transient and the user should be told so;
+  // "only credential" persists until they act.
+  const deleteTooltip = !isCountKnown
+    ? apiClientsQuery.isError
+      ? "Couldn't check the credential count — try refreshing the page."
+      : 'Checking credential count…'
+    : isOnlyApiClient
+      ? "This is the Application's only credential and can't be deleted. Create another credential first."
+      : 'Delete API client credentials';
+
+  // A disabled control has to say why, and say it to everyone. `title` alone
+  // reaches only sighted pointer users: the icon-button variant sets
+  // `aria-label` from `text`, and `aria-label` outranks `title` in
+  // accessible-name computation, so assistive technology would announce just
+  // "Delete, dimmed". Carrying the reason into the accessible name fixes that.
+  // Left undefined while Delete is enabled, so the default "Delete" name and
+  // the terse enabled-state tooltip are untouched.
+  const deleteAriaLabel = blockDelete ? deleteTooltip : undefined;
+
   const search = useSearchParamsObject();
   const onApiClientPage = !!apiClientId;
   const inEdit = onApiClientPage && 'edit' in search && search?.edit === 'true';
@@ -54,7 +95,7 @@ export const useSingleApiClientActions = ({
         teamId: Number(asId),
         id: '__filtered__',
       },
-    }
+    },
   );
   const toView = `/as/${asId}/sb-environments/${edfiTenant.sbEnvironmentId}/edfi-tenants/${edfiTenantId}/applications/${applicationId}/apiClients/${apiClient?.id}`;
   const toCreate = `/as/${asId}/sb-environments/${edfiTenant.sbEnvironmentId}/edfi-tenants/${edfiTenantId}/applications/${applicationId}/apiClients/create`;
@@ -99,9 +140,26 @@ export const useSingleApiClientActions = ({
                     {
                       ...mutationErrCallback({ popGlobalBanner: popBanner }),
                       onSuccess: (result) => {
+                        // Same fix as the put mutation in EditApiClient.tsx: resetCreds'
+                        // custom `path` (queries.v7.ts) doubles as the builder's default
+                        // invalidation key, which never matches the Credentials list's
+                        // `?applicationId=...` key (ApiClientsPage.tsx via
+                        // `queries.getAll`). Recompute the exact list key instead,
+                        // matching the working Delete pattern below.
+                        queryClient.invalidateQueries({
+                          queryKey: queries.getAll(
+                            {
+                              teamId: asId,
+                              edfiTenant,
+                            },
+                            {
+                              applicationId,
+                            },
+                          ).queryKey,
+                        });
                         navigate(toView, { state: result });
                       },
-                    }
+                    },
                   );
                 },
                 confirm: true,
@@ -126,9 +184,11 @@ export const useSingleApiClientActions = ({
           ? {
               Delete: {
                 isPending: deleteApiClient.isPending,
+                isDisabled: blockDelete,
                 icon: Icons.Delete,
                 text: 'Delete',
-                title: 'Delete API client credentials',
+                title: deleteTooltip,
+                ariaLabel: deleteAriaLabel,
                 confirmBody:
                   'All systems using these credentials to access Ed-Fi will no longer be able to do so. This action cannot be undone, but you will be able to create new credentials for this application if you want.',
                 onClick: () =>
@@ -145,16 +205,16 @@ export const useSingleApiClientActions = ({
                             },
                             {
                               applicationId,
-                            }
+                            },
                           ).queryKey,
                         });
                         if (onApiClientPage) {
                           navigate(
-                            `/as/${asId}/sb-environments/${edfiTenant.sbEnvironmentId}/edfi-tenants/${edfiTenantId}/applications/${applicationId}/apiClients`
+                            `/as/${asId}/sb-environments/${edfiTenant.sbEnvironmentId}/edfi-tenants/${edfiTenantId}/applications/${applicationId}/apiClients`,
                           );
                         }
                       },
-                    }
+                    },
                   ),
                 confirm: true,
               },

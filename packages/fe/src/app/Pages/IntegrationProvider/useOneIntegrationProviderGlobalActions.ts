@@ -53,7 +53,11 @@ export const useOneIntegrationProviderGlobalActions = (
     deleteIntegrationProvider(integrationProvider.id, {
       ...mutationErrCallback({ popGlobalBanner }),
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.integrationProviders] });
+        queryClient.invalidateQueries({
+          queryKey: teamId
+            ? [QUERY_KEYS.asTeam, teamId, QUERY_KEYS.integrationProviders]
+            : [QUERY_KEYS.integrationProviders],
+        });
         queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.ownerships] });
         navigate(paths.integrationProvider.index());
       },

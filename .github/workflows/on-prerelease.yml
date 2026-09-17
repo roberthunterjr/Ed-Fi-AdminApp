@@ -36,7 +36,7 @@ jobs:
       fe-tgz-hash: ${{ steps.fe-tgz-hash.outputs.fe-tgz-hash }}
 
     steps:
-      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.ref }}
           fetch-depth: 0
@@ -154,7 +154,7 @@ jobs:
       sbom-hash-code: ${{ steps.sbom-hash.outputs.sbom-hash-code }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.ref }}
           fetch-depth: 0
@@ -171,7 +171,7 @@ jobs:
 
       - name: Upload SBOM
         if: success()
-        uses: actions/upload-artifact@26f96dfa697d77e81fd5907df203aa23a56210a8 # v4.3.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: AdminApp.SBOM
           path: manifest.spdx.json

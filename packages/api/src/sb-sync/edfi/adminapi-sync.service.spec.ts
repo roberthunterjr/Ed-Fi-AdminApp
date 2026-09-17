@@ -12,6 +12,8 @@ import { CacheService } from '../../app/cache.module';
 import { AdminApiVersionStrategyFactory } from '../../admin-api-version-strategy';
 import * as adminApiDataAdapterUtils from '../../utils/admin-api-data-adapter-utils';
 import * as syncOds from '../sync-ods';
+import { AdminApiTenancyError } from '../../utils/admin-api-tenancy';
+import { ValidationHttpException } from '../../utils/customExceptions';
 
 describe('AdminApiSyncService', () => {
   let service: AdminApiSyncService;
@@ -250,6 +252,83 @@ describe('AdminApiSyncService', () => {
       });
     });
 
+    describe('tenancy errors', () => {
+      it('returns ADMIN_API_MISCONFIGURED with the Admin API message when bootstrap reports a misconfiguration', async () => {
+        const environment = mockSbEnvironmentV2 as SbEnvironment;
+        const detail =
+          'MultiTenancy is enabled but no tenants are configured. Check the Tenants section of appsettings.';
+        v2Strategy.bootstrapCredentials.mockRejectedValue(
+          new AdminApiTenancyError('MISCONFIGURED', detail, detail)
+        );
+
+        const result = await service.syncEnvironmentData(environment);
+
+        expect(result.status).toBe('ADMIN_API_MISCONFIGURED');
+        expect(result.message).toBe(detail);
+      });
+
+      it('returns TENANCY_UNAVAILABLE with neutral text when bootstrap fails to determine tenancy', async () => {
+        const environment = mockSbEnvironmentV2 as SbEnvironment;
+        v2Strategy.bootstrapCredentials.mockRejectedValue(
+          new AdminApiTenancyError('UNAVAILABLE', 'Could not determine tenancy for this Management API.')
+        );
+
+        const result = await service.syncEnvironmentData(environment);
+
+        expect(result.status).toBe('TENANCY_UNAVAILABLE');
+        expect(result.message).toBe('Could not determine tenancy for this Management API.');
+      });
+
+      it('returns ADMIN_API_MISCONFIGURED when getTenants reports a misconfiguration', async () => {
+        const environment = mockSbEnvironmentV2 as SbEnvironment;
+        const detail =
+          'MultiTenancy is enabled but no tenants are configured. Check the Tenants section of appsettings.';
+        adminApiServiceV2.getTenants.mockRejectedValue(
+          new AdminApiTenancyError('MISCONFIGURED', detail, detail)
+        );
+
+        const result = await service.syncEnvironmentData(environment);
+
+        expect(result.status).toBe('ADMIN_API_MISCONFIGURED');
+        expect(result.message).toBe(detail);
+      });
+
+      it('returns TENANCY_UNAVAILABLE when getTenants fails to determine tenancy', async () => {
+        const environment = mockSbEnvironmentV2 as SbEnvironment;
+        adminApiServiceV2.getTenants.mockRejectedValue(
+          new AdminApiTenancyError('UNAVAILABLE', 'Could not determine tenancy for this Management API.')
+        );
+
+        const result = await service.syncEnvironmentData(environment);
+
+        expect(result.status).toBe('TENANCY_UNAVAILABLE');
+        expect(result.message).toBe('Could not determine tenancy for this Management API.');
+      });
+
+      it('returns TENANCY_UNAVAILABLE with a meaningful message when fetchAdminApiInfo fails with a ValidationHttpException', async () => {
+        const environment = mockSbEnvironmentV2 as SbEnvironment;
+        adminApiServiceV2.getTenants.mockRejectedValue(
+          new ValidationHttpException({ field: 'adminApiUrl', message: 'Could not reach host.' })
+        );
+
+        const result = await service.syncEnvironmentData(environment);
+
+        expect(result.status).toBe('TENANCY_UNAVAILABLE');
+        expect(result.message).not.toBe('Invalid submission.');
+        expect(result.message).toContain('Management API');
+      });
+
+      it('re-throws non-tenancy errors so the outer catch handles them as ERROR', async () => {
+        const environment = mockSbEnvironmentV2 as SbEnvironment;
+        adminApiServiceV2.getTenants.mockRejectedValue(new Error('boom'));
+
+        const result = await service.syncEnvironmentData(environment);
+
+        expect(result.status).toBe('ERROR');
+        expect(result.message).toBe('boom');
+      });
+    });
+
     describe('v1 environment sync', () => {
       it('should successfully sync v1 environment with one tenant', async () => {
         const environment = mockSbEnvironmentV1 as SbEnvironment;
@@ -329,7 +408,7 @@ describe('AdminApiSyncService', () => {
             name: 'tenant-one',
             sbEnvironmentId: 1,
           },
-          relations: ['odss', 'odss.edorgs'],
+          relations: { odss: { edorgs: true } },
         });
         expect(edfiTenantsRepository.save).not.toHaveBeenCalled();
       });
@@ -905,6 +984,13 @@ describe('AdminApiSyncService', () => {
 
         expect(result.status).toBe('ERROR');
         expect(result.message).toContain('Tenant not found or missing environment');
+        // Regression guard for the TypeORM 1.1.0 relations conversion: a misnested or
+        // omitted `relations` option here would still resolve (mocked), silently
+        // returning a tenant without sbEnvironment loaded in a real DB.
+        expect(edfiTenantsRepository.findOne).toHaveBeenCalledWith({
+          where: { id: mockEdfiTenant.id },
+          relations: { sbEnvironment: true },
+        });
       });
 
       it('should return ERROR when tenant has no environment', async () => {

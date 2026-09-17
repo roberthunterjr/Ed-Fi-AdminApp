@@ -15,6 +15,7 @@ import { ViewApiClient } from './ViewApiClient';
 import { ApiClientEntity, useApiClientConfig } from './apiClientConfig';
 import { useSearchParamsObject } from '../../helpers/useSearch';
 import { EditApiClient } from './EditApiClient';
+import { CredentialsRequiredLegend } from './CredentialsRequiredLegend';
 
 export const ApiClientPageV2 = () => {
   return (
@@ -55,6 +56,7 @@ export const ApiClientPageTitle = () => {
 
 export const ApiClientPageContent = () => {
   const params = useParams() as {
+    applicationId: string;
     apiClientId: string;
   };
   const { teamId, edfiTenant } = useTeamEdfiTenantNavContextLoaded();
@@ -75,7 +77,12 @@ export const ApiClientPageContent = () => {
     edit: 'edit' in value && value.edit === 'true',
   }));
 
-  return apiClient ? (edit ? <EditApiClient apiClient={apiClient} /> : <ViewApiClient apiClient={apiClient} />) : null;
+  return apiClient ? (
+    <>
+      {edit ? <EditApiClient apiClient={apiClient} /> : <ViewApiClient apiClient={apiClient} />}
+      <CredentialsRequiredLegend applicationId={Number(params.applicationId)} />
+    </>
+  ) : null;
 };
 
 export const ApiClientPageActions = () => {

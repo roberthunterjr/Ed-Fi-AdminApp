@@ -18,7 +18,6 @@ import {
 import { PageTemplate } from '@edanalytics/common-ui';
 import { PostUserDto, RoleType } from '@edanalytics/models';
 import { classValidatorResolver } from '@hookform/resolvers/class-validator';
-import { useQueryClient } from '@tanstack/react-query';
 import { noop } from '@tanstack/react-table';
 import { Controller, Resolver, useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router';
@@ -39,7 +38,6 @@ type TeamFields = {
 export const CreateUser = () => {
   const popGlobalBanner = usePopBanner();
 
-  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const parentPath = useNavToParent();
   const postUser = userQueries.post({});
@@ -73,7 +71,6 @@ export const CreateUser = () => {
         {
           ...mutationErrCallback({ popGlobalBanner, setFormError }),
           onSuccess: async (result) => {
-            queryClient.invalidateQueries({ queryKey: ['me', 'users'] });
             if (!isAddingToTeam) {
               navigate(`/users/${result.id}`);
               return;
@@ -85,10 +82,7 @@ export const CreateUser = () => {
               .mutateAsync(
                 { entity: userTeamEntity },
                 {
-                  onSuccess: () => {
-                    queryClient.invalidateQueries({ queryKey: ['me', 'user-team-memberships'] });
-                    navigate(`/users/${result.id}`);
-                  },
+                  onSuccess: () => navigate(`/users/${result.id}`),
                   ...mutationErrCallback({ popGlobalBanner, setFormError }),
                 }
               )

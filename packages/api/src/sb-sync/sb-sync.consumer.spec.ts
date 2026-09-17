@@ -5,7 +5,10 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { SbEnvironment, EdfiTenant } from '@edanalytics/models-server';
 import { SbSyncConsumer } from './sb-sync.consumer';
 import { AdminApiSyncService } from './edfi/adminapi-sync.service';
-import { StartingBlocksServiceV1, StartingBlocksServiceV2 } from '../teams/edfi-tenants/starting-blocks';
+import {
+  StartingBlocksServiceV1,
+  StartingBlocksServiceV2,
+} from '../teams/edfi-tenants/starting-blocks';
 import { MetadataService } from '../teams/edfi-tenants/starting-blocks/metadata.service';
 import { ENV_SYNC_CHNL } from './sb-sync.module';
 
@@ -41,9 +44,7 @@ describe('SbSyncConsumer — SYNC_SCHEDULER_CHNL', () => {
     };
 
     sbEnvironmentsRepository = {
-      createQueryBuilder: jest.fn()
-        .mockReturnValueOnce(qbSb)
-        .mockReturnValueOnce(qbAdminApi),
+      createQueryBuilder: jest.fn().mockReturnValueOnce(qbSb).mockReturnValueOnce(qbAdminApi),
     };
 
     jobQueue = {
@@ -58,7 +59,10 @@ describe('SbSyncConsumer — SYNC_SCHEDULER_CHNL', () => {
       providers: [
         SbSyncConsumer,
         { provide: getRepositoryToken(SbEnvironment), useValue: sbEnvironmentsRepository },
-        { provide: getRepositoryToken(EdfiTenant), useValue: { findOne: jest.fn(), find: jest.fn() } },
+        {
+          provide: getRepositoryToken(EdfiTenant),
+          useValue: { findOne: jest.fn(), find: jest.fn() },
+        },
         { provide: 'IJobQueueService', useValue: jobQueue },
         { provide: StartingBlocksServiceV1, useValue: {} },
         { provide: StartingBlocksServiceV2, useValue: {} },
@@ -75,7 +79,7 @@ describe('SbSyncConsumer — SYNC_SCHEDULER_CHNL', () => {
     expect(jobQueue.send).toHaveBeenCalledWith(
       ENV_SYNC_CHNL,
       { sbEnvironmentId: adminApiEnv.id },
-      { singletonKey: String(adminApiEnv.id), expireInHours: 1 }
+      { singletonKey: String(adminApiEnv.id), expireInHours: 1 },
     );
   });
 
@@ -83,7 +87,142 @@ describe('SbSyncConsumer — SYNC_SCHEDULER_CHNL', () => {
     expect(jobQueue.send).toHaveBeenCalledWith(
       ENV_SYNC_CHNL,
       { sbEnvironmentId: sbEnv.id },
-      { singletonKey: String(sbEnv.id), expireInHours: 1 }
+      { singletonKey: String(sbEnv.id), expireInHours: 1 },
     );
+  });
+});
+
+describe('SbSyncConsumer — refreshSbEnvironment', () => {
+  let consumer: SbSyncConsumer;
+  let sbEnvironmentsRepository: any;
+  let adminapiSyncService: any;
+
+  const adminApiEnv = { id: 2, name: 'Test Env' } as SbEnvironment;
+
+  beforeEach(async () => {
+    const qbSbNull = {
+      select: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      getOne: jest.fn().mockResolvedValue(null),
+    };
+    const qbAdminApi = {
+      select: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      getOne: jest.fn().mockResolvedValue(adminApiEnv),
+    };
+
+    sbEnvironmentsRepository = {
+      createQueryBuilder: jest.fn().mockReturnValueOnce(qbSbNull).mockReturnValueOnce(qbAdminApi),
+    };
+
+    adminapiSyncService = {
+      syncEnvironmentData: jest.fn(),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        SbSyncConsumer,
+        { provide: getRepositoryToken(SbEnvironment), useValue: sbEnvironmentsRepository },
+        {
+          provide: getRepositoryToken(EdfiTenant),
+          useValue: { findOne: jest.fn(), find: jest.fn() },
+        },
+        {
+          provide: 'IJobQueueService',
+          useValue: {
+            createQueue: jest.fn(),
+            schedule: jest.fn(),
+            work: jest.fn(),
+            start: jest.fn(),
+          },
+        },
+        { provide: StartingBlocksServiceV1, useValue: {} },
+        { provide: StartingBlocksServiceV2, useValue: {} },
+        { provide: MetadataService, useValue: {} },
+        { provide: AdminApiSyncService, useValue: adminapiSyncService },
+      ],
+    }).compile();
+
+    consumer = module.get<SbSyncConsumer>(SbSyncConsumer);
+  });
+
+  it('should carry the sync status through the thrown exception when the Admin API sync fails', async () => {
+    adminapiSyncService.syncEnvironmentData.mockResolvedValue({
+      status: 'ADMIN_API_MISCONFIGURED',
+      message: 'appsettings tenancy config is invalid',
+    });
+
+    await expect(consumer.refreshSbEnvironment(adminApiEnv.id)).rejects.toMatchObject({
+      response: expect.objectContaining({
+        message: 'appsettings tenancy config is invalid',
+        data: { status: 'ADMIN_API_MISCONFIGURED' },
+      }),
+    });
+  });
+});
+
+describe('SbSyncConsumer — refreshEdfiTenant', () => {
+  let consumer: SbSyncConsumer;
+  let edfiTenantsRepository: any;
+  let adminapiSyncService: any;
+  let metadataService: any;
+
+  const adminApiEnv = { id: 2, name: 'Test Env', startingBlocks: false } as SbEnvironment;
+  const edfiTenant = { id: 5, name: 'Test Tenant', sbEnvironment: adminApiEnv } as EdfiTenant;
+
+  beforeEach(async () => {
+    edfiTenantsRepository = {
+      findOne: jest.fn().mockResolvedValue(edfiTenant),
+    };
+
+    adminapiSyncService = {
+      syncTenantData: jest.fn(),
+    };
+
+    metadataService = {
+      getMetadata: jest.fn().mockResolvedValue({ status: 'SUCCESS', data: {} }),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        SbSyncConsumer,
+        { provide: getRepositoryToken(SbEnvironment), useValue: {} },
+        { provide: getRepositoryToken(EdfiTenant), useValue: edfiTenantsRepository },
+        {
+          provide: 'IJobQueueService',
+          useValue: {
+            createQueue: jest.fn(),
+            schedule: jest.fn(),
+            work: jest.fn(),
+            start: jest.fn(),
+          },
+        },
+        { provide: StartingBlocksServiceV1, useValue: {} },
+        { provide: StartingBlocksServiceV2, useValue: {} },
+        { provide: MetadataService, useValue: metadataService },
+        { provide: AdminApiSyncService, useValue: adminapiSyncService },
+      ],
+    }).compile();
+
+    consumer = module.get<SbSyncConsumer>(SbSyncConsumer);
+  });
+
+  it('should carry the sync status through the thrown exception when the Admin API tenant sync fails', async () => {
+    adminapiSyncService.syncTenantData.mockResolvedValue({
+      status: 'ADMIN_API_MISCONFIGURED',
+      message: 'appsettings tenancy config is invalid',
+    });
+
+    await expect(consumer.refreshEdfiTenant(edfiTenant.id)).rejects.toMatchObject({
+      response: expect.objectContaining({
+        message: 'appsettings tenancy config is invalid',
+        data: { status: 'ADMIN_API_MISCONFIGURED' },
+      }),
+    });
+
+    expect(edfiTenantsRepository.findOne).toHaveBeenCalledWith({
+      where: { id: edfiTenant.id },
+      relations: { sbEnvironment: true },
+    });
   });
 });

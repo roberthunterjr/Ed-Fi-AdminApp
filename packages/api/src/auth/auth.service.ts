@@ -71,7 +71,7 @@ export class AuthService {
           userId,
           teamId,
         },
-        relations: ['role'],
+        relations: { role: true },
       });
 
       membership?.role?.privilegeIds?.forEach((code) => {
@@ -86,7 +86,7 @@ export class AuthService {
         id: userId,
         isActive: true,
       },
-      relations: ['role'],
+      relations: { role: true },
     });
 
     user.role?.privilegeIds?.forEach((code) => {
@@ -102,7 +102,7 @@ export class AuthService {
       const where = username ? { username } : { clientId, userType: 'machine' as const };
       const user = await this.usersRepo.findOne({
         where,
-        relations: ['role'],
+        relations: { role: true },
       });
       if (user === null) return null;
 
@@ -111,7 +111,7 @@ export class AuthService {
           userId: user.id,
           roleId: Not(IsNull()),
         },
-        relations: ['role', 'team'],
+        relations: { role: true, team: true },
       });
 
       if (teamMemberships.length) {
@@ -147,7 +147,7 @@ export class AuthService {
   async findActiveUserById(userId: number): Promise<User | null> {
     return await this.usersRepo.findOne({
       where: { id: userId, isActive: true },
-      relations: ['role'],
+      relations: { role: true },
     });
   }
 
@@ -158,16 +158,14 @@ export class AuthService {
       where: {
         teamId,
       },
-      relations: [
-        'sbEnvironment',
-        'sbEnvironment.edfiTenants',
-        'edfiTenant',
-        'edfiTenant.sbEnvironment',
-        'ods',
-        'edorg',
-        'role',
-        'integrationProvider',
-      ],
+      relations: {
+        sbEnvironment: { edfiTenants: true },
+        edfiTenant: { sbEnvironment: true },
+        ods: true,
+        edorg: true,
+        role: true,
+        integrationProvider: true,
+      },
     });
 
     /**

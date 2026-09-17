@@ -12,7 +12,6 @@ import { ChangeEvent } from 'react';
 import { PageTemplate } from '@edanalytics/common-ui';
 import { PostProfileDtoV2, PostProfileDtoV3 } from '@edanalytics/models';
 import { classValidatorResolver } from '@hookform/resolvers/class-validator';
-import { useQueryClient } from '@tanstack/react-query';
 import { noop } from '@tanstack/react-table';
 import { useMemo, useState } from 'react';
 import { DefaultValues, Path, PathValue, useForm } from 'react-hook-form';
@@ -42,7 +41,6 @@ function CreateProfileForm<D extends PostProfileDtoV2 | PostProfileDtoV3>(props:
   const { queries, PostDto } = props.config;
   const resolver = useMemo(() => classValidatorResolver(PostDto), [PostDto]);
 
-  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const goToView = (id: string | number) =>
     navigate(
@@ -113,10 +111,7 @@ function CreateProfileForm<D extends PostProfileDtoV2 | PostProfileDtoV3>(props:
                 { entity: data },
                 {
                   ...mutationErrCallback({ popGlobalBanner: popBanner, setFormError: setError }),
-                  onSuccess: (result) => {
-                    queryClient.invalidateQueries({ queryKey: ['me', 'profiles'] });
-                    goToView(result.id);
-                  },
+                  onSuccess: (result) => goToView(result.id),
                 }
               )
               .catch(noop)

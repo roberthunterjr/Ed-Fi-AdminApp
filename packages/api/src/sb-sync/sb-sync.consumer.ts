@@ -1,7 +1,6 @@
 import { isSbV2MetaEnv } from '@edanalytics/models';
 import { EdfiTenant, SbEnvironment, regarding } from '@edanalytics/models-server';
 import {
-  BadRequestException,
   Inject,
   Injectable,
   Logger,
@@ -149,8 +148,15 @@ export class SbSyncConsumer implements OnModuleInit {
 
       const adminApiSyncResult = await this.adminapiSyncService.syncEnvironmentData(sbEnvironment);
       if (adminApiSyncResult.status !== 'SUCCESS') {
-        throw new BadRequestException(
-          `Failed to sync environment ${sbEnvironment.name} via Admin API: ${adminApiSyncResult.message}`
+        throw new CustomHttpException(
+          {
+            type: 'Error',
+            title: `Failed to sync environment ${sbEnvironment.name} via Admin API`,
+            message: adminApiSyncResult.message,
+            regarding: regarding(sbEnvironment),
+            data: { status: adminApiSyncResult.status },
+          },
+          400
         );
       }
       return {
@@ -206,7 +212,7 @@ export class SbSyncConsumer implements OnModuleInit {
       where: {
         id: edfiTenantId,
       },
-      relations: ['sbEnvironment'],
+      relations: { sbEnvironment: true },
     });
     const sbEnvironment = edfiTenant.sbEnvironment;
     const sbMeta = await this.metadataService.getMetadata(sbEnvironment);
@@ -215,8 +221,15 @@ export class SbSyncConsumer implements OnModuleInit {
     {
       const result = await this.adminapiSyncService.syncTenantData(edfiTenant);
       if (result.status !== 'SUCCESS') {
-        throw new BadRequestException(
-          `Failed to sync tenant ${edfiTenant.name} via Admin API: ${result.message}`
+        throw new CustomHttpException(
+          {
+            type: 'Error',
+            title: `Failed to sync tenant ${edfiTenant.name} via Admin API`,
+            message: result.message,
+            regarding: regarding(sbEnvironment),
+            data: { status: result.status },
+          },
+          400
         );
       }
       return {

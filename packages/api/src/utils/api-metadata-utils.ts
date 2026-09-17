@@ -3,15 +3,23 @@ import { PostSbEnvironmentDto, OdsApiMeta } from '@edanalytics/models';
 import axios from 'axios';
 import { ValidationHttpException } from './customExceptions';
 import config from 'config';
+import {
+  fetchAdminApiTenancy,
+  translateTenancyError,
+  AdminApiInfoWithUrls,
+  TenancyResult,
+} from './admin-api-tenancy';
+
+const logger = new Logger('api-metadata-utils');
 
 /**
  * Shape of the Admin API root/info endpoint response.
- * Only the fields consumed by this module are modeled here.
+ * Only the fields consumed by this module are modeled here. Extends
+ * `AdminApiInfoWithUrls` (the subset `fetchAdminApiTenancy()` needs) rather
+ * than redeclaring the same `specificationVersion`/`urls` fields.
  */
-export interface AdminApiInfo {
+export interface AdminApiInfo extends AdminApiInfoWithUrls {
   version?: string;
-  specificationVersion?: string;
-  tenancy?: { multitenantMode?: boolean };
 }
 
 /**
@@ -28,7 +36,7 @@ export const determineVersionFromAdminApiMetadata = (adminApiVersion: string): '
       return 'v1';
     }
   } catch (error) {
-    Logger.warn('Failed to parse Admin API version, defaulting to v1:', error);
+    logger.warn('Failed to parse Admin API version, defaulting to v1:', error);
     return 'v1';
   }
 };
@@ -47,7 +55,7 @@ export const determineTenantModeFromOdsMetadata = (
     const urls = odsApiMeta.urls;
 
     if (!urls) {
-      Logger.warn('No URLs found in ODS API metadata');
+      logger.warn('No URLs found in ODS API metadata');
       throw new ValidationHttpException({
         field: 'odsApiDiscoveryUrl',
         message: `ODS API metadata does not contain valid URLs.`,
@@ -56,14 +64,14 @@ export const determineTenantModeFromOdsMetadata = (
 
     // Determine tenant mode based on the presence of specific URL segment
     if (urls.dataManagementApi.includes('tenantIdentifier')) {
-      Logger.log('Determined MultiTenant mode from ODS API URL pattern');
+      logger.log('Determined MultiTenant mode from ODS API URL pattern');
       return 'MultiTenant';
     } else {
-      Logger.log('Determined SingleTenant mode from ODS API URL pattern');
+      logger.log('Determined SingleTenant mode from ODS API URL pattern');
       return 'SingleTenant';
     }
   } catch (error) {
-    Logger.warn('Error determining tenant mode from ODS metadata:', error);
+    logger.warn('Error determining tenant mode from ODS metadata:', error);
     throw new ValidationHttpException({
       field: 'odsApiDiscoveryUrl',
       message: `Unable to determine tenant mode from ODS API metadata.`,
@@ -72,42 +80,70 @@ export const determineTenantModeFromOdsMetadata = (
 };
 
 /**
- * Extracts the tenant mode from Admin API metadata (explicit multitenantMode field)
- * Returns undefined if the field is not present (older API versions without this field)
- *
- * @param adminApiInfo Admin API info response containing optional tenancy.multitenantMode
- * @returns 'MultiTenant' or 'SingleTenant' if field is present, undefined if absent
+ * Extracts the tenant mode from a tenancy result returned by
+ * fetchAdminApiTenancy(). Returns undefined when Admin API does not expose a
+ * tenancy endpoint (V1, or a build predating the `urls` block), so callers
+ * fall back to ODS URL-pattern inference.
  */
 export const getAdminApiTenantMode = (
-  adminApiInfo?: { tenancy?: { multitenantMode?: boolean } }
+  tenancy?: TenancyResult
 ): 'MultiTenant' | 'SingleTenant' | undefined => {
-  if (adminApiInfo?.tenancy?.multitenantMode !== undefined) {
-    Logger.log(`Using multitenantMode from Admin API: ${adminApiInfo.tenancy.multitenantMode}`);
-    return adminApiInfo.tenancy.multitenantMode ? 'MultiTenant' : 'SingleTenant';
+  if (tenancy?.supported) {
+    logger.log(`Using tenant mode from Admin API tenancy endpoint: ${tenancy.mode}`);
+    return tenancy.mode;
   }
   return undefined;
 };
 
 /**
  * Determines the tenant mode (MultiTenant or SingleTenant)
- * Prioritizes Admin API multitenantMode field, falls back to ODS API URL pattern detection
+ * Prioritizes Admin API's explicit tenancy signal, falls back to ODS API URL pattern detection
  *
  * @param odsApiMeta ODS API metadata containing version and URL information
- * @param adminApiInfo Optional Admin API info response containing tenancy.multitenantMode
+ * @param tenancy Optional tenancy result from fetchAdminApiTenancy()
  * @returns 'MultiTenant' or 'SingleTenant'
  */
 export const determineTenantModeFromMetadata = (
   odsApiMeta: OdsApiMeta,
-  adminApiInfo?: { tenancy?: { multitenantMode?: boolean } }
+  tenancy?: TenancyResult
 ): 'MultiTenant' | 'SingleTenant' => {
-  // Priority 1: Use Admin API multitenantMode field if available
-  const adminMode = getAdminApiTenantMode(adminApiInfo);
+  // Priority 1: Admin API's explicit tenancy signal
+  const adminMode = getAdminApiTenantMode(tenancy);
   if (adminMode !== undefined) {
     return adminMode;
   }
 
   // Priority 2: Fall back to ODS API URL pattern detection
   return determineTenantModeFromOdsMetadata(odsApiMeta);
+};
+
+/**
+ * When Admin API info was fetched, validates that it agrees with the ODS API
+ * on tenant mode (throws `ValidationHttpException` on mismatch); a no-op
+ * otherwise. Shared by the two environment-create call sites
+ * (`SbEnvironmentsEdFiService.create()` and
+ * `SbEnvironmentsGlobalController.checkEdFiVersionAndTenantMode()`) that
+ * otherwise duplicated this exact compatibility-check-and-log sequence.
+ *
+ * Deliberately does not also determine/return tenant mode: callers must
+ * assign tenant mode (`determineTenantModeFromMetadata()`) before calling
+ * this, since a mismatch throw must not prevent that assignment — the
+ * Admin API signal is authoritative even when the two APIs disagree.
+ */
+export const checkTenantModeCompatibility = (
+  odsApiMeta: OdsApiMeta,
+  hasAdminApiInfo: boolean,
+  tenancy: TenancyResult | undefined
+): void => {
+  if (!hasAdminApiInfo) return;
+
+  const adminTenantMode = getAdminApiTenantMode(tenancy);
+  if (adminTenantMode !== undefined) {
+    const odsTenantMode = determineTenantModeFromMetadata(odsApiMeta);
+    validateTenantModeCompatibility(odsTenantMode, adminTenantMode);
+  } else {
+    logger.log('Admin API does not expose a tenancy endpoint, skipping tenant mode compatibility check');
+  }
 };
 
 /**
@@ -130,14 +166,14 @@ export const fetchOdsApiMetadata = async (createSbEnvironmentDto: PostSbEnvironm
     return odsApiMetaResponse;
   } catch (error) {
     if (isTimeoutError(error)) {
-      Logger.warn(`Timeout error fetching ODS API metadata from ${odsApiDiscoveryUrl}:`, error);
+      logger.warn(`Timeout error fetching ODS API metadata from ${odsApiDiscoveryUrl}:`, error);
       throw new ValidationHttpException({
         field: 'odsApiDiscoveryUrl',
         message: `Connection to Ed-Fi API Discovery URL timed out. Please ensure the URL is correct and the server is reachable.`,
       });
     }
     else {
-      Logger.warn(`Error fetching ODS API metadata from ${odsApiDiscoveryUrl}:`, error);
+      logger.warn(`Error fetching ODS API metadata from ${odsApiDiscoveryUrl}:`, error);
       throw new ValidationHttpException({
         field: 'odsApiDiscoveryUrl',
         message: `Failed to connect to Ed-Fi API Discovery URL. Please check the URL and ensure it is valid.`,
@@ -147,8 +183,10 @@ export const fetchOdsApiMetadata = async (createSbEnvironmentDto: PostSbEnvironm
 };
 
 /**
- * Fetches Admin API info from the root endpoint
- * Returns the raw response which includes version and tenancy.multitenantMode
+ * Fetches Admin API Info from the root endpoint.
+ * Returns the raw response which includes version, specificationVersion, and urls.
+ * The urls.tenancy field contains the URL of the tenancy endpoint (empty string for v1).
+ * To retrieve the actual tenant list, pass this result to fetchAdminApiTenancy().
  */
 export const fetchAdminApiInfo = async (adminApiUrl: string): Promise<AdminApiInfo> => {
   if (!adminApiUrl) {
@@ -171,13 +209,13 @@ export const fetchAdminApiInfo = async (adminApiUrl: string): Promise<AdminApiIn
     return response.data;
   } catch (error) {
     if (isTimeoutError(error)) {
-      Logger.warn(`Timeout error fetching Admin API info from ${adminApiUrl}:`, error);
+      logger.warn(`Timeout error fetching Admin API info from ${adminApiUrl}:`, error);
       throw new ValidationHttpException({
         field: 'adminApiUrl',
         message: `Connection to Management API Discovery URL timed out. Please ensure the URL is correct and the server is reachable.`,
       });
     } else {
-      Logger.warn(`Error fetching Admin API info from ${adminApiUrl}:`, error);
+      logger.warn(`Error fetching Admin API info from ${adminApiUrl}:`, error);
       throw new ValidationHttpException({
         field: 'adminApiUrl',
         message: `Failed to connect to Management API Discovery URL. Please check the URL and ensure it is valid.`,
@@ -187,16 +225,53 @@ export const fetchAdminApiInfo = async (adminApiUrl: string): Promise<AdminApiIn
 };
 
 /**
+ * Resolves the tenant names an Admin API-backed environment should sync: fetches
+ * Admin API's info and tenancy endpoints and returns the discovered tenant list,
+ * or `['default']` when Admin API is genuinely single-tenant or exposes no
+ * tenancy endpoint. Shared by the v2 and v3 `getTenants()` implementations,
+ * which otherwise duplicated this exact fetch-and-branch sequence.
+ *
+ * A failed tenancy lookup throws rather than reaching the `['default']`
+ * fallback — see `fetchAdminApiTenancy()`'s contract: no error is ever
+ * interpreted as single-tenant.
+ */
+export const resolveTenantNames = async (adminApiUrl: string): Promise<string[]> => {
+  const adminApiInfo = await fetchAdminApiInfo(adminApiUrl);
+  const tenancy = await fetchAdminApiTenancy(adminApiInfo, adminApiUrl);
+
+  if (tenancy.supported && tenancy.tenants.length > 0) {
+    logger.log(
+      `Multi-tenant mode detected with ${tenancy.tenants.length} tenants: ${tenancy.tenants.join(', ')}`
+    );
+    return tenancy.tenants;
+  }
+
+  // Logged distinctly rather than collapsed into one message: "not supported" (no
+  // tenancy endpoint — genuinely single-tenant, expected) and "supported but empty"
+  // (the endpoint answered with zero tenants — could be a stale/misrouted proxy or a
+  // real mode drift) are different enough signals that an operator scanning logs
+  // should be able to tell them apart.
+  if (tenancy.supported) {
+    logger.log('Tenancy endpoint reported zero tenants; using default tenant');
+  } else {
+    logger.log('Admin API does not support tenancy; using default tenant');
+  }
+  return ['default'];
+};
+
+/**
  * Validates the Management API Discovery URL.
  * @param adminApiUrl The URL to validate.
  * @param odsApiDiscoveryUrl The ODS API URL for version comparison (optional if odsApiMeta provided).
- * @returns The fetched Admin API metadata if validation succeeds, so it can be reused to avoid duplicate network calls.
+ * @returns The fetched Admin API metadata, plus the `TenancyResult` this function already fetched
+ * for its own tenant-mode compatibility check — callers deriving tenant mode should reuse `tenancy`
+ * rather than calling `fetchAdminApiTenancy()` again for the same environment.
  */
 
 export const validateAdminApiUrl = async (
   adminApiUrl: string,
   odsApiDiscoveryUrl: string
-): Promise<AdminApiInfo> => {
+): Promise<AdminApiInfo & { tenancy?: TenancyResult }> => {
   try {
     // Fetch Admin API info (reuses shared fetch function)
     const metadata = await fetchAdminApiInfo(adminApiUrl);
@@ -228,7 +303,7 @@ export const validateAdminApiUrl = async (
     const odsDetectedVersion = odsMetadata.version;
 
     if (!odsDetectedVersion) {
-      Logger.warn('No version found in ODS API metadata');
+      logger.warn('No version found in ODS API metadata');
       throw new ValidationHttpException({
         field: 'odsApiDiscoveryUrl',
         message: `ODS API metadata does not contain a valid version.`,
@@ -239,7 +314,7 @@ export const validateAdminApiUrl = async (
     const majorOdsDetectedVersion = parseInt(odsDetectedVersion.split('.')[0], 10);
 
      if (Number.isNaN(majorOdsDetectedVersion)) {
-       Logger.warn(`Failed to parse ODS API version from metadata: ${odsDetectedVersion}`);
+       logger.warn(`Failed to parse ODS API version from metadata: ${odsDetectedVersion}`);
       throw new ValidationHttpException({
         field: 'odsApiDiscoveryUrl',
         message: `ODS API metadata does not contain a valid version.`,
@@ -256,21 +331,26 @@ export const validateAdminApiUrl = async (
       });
     }
 
-    // Validate tenant mode compatibility - only if Admin API explicitly defines multitenantMode
+    // Validate tenant mode compatibility - only if Admin API exposes a tenancy endpoint
     const odsTenantMode = determineTenantModeFromOdsMetadata(odsMetadata);
-    const adminTenantMode = getAdminApiTenantMode(metadata);
+    let tenancy: TenancyResult;
+    try {
+      tenancy = await fetchAdminApiTenancy(metadata, adminApiUrl);
+    } catch (error) {
+      throw translateTenancyError(error);
+    }
+    const adminTenantMode = getAdminApiTenantMode(tenancy);
 
-    // Only validate compatibility if Admin API provides an explicit multitenantMode field
     if (adminTenantMode !== undefined) {
       validateTenantModeCompatibility(odsTenantMode, adminTenantMode);
     } else {
-      Logger.log('Admin API does not provide multitenantMode field, skipping tenant mode compatibility check');
+      logger.log('Admin API does not expose a tenancy endpoint, skipping tenant mode compatibility check');
     }
 
-    // Return the fetched metadata so callers can reuse it and avoid a duplicate network call
-    return metadata;
+    // Return the fetched metadata and tenancy result so callers can reuse them and avoid a duplicate network call
+    return { ...metadata, tenancy };
   } catch (error) {
-    Logger.warn(`Error validating Management API Discovery URL ${adminApiUrl}:`, error.message);
+    logger.warn(`Error validating Management API Discovery URL ${adminApiUrl}:`, error.message);
     // Re-throw ValidationHttpException errors to preserve specific error messages
     if (error instanceof ValidationHttpException) {
       throw error;
@@ -315,46 +395,3 @@ const isTimeoutError = (error: unknown): boolean => {
   );
 };
 
-
-/**
- * Ask an Admin API for its tenant list via `GET /v2/tenancy`.
- *
- * Admin API used to report tenants inline on the root endpoint as
- * `tenancy.tenants`. Builds from roughly 2.3.3-alpha onward drop that block
- * from the root response and serve the list here instead, advertising it under
- * `urls.tenancy` on the root.
- *
- * This is a *supplement* to the existing root read, not a replacement: callers
- * keep their own root request and its error handling, and only consult this
- * when the root came back without a tenant list. Losing the list is destructive
- * rather than merely degraded -- callers fall back to a single `default` tenant
- * and the sync then treats every real tenant as orphaned and deletes it, which
- * is what removed tenant1 and tenant2 from a multi-tenant environment here on
- * 2026-09-15.
- *
- * Swallows its own errors and returns null: an older Admin API has no such
- * route, and that must leave the caller's pre-existing fallback untouched.
- * An empty list is also reported as null, since "no tenants" is
- * indistinguishable from a failed probe and is exactly the destructive case.
- *
- * @param baseUrl Admin API base URL
- * @param opts    Optional axios config (e.g. an Authorization header)
- * @returns tenant names, or null if this endpoint did not provide any
- */
-export const fetchTenantsFromTenancyEndpoint = async (
-  baseUrl: string,
-  opts?: { headers: { Authorization: string } }
-): Promise<string[] | null> => {
-  try {
-    const client = axios.create({ baseURL: baseUrl.replace(/\/$/, '') });
-    const data = await client.get<{ tenants?: string[] }>('/v2/tenancy', opts).then((r) => r.data);
-
-    if (Array.isArray(data?.tenants) && data.tenants.length > 0) {
-      Logger.log(`Tenants resolved from Admin API /v2/tenancy: [${data.tenants.join(', ')}]`);
-      return data.tenants;
-    }
-  } catch (error) {
-    Logger.warn(`Admin API /v2/tenancy probe failed: ${(error as Error).message}`);
-  }
-  return null;
-};

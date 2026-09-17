@@ -1,10 +1,10 @@
-import { Badge, BadgeProps, Box, Flex, IconButton, StyleProps, Text } from '@chakra-ui/react';
+import { Flex } from '@chakra-ui/react';
 import { GetClaimsetSingleDtoV3 } from '@edanalytics/models';
 import { CellContext, ColumnDef } from '@tanstack/react-table';
 import uniq from 'lodash/uniq';
 import { useMemo } from 'react';
-import { SbaaTableAllInOne, useSbaaTableContext } from '../sbaaTable';
-import { Icons } from '../Icons';
+import { SbaaTableAllInOne } from '../sbaaTable';
+import { AuthStrategyBadge, NameCell, NameHeader } from './resourceClaimCells';
 import {
   ResourceClaimRow,
   actionSortRank,
@@ -12,75 +12,6 @@ import {
   groupByParent,
   mapRows,
 } from './resourceClaimsTreeV3';
-
-const AuthStrategyBadge = (props: {
-  authDefault: string | null;
-  authOverride: string | null;
-  hasAtAll: boolean;
-}) => {
-  const { authDefault, authOverride, hasAtAll } = props;
-  const badgeProps: Partial<StyleProps & BadgeProps> = hasAtAll
-    ? authOverride
-      ? { colorScheme: 'blue' }
-      : authDefault
-      ? { colorScheme: 'gray', color: 'gray.600', fontStyle: 'italic' }
-      : { colorScheme: 'orange' }
-    : { colorScheme: 'red' };
-  return (
-    <Badge textTransform="none" {...badgeProps}>
-      {hasAtAll ? authOverride ?? authDefault ?? 'Auth strategy unknown' : 'Denied'}
-    </Badge>
-  );
-};
-
-const NameHeader = () => {
-  const table = useSbaaTableContext().table;
-  const canAnyExpand = table?.getCanSomeRowsExpand();
-  return (
-    <Text as="span" pl={canAnyExpand ? '20px' : undefined}>
-      Name
-    </Text>
-  );
-};
-const NameCell = (props: CellContext<ResourceClaimRow, unknown>) => {
-  const table = useSbaaTableContext().table;
-  const canAnyExpand = table?.getCanSomeRowsExpand();
-  const canThisRowExpand = props.row.getCanExpand();
-
-  return (
-    <Box
-      ml={`${props.row.depth * 1.5}rem`}
-      pl={canThisRowExpand || !canAnyExpand ? undefined : '20px'}
-    >
-      {canThisRowExpand && (
-        <IconButton
-          display="inline-block"
-          onClick={() => props.row.toggleExpanded()}
-          aria-label="open or close"
-          title="open or close"
-          variant="unstyled"
-          w="20px"
-          h="20px"
-          minH="20px"
-          minW="20px"
-          size="xs"
-          className={props.row.getIsExpanded() ? 'opened' : undefined}
-          css={{
-            '&.opened': {
-              transition: '0.5s',
-              transform: 'rotate(90deg)',
-            },
-            svg: {
-              margin: 'auto',
-            },
-          }}
-          icon={<Icons.CaretRightFill />}
-        />
-      )}
-      {props.row.original.name}
-    </Box>
-  );
-};
 
 export const ResourceClaimsTableV3 = ({ claimset }: { claimset: GetClaimsetSingleDtoV3 }) => {
   const { data, columns } = useMemo(() => {
