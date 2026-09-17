@@ -187,8 +187,13 @@ Reused from parent PRD §10.4. These are the only statuses in the MVP.
 flowchart TD
     A[Draft] --> B{All required artifacts present<br/>AND a qualifying run exists?}
     B -- No --> C[Submission Incomplete<br/>unmet conditions listed]
-    C --> T[Vendor may start trial runs<br/>stamped Incomplete - 8.1]
-    T --> A
+    C --> K[Vendor opens a run<br/>stamped Complete or Incomplete - 8.1]
+    K --> L[Vendor loads a scenario's data<br/>and checks each task]
+    L --> L
+    L --> M{Seal or abandon?}
+    M -- Abandon --> A
+    M -- Seal --> N[Sealed run<br/>latest check per task is frozen]
+    N --> A
     C --> A
     B -- Yes --> D[Ready for Review]
     D --> E[In Review]
