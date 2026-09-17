@@ -165,6 +165,7 @@ table.t td.act{text-align:right;white-space:nowrap}
 /* ---------- product / dashboard cards ---------- */
 .grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(310px,1fr))}
 .tile{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px}
+.tile.focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-bg)}
 .tile h3{margin:0 0 2px;font-size:15px}
 .tile .meta{color:var(--muted);font-size:12.5px;margin-bottom:12px}
 .tile .row{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line-2);font-size:13.5px}
@@ -286,45 +287,318 @@ const completenessBadge = c => c === 'Complete'
   ? '<span class="badge b-green">Complete</span>'
   : '<span class="badge b-amber">Incomplete &middot; trial run</span>';
 
-/* Bruno scenario content, named after the real collections in the screenshots. */
-const SCENARIOS = {
-  sis: [
-    ['DescriptorMapping','DescriptorMappings'],
-    ['EducationOrganization','ClassPeriods'],['EducationOrganization','Courses'],
-    ['EducationOrganization','Locations'],['EducationOrganization','Programs'],
-    ['EducationOrganization','Schools'],
-    ['EducationOrganizationCalendar','CalendarDates'],['EducationOrganizationCalendar','Calendars'],
-    ['EducationOrganizationCalendar','GradingPeriods'],['EducationOrganizationCalendar','Sessions'],
-    ['MasterSchedule','BellSchedules'],['MasterSchedule','CourseOfferings'],['MasterSchedule','Sections'],
-    ['StaffAssociation','StaffEdOrgAssociations'],['StaffAssociation','Staffs'],
-    ['StaffAssociation','StaffSchoolAssociations'],
-    ['Student','Students'],
-    ['StudentEnrollment','StudentSchoolAssociations'],
-    ['StudentAttendance','StudentSchoolAttendanceEvents'],
-    ['StudentGrade','Grades']
-  ],
-  mtss: [
-    ['Intervention','Interventions'],['Intervention','InterventionPrescriptions'],
-    ['Cohort','Cohorts'],['Cohort','StudentCohortAssociations'],
-    ['StudentIntervention','StudentInterventionAssociations'],
-    ['StudentIntervention','StudentInterventionAttendanceEvents'],
-    ['Goal','StudentGoals'],
-    ['ProgressMonitoring','StudentProgressMonitoringResults']
-  ]
+/* ------------------------------------------------------------------
+   Bruno scenario content.
+
+   SIS is the real v5 collection: areas, scenarios, step names, step counts and
+   element assertions are parsed from Ed-Fi-Alliance-OSS/certification-testing at
+   bruno/SIS/v5. Every step there is a GET — the vendor loads the data into their
+   own SIS by hand first, and the suite reads it back and asserts on it.
+
+   A step's element spec is a ';'-separated list of "path:type" tokens. The type
+   letter implies the canonical assertion pair the collection uses almost
+   everywhere; a '?' suffix carries an unusual operator set verbatim.
+     S -> String   isString, isNotEmpty      A -> Array    isArray, isNotEmpty
+     N -> Number   isNumber, neq 0           O -> Object   isDefined
+     B -> Boolean  isBoolean
+   '=' reuses the previous step's spec (steps in a scenario mostly assert the
+   same shape); '' means the step asserts on status alone, as Delete steps do.
+
+   Each step is [name, expectedStatus, changedField, elementSpec]. changedField
+   is the one real value check in the collection — expectChanged() in the
+   post-response script of an Update step.
+   ------------------------------------------------------------------ */
+const ASSERT_TYPE = {
+  S:['String',  'isString, isNotEmpty'],
+  N:['Number',  'isNumber, neq 0'],
+  A:['Array',   'isArray, isNotEmpty'],
+  O:['Object',  'isDefined'],
+  B:['Boolean', 'isBoolean']
 };
-const stepsFor = scenario => ([
-  `01 - Check first ${scenario.replace(/s$/,'')} is valid`,
-  `02 - Check second ${scenario.replace(/s$/,'')} is valid`,
-  `03 - Check first ${scenario.replace(/s$/,'')} was Updated`,
-  `04 - Check second ${scenario.replace(/s$/,'')} was Deleted`
-]);
-/* Scenarios seeded to fail in a "realistic" Bruno run. */
+const SIS_V5 = [
+ ['Contact','Contacts',[
+  ['01 - 1st Contact is valid',200,'','id:S;contactUniqueId:S;firstName:S;lastSurname:S;sexDescriptor:S;addresses:A;addresses[0].addressTypeDescriptor:S;addresses[0].city:S;addresses[0].postalCode:S;addresses[0].stateAbbreviationDescriptor:S;addresses[0].streetNumberName:S;addresses[0].apartmentRoomSuiteNumber:S;addresses[0].nameOfCounty:S;addresses[0].doNotPublishIndicator:B;electronicMails:A;electronicMails[0].electronicMailAddress:S;electronicMails[0].electronicMailTypeDescriptor:S;electronicMails[0].primaryEmailAddressIndicator:B'],
+  ['02 - 2nd Contact is valid',200,'','id:S;contactUniqueId:S;firstName:S;lastSurname:S;sexDescriptor:S;addresses:A;addresses[0].addressTypeDescriptor:S;addresses[0].city:S;addresses[0].postalCode:S;addresses[0].stateAbbreviationDescriptor:S;addresses[0].streetNumberName:S;addresses[0].nameOfCounty:S;electronicMails:A;electronicMails[0].electronicMailAddress:S;electronicMails[0].electronicMailTypeDescriptor:S'],
+  ['03 - 1st Contact - electronicMailAddress was Updated',200,'electronicMailAddress','id:S;contactUniqueId:S;firstName:S;lastSurname:S;sexDescriptor:S;addresses:A;addresses[0].addressTypeDescriptor:S;addresses[0].city:S;addresses[0].postalCode:S;addresses[0].stateAbbreviationDescriptor:S;addresses[0].streetNumberName:S;addresses[0].apartmentRoomSuiteNumber:S;addresses[0].nameOfCounty:S;addresses[0].doNotPublishIndicator:B;electronicMails:A;electronicMails[0].electronicMailAddress:S;electronicMails[0].electronicMailTypeDescriptor:S;electronicMails[0].primaryEmailAddressIndicator:B'],
+  ['04 - 2nd Contact - streetNumberName was Updated',200,'streetNumberName','id:S;contactUniqueId:S;firstName:S;lastSurname:S;sexDescriptor:S;addresses:A;addresses[0].addressTypeDescriptor:S;addresses[0].city:S;addresses[0].postalCode:S;addresses[0].stateAbbreviationDescriptor:S;addresses[0].streetNumberName:S;addresses[0].nameOfCounty:S;electronicMails:A;electronicMails[0].electronicMailAddress:S;electronicMails[0].electronicMailTypeDescriptor:S']]],
+ ['Contact','StudentContactAssociations',[
+  ['01 - 1st StudentContactAssociation is valid',200,'','id:S;contactReference:O;contactReference.contactUniqueId:S;studentReference:O;studentReference.studentUniqueId:S;relationDescriptor:S;primaryContactStatus:B;emergencyContactStatus:B'],
+  ['02 - 2nd StudentContactAssociation is valid',200,'','='],
+  ['03 - 1st StudentContactAssociation - primaryContactStatus was Updated',200,'primaryContactStatus','=']]],
+ ['DescriptorMapping','Mappings',[
+  ['01 - 1st DescriptorMapping is valid',200,'','id:S;value:S;namespace:S;mappedValue:S;mappedNamespace:S'],
+  ['02 - 2nd DescriptorMapping is valid',200,'','=']]],
+ ['EducationOrganization','ClassPeriods',[
+  ['01 - 1st ClassPeriod is valid',200,'','id:S;classPeriodName:S;schoolReference:O;schoolReference.schoolId:N;meetingTimes:A;meetingTimes[0].startTime:S;meetingTimes[0].endTime:S'],
+  ['02 - 2nd ClassPeriod is valid',200,'','='],
+  ['03 - 1st ClassPeriod - classPeriodName was Updated',200,'classPeriodName','='],
+  ['04 - 2nd ClassPeriod - meetingTimes was Updated',200,'meetingTimes[0]','=']]],
+ ['EducationOrganization','Courses',[
+  ['01 - 1st Course is valid',200,'','id:S;courseCode:S;courseTitle:S;academicSubjects[0].academicSubjectDescriptor:S;identificationCodes:A;identificationCodes[0].courseIdentificationSystemDescriptor:S;identificationCodes[0].identificationCode:S;levelCharacteristics:A;levelCharacteristics[0].courseLevelCharacteristicDescriptor:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;numberOfParts:N;maxCompletionsForCredit:N'],
+  ['02 - 2nd Course is valid',200,'','='],
+  ['03 - 1st Course - courseTitle was Updated',200,'courseTitle','='],
+  ['04 - 2nd Course - levelCharacteristics was Updated',200,'courseLevelCharacteristicDescriptor','=']]],
+ ['EducationOrganization','Locations',[
+  ['01 - 1st Location is valid',200,'','id:S;classroomIdentificationCode:S;schoolReference:O;schoolReference.schoolId:N;maximumNumberOfSeats:N'],
+  ['02 - 2nd Location is valid',200,'','='],
+  ['03 - 1st Location - maximumNumberOfSeats was Updated',200,'maximumNumberOfSeats','='],
+  ['04 - 2nd Location - maximumNumberOfSeats was Updated',200,'maximumNumberOfSeats','=']]],
+ ['EducationOrganization','Programs',[
+  ['01 - 1st Program is valid',200,'','id:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;programId:S;programName:S;programTypeDescriptor:S'],
+  ['02 - 1st Program was Deleted',404,'','']]],
+ ['EducationOrganization','Schools',[
+  ['01 - 1st School is valid',200,'','id:S;schoolId:N;nameOfInstitution:S;localEducationAgencyReference:O;localEducationAgencyReference.localEducationAgencyId:N;educationOrganizationCategories:A;educationOrganizationCategories[0].educationOrganizationCategoryDescriptor:S;gradeLevels:A;gradeLevels[0].gradeLevelDescriptor:S;addresses:A;addresses[0].addressTypeDescriptor:S;addresses[0].city:S;addresses[0].postalCode:S;addresses[0].stateAbbreviationDescriptor:S;addresses[0].streetNumberName:S;shortNameOfInstitution:S'],
+  ['02 - 2nd School is valid',200,'','='],
+  ['03 - 1st School - streetNumberName was Updated',200,'streetNumberName','id:S;schoolId:N;nameOfInstitution:S;localEducationAgencyReference:O;localEducationAgencyReference.localEducationAgencyId:N;educationOrganizationCategories:A;educationOrganizationCategories[0].educationOrganizationCategoryDescriptor:S;gradeLevels:A;gradeLevels[0].gradeLevelDescriptor:S;addresses:A;addresses[0].addressTypeDescriptor:S;addresses[0].city:S;addresses[0].postalCode:S;addresses[0].stateAbbreviationDescriptor:S;addresses[0].streetNumberName:S'],
+  ['04 - 2nd School - postalCode was Updated',200,'postalCode','=']]],
+ ['EducationOrganizationCalendar','CalendarDates',[
+  ['01 - 1st CalendarDate is valid',200,'','id:S;date:S;calendarReference:O;calendarReference.schoolId:N;calendarReference.schoolYear:N;calendarReference.calendarCode:S;calendarEvents:A;calendarEvents[0].calendarEventDescriptor:S'],
+  ['02 - 2nd CalendarDate is valid',200,'','='],
+  ['03 - 1st CalendarDate - calendarEventDescriptor was Updated',200,'calendarEventDescriptor','id:S;calendarEvents:A;calendarEvents[0].calendarEventDescriptor:S'],
+  ['04 - 2nd CalendarDate - calendarEventDescriptor was Updated',200,'calendarEventDescriptor','=']]],
+ ['EducationOrganizationCalendar','Calendars',[
+  ['01 - 1st Calendar is valid',200,'','id:S;calendarCode:S;schoolReference:O;schoolReference.schoolId:N;schoolYearTypeReference:O;schoolYearTypeReference.schoolYear:N;calendarTypeDescriptor:S'],
+  ['02 - 2nd Calendar is valid',200,'','id:S;calendarCode:S;schoolReference:O;schoolReference.schoolId:N;schoolYearTypeReference:O;schoolYearTypeReference.schoolYear:N;calendarTypeDescriptor:S;gradeLevels:A;gradeLevels[0].gradeLevelDescriptor:S'],
+  ['03 - 1st Calendar - calendarTypeDescriptor was Updated',200,'calendarTypeDescriptor','id:S;calendarTypeDescriptor:S'],
+  ['04 - 2nd Calendar - gradeLevelDescriptor was Updated',200,'gradeLevelDescriptor','id:S;gradeLevels:A;gradeLevels[0].gradeLevelDescriptor:S']]],
+ ['EducationOrganizationCalendar','GradingPeriods',[
+  ['01 - 1st GradingPeriod is valid',200,'','id:S;gradingPeriodDescriptor:S;periodSequence:N;schoolReference:O;schoolReference.schoolId:N;schoolYearTypeReference:O;schoolYearTypeReference.schoolYear:N;beginDate:S;endDate:S;totalInstructionalDays:N;gradingPeriodName:S'],
+  ['02 - 2nd GradingPeriod is valid',200,'','='],
+  ['03 - 3rd GradingPeriod is valid',200,'','='],
+  ['04 - 4th GradingPeriod is valid',200,'','=']]],
+ ['EducationOrganizationCalendar','Sessions',[
+  ['01 - 1st Session is valid',200,'','id:S;sessionName:S;schoolReference:O;schoolReference.schoolId:N;schoolYearTypeReference:O;schoolYearTypeReference.schoolYear:N;termDescriptor:S;beginDate:S;endDate:S;totalInstructionalDays:N;gradingPeriods:A;gradingPeriods.length:N?gte 2;gradingPeriods[0].gradingPeriodReference:O;gradingPeriods[0].gradingPeriodReference.schoolId:N;gradingPeriods[0].gradingPeriodReference.schoolYear:N;gradingPeriods[0].gradingPeriodReference.gradingPeriodDescriptor:S'],
+  ['02 - 2nd Session is valid',200,'','='],
+  ['03 - 1st Session - endDate & totalInstructionalDays were Updated',200,'','id:S;endDate:S;totalInstructionalDays:N'],
+  ['04 - 2nd Session - endDate & totalInstructionalDays were Updated',200,'','=']]],
+ ['MasterSchedule','BellSchedules',[
+  ['01 - BellSchedule is valid',200,'','id:S;bellScheduleName:S;alternateDayName:S;schoolReference:O;schoolReference.schoolId:N;classPeriods:A;classPeriods[0].classPeriodReference:O;classPeriods[0].classPeriodReference.classPeriodName:S']]],
+ ['MasterSchedule','CourseOfferings',[
+  ['01 - 1st CourseOffering is valid',200,'','id:S;localCourseCode:S;localCourseTitle:S;courseReference:O;courseReference.courseCode:S;courseReference.educationOrganizationId:N;schoolReference:O;schoolReference.schoolId:N;sessionReference:O;sessionReference.sessionName:S;sessionReference.schoolId:N;sessionReference.schoolYear:N'],
+  ['02 - 2nd CourseOffering is valid',200,'','='],
+  ['03 - 1st CourseOffering - localCourseTitle was Updated',200,'localCourseTitle','='],
+  ['04 - 2nd CourseOffering - localCourseTitle was Updated',200,'localCourseTitle','=']]],
+ ['MasterSchedule','Sections',[
+  ['01 - 1st Section is valid',200,'','id:S;sectionIdentifier:S;courseOfferingReference:O;courseOfferingReference.localCourseCode:S;courseOfferingReference.schoolId:N;courseOfferingReference.schoolYear:N;courseOfferingReference.sessionName:S;locationReference:O;locationReference.classroomIdentificationCode:S;locationReference.schoolId:N;locationSchoolReference:O;locationSchoolReference.schoolId:N;classPeriods:A;classPeriods[0].classPeriodReference:O;classPeriods[0].classPeriodReference.classPeriodName:S;classPeriods[0].classPeriodReference.schoolId:N;sequenceOfCourse:N;availableCredits:N;educationalEnvironmentDescriptor:S'],
+  ['02 - 2nd Section is valid',200,'','='],
+  ['03 - 1st Section - availableCredits was Updated',200,'availableCredits','='],
+  ['04 - 2nd Section - availableCredits was Updated',200,'availableCredits','=']]],
+ ['StaffAssociation','StaffEdOrgAssociations',[
+  ['01 - 1st StaffEdOrgAssociation is valid',200,'','id:S;staffReference:O;staffReference.staffUniqueId:S;beginDate:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N?isNumber;staffClassificationDescriptor:S;positionTitle:S;endDate:S'],
+  ['02 - 2nd StaffEdOrgAssociation is valid',200,'','id:S;staffReference:O;staffReference.staffUniqueId:S;beginDate:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N?isNumber;staffClassificationDescriptor:S;positionTitle:S'],
+  ['04 - 2nd StaffEdOrgAssociation - positionTitle was Updated',200,'positionTitle','id:S']]],
+ ['StaffAssociation','StaffSchoolAssociations',[
+  ['01 - 1st StaffSchoolAssociation is valid',200,'','id:S;schoolReference:O;schoolReference.schoolId:N?isNumber;staffReference:O;staffReference.staffUniqueId:S;programAssignmentDescriptor:S'],
+  ['02 - 2nd StaffSchoolAssociation is valid',200,'','='],
+  ['03 - 1st StaffSchoolAssociation was Deleted',404,'','']]],
+ ['StaffAssociation','StaffSectionAssociations',[
+  ['01 - 1st StaffSectionAssociation is valid',200,'','id:S;sectionReference:O;sectionReference.localCourseCode:S;sectionReference.schoolId:N;sectionReference.schoolYear:N;sectionReference.sessionName:S;sectionReference.sectionIdentifier:S;staffReference:O;staffReference.staffUniqueId:S;classroomPositionDescriptor:S;beginDate:S'],
+  ['02 - 2nd StaffSectionAssociation is valid',200,'','='],
+  ['04 - 2nd StaffSectionAssociation - endDate was Updated',200,'endDate','id:S;sectionReference:O;sectionReference.localCourseCode:S;sectionReference.schoolId:N;sectionReference.schoolYear:N;sectionReference.sessionName:S;sectionReference.sectionIdentifier:S;staffReference:O;staffReference.staffUniqueId:S;classroomPositionDescriptor:S;endDate:S'],
+  ['05 - 1st StaffSectionAssociation was Deleted',404,'','']]],
+ ['StaffAssociation','Staffs',[
+  ['01 - 1st Staff is valid',200,'','id:S;staffUniqueId:S;firstName:S;hispanicLatinoEthnicity:B;lastSurname:S;generationCodeSuffix:S;highestCompletedLevelOfEducationDescriptor:S;highlyQualifiedTeacher:B;sexDescriptor:S;electronicMails:A;electronicMails[0].electronicMailAddress:S;electronicMails[0].electronicMailTypeDescriptor:S;birthDate:S'],
+  ['02 - 2nd Staff is valid',200,'','id:S;staffUniqueId:S;firstName:S;hispanicLatinoEthnicity:B;lastSurname:S;highestCompletedLevelOfEducationDescriptor:S;highlyQualifiedTeacher:B;middleName:S;sexDescriptor:S;electronicMails:A;electronicMails[0].electronicMailAddress:S;electronicMails[0].electronicMailTypeDescriptor:S;birthDate:S'],
+  ['03 - 1st Staff - highlyQualifiedTeacher was Updated',200,'highlyQualifiedTeacher','id:S'],
+  ['04 - 2nd Staff - hispanicLatinoEthnicity was Updated',200,'hispanicLatinoEthnicity','=']]],
+ ['Student','Students',[
+  ['01 - 1st Student is valid',200,'','id:S;studentUniqueId:S;birthCity:S;birthCountryDescriptor:S;birthDate:S;firstName:S;middleName:S;lastSurname:S;generationCodeSuffix:S;personalTitlePrefix:S'],
+  ['02 - 2nd Student is valid',200,'','id:S;studentUniqueId:S;birthCity:S;birthCountryDescriptor:S;birthDate:S;firstName:S;middleName:S;lastSurname:S;personalTitlePrefix:S'],
+  ['03 - 1st Student - birthDate was Updated',200,'birthDate','id:S;studentUniqueId:S;birthCity:S;birthCountryDescriptor:S;birthDate:S;firstName:S;middleName:S;lastSurname:S'],
+  ['04 - 2nd Student - birthCity was Updated',200,'birthCity','=']]],
+ ['StudentAttendance','StudentSchoolAttendanceEvents',[
+  ['01 - 1st StudentSchoolAttendanceEvent is valid',200,'','id:S;attendanceEventCategoryDescriptor:S;eventDate:S;schoolReference:O;schoolReference.schoolId:N;sessionReference:O;sessionReference.schoolId:N;sessionReference.schoolYear:N;sessionReference.sessionName:S;studentReference:O;studentReference.studentUniqueId:S;attendanceEventReason:S'],
+  ['02 - 2nd StudentSchoolAttendanceEvent is valid',200,'','='],
+  ['05 - 1st StudentSchoolAttendanceEvent was Deleted',404,'','']]],
+ ['StudentAttendance','StudentSectionAttendanceEvents',[
+  ['01 - 1st StudentSectionAttendanceEvent is valid',200,'','id:S;attendanceEventCategoryDescriptor:S;eventDate:S;sectionReference:O;sectionReference.localCourseCode:S;sectionReference.schoolId:N;sectionReference.schoolYear:N;sectionReference.sectionIdentifier:S;sectionReference.sessionName:S;studentReference:O;studentReference.studentUniqueId:S;attendanceEventReason:S'],
+  ['02 - 2nd StudentSectionAttendanceEvent is valid',200,'','='],
+  ['05 - 1st StudentSectionAttendanceEvent was Deleted',404,'','']]],
+ ['StudentCohort','Cohorts',[
+  ['01 - 1st Cohort is valid',200,'','id:S;cohortIdentifier:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;cohortTypeDescriptor:S;cohortDescription:S;cohortScopeDescriptor:S'],
+  ['02 - 2nd Cohort is valid',200,'','='],
+  ['03 - 1st Cohort - cohortTypeDescriptor was Updated',200,'cohortTypeDescriptor','id:S;cohortTypeDescriptor:S'],
+  ['04 - 2nd Cohort - cohortTypeDescriptor was Updated',200,'cohortTypeDescriptor','=']]],
+ ['StudentCohort','StaffCohortAssociations',[
+  ['01 - 1st StaffCohortAssociation is valid',200,'','id:S;cohortReference:O;cohortReference.educationOrganizationId:N;cohortReference.cohortIdentifier:S;beginDate:S;staffReference:O;staffReference.staffUniqueId:S;endDate:S'],
+  ['02 - 2nd StaffCohortAssociation is valid',200,'','='],
+  ['03 - 1st StaffCohortAssociation - endDate was Updated',200,'endDate','='],
+  ['04 - 2nd StaffCohortAssociation - endDate was Updated',200,'endDate','='],
+  ['05 - 1st StaffCohortAssociation was Deleted',404,'','']]],
+ ['StudentCohort','StudentCohortAssociations',[
+  ['01 - 1st StudentCohortAssociation is valid',200,'','id:S;cohortReference:O;cohortReference.educationOrganizationId:N;cohortReference.cohortIdentifier:S;studentReference:O;studentReference.studentUniqueId:S;beginDate:S;endDate:S'],
+  ['02 - 2nd StudentCohortAssociation is valid',200,'','='],
+  ['03 - 1st StudentCohortAssociation - endDate was Updated',200,'endDate','id:S;endDate:S']]],
+ ['StudentDiscipline','DisciplineAction',[
+  ['01 - 1st DisciplineAction is valid',200,'','id:S;disciplineActionIdentifier:S;disciplines:A;disciplines[0].disciplineDescriptor:S;disciplineDate:S;studentReference:O;studentReference.studentUniqueId:S;actualDisciplineActionLength:N;studentDisciplineIncidentBehaviorAssociations:A;studentDisciplineIncidentBehaviorAssociations[0].studentDisciplineIncidentBehaviorAssociationReference:O;studentDisciplineIncidentBehaviorAssociations[0].studentDisciplineIncidentBehaviorAssociationReference.incidentIdentifier:S;studentDisciplineIncidentBehaviorAssociations[0].studentDisciplineIncidentBehaviorAssociationReference.schoolId:N;studentDisciplineIncidentBehaviorAssociations[0].studentDisciplineIncidentBehaviorAssociationReference.studentUniqueId:S;responsibilitySchoolReference:O;responsibilitySchoolReference.schoolId:N;iepPlacementMeetingIndicator:B'],
+  ['02 - 2nd DisciplineAction is valid',200,'','id:S;disciplineActionIdentifier:S;disciplines:A;disciplines[0].disciplineDescriptor:S;disciplineDate:S;studentReference:O;studentReference.studentUniqueId:S;actualDisciplineActionLength:N;studentDisciplineIncidentBehaviorAssociations:A;studentDisciplineIncidentBehaviorAssociations[0].studentDisciplineIncidentBehaviorAssociationReference:O;studentDisciplineIncidentBehaviorAssociations[0].studentDisciplineIncidentBehaviorAssociationReference.incidentIdentifier:S;studentDisciplineIncidentBehaviorAssociations[0].studentDisciplineIncidentBehaviorAssociationReference.schoolId:N;studentDisciplineIncidentBehaviorAssociations[0].studentDisciplineIncidentBehaviorAssociationReference.studentUniqueId:S;responsibilitySchoolReference:O;responsibilitySchoolReference.schoolId:N'],
+  ['03 - 1st DisciplineAction - disciplineDescriptor was Updated',200,'disciplineDescriptor','id:S;disciplines:A;disciplines[0].disciplineDescriptor:S'],
+  ['04 - 2nd DisciplineAction - disciplineDescriptor was Updated',200,'disciplineDescriptor','='],
+  ['05 - 1st DisciplineAction was Deleted',404,'','']]],
+ ['StudentDiscipline','DisciplineIncident',[
+  ['01 - 1st DisciplineIncident is valid',200,'','id:S;incidentDate:S;incidentIdentifier:S;schoolReference:O;schoolReference.schoolId:N;behaviors:A;behaviors[0].behaviorDescriptor:S;incidentLocationDescriptor:S;reporterDescriptionDescriptor:S;reporterName:S'],
+  ['02 - 2nd DisciplineIncident is valid',200,'','='],
+  ['03 - 1st DisciplineIncident - reporterName was Updated',200,'reporterName','id:S;reporterName:S']]],
+ ['StudentDiscipline','StudDisciplineIncidentBehaviorAssocs',[
+  ['01 - 1st StudDisciplineIncidentBehaviorAssocs is valid',200,'','id:S;behaviorDescriptor:S;disciplineIncidentReference:O;disciplineIncidentReference.incidentIdentifier:S;disciplineIncidentReference.schoolId:N;studentReference:O;studentReference.studentUniqueId:S;disciplineIncidentParticipationCodes:A;disciplineIncidentParticipationCodes[0].disciplineIncidentParticipationCodeDescriptor:S'],
+  ['02 - 2nd StudDisciplineIncidentBehaviorAssocs is valid',200,'','='],
+  ['03 - 1st StudDisciplineIncidentBehaviorAssocs was Deleted',404,'','']]],
+ ['StudentEnrollment','GraduationPlans',[
+  ['01 - 1st GraduationPlan is valid',200,'','id:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;graduationSchoolYearTypeReference:O;graduationSchoolYearTypeReference.schoolYear:N;graduationPlanTypeDescriptor:S;totalRequiredCredits:N'],
+  ['02 - 2nd GraduationPlan is valid',200,'','='],
+  ['03 - 1st GraduationPlan - totalRequiredCredits was Updated',200,'totalRequiredCredits','='],
+  ['04 - 2nd GraduationPlan - totalRequiredCredits was Updated',200,'totalRequiredCredits','=']]],
+ ['StudentEnrollment','StudentEdOrgAssociations',[
+  ['01 - 1st StudentEdOrgAssociation is valid',200,'','id:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;studentReference:O;studentReference.studentUniqueId:S;limitedEnglishProficiencyDescriptor:S;studentCharacteristics:A;studentCharacteristics[0].studentCharacteristicDescriptor:S;studentIdentificationCodes:A;studentIdentificationCodes[0].identificationCode:S;studentIdentificationCodes[0].assigningOrganizationIdentificationCode:S;studentIdentificationCodes[0].studentIdentificationSystemDescriptor:O?isDefined,isNotEmpty;sexDescriptor:S;addresses:A;addresses[0].addressTypeDescriptor:S;addresses[0].city:S;addresses[0].postalCode:S;addresses[0].stateAbbreviationDescriptor:S;addresses[0].streetNumberName:S;telephones:A;telephones[0].telephoneNumber:S;telephones[0].telephoneNumberTypeDescriptor:S;electronicMails:A;electronicMails[0].electronicMailAddress:S;electronicMails[0].electronicMailTypeDescriptor:S;hispanicLatinoEthnicity:B;races:A;races[0].raceDescriptor:S;languages[0].languageDescriptor:S;languages[0].uses[0].languageUseDescriptor:S'],
+  ['02 - 2nd StudentEdOrgAssociation is valid',200,'','=']]],
+ ['StudentEnrollment','StudentEdOrgResponsibilityAssocs',[
+  ['01 - 1st StudentEdOrgResponsibilityAssoc is valid',200,'','id:S;beginDate:S;responsibilityDescriptor:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;studentReference:O;studentReference.studentUniqueId:S;endDate:S'],
+  ['02 - 2nd StudentEdOrgResponsibilityAssoc is valid',200,'','=']]],
+ ['StudentEnrollment','StudentSchoolAssociations',[
+  ['01 - 1st StudentSchoolAssociation is valid',200,'','id:S;schoolReference:O;schoolReference.schoolId:N;studentReference:O;studentReference.studentUniqueId:S;entryDate:S?isString;entryGradeLevelDescriptor:S;entryTypeDescriptor:S;exitWithdrawDate:S?isString;exitWithdrawTypeDescriptor:S;repeatGradeIndicator:B;residencyStatusDescriptor:S;primarySchool:B;fullTimeEquivalency:N?isNumber;calendarReference.calendarCode:S'],
+  ['02 - 2nd StudentSchoolAssociation is valid',200,'','id:S;schoolReference:O;schoolReference.schoolId:N;studentReference:O;studentReference.studentUniqueId:S;entryDate:S?isString;entryGradeLevelDescriptor:S;entryTypeDescriptor:S;repeatGradeIndicator:B;residencyStatusDescriptor:S;primarySchool:B;fullTimeEquivalency:N?isNumber,gt 0;calendarReference.calendarCode:S'],
+  ['06 - 1st StudentSchoolAssociation was Deleted',404,'','']]],
+ ['StudentEnrollment','StudentSectionAssociations',[
+  ['01 - 1st StudentSectionAssociation is valid',200,'','id:S;sectionReference:O;sectionReference.schoolId:N;sectionReference.schoolYear:N;sectionReference.localCourseCode:S;sectionReference.sectionIdentifier:S;sectionReference.sessionName:S;studentReference:O;studentReference.studentUniqueId:S;beginDate:S?isString;endDate:S?isString;homeroomIndicator:B'],
+  ['02 - 2nd StudentSectionAssociation is valid',200,'','='],
+  ['03 - 1st StudentSectionAssociation - endDate was Updated',200,'endDate','id:S;sectionReference:O;sectionReference.schoolId:N;sectionReference.schoolYear:N;sectionReference.localCourseCode:S;sectionReference.sectionIdentifier:S;sectionReference.sessionName:S;studentReference:O;studentReference.studentUniqueId:S;beginDate:S?isString;endDate:S?isString'],
+  ['04 - 2nd StudentSectionAssociation - endDate was Updated',200,'endDate','='],
+  ['05 - 1st StudentSectionAssociation was Deleted',404,'','']]],
+ ['StudentGrade','Grades',[
+  ['01 - 1st Grade is valid',200,'','id:S;gradeTypeDescriptor:S;gradingPeriodReference:O;gradingPeriodReference.gradingPeriodDescriptor:S;gradingPeriodReference.periodSequence:N;gradingPeriodReference.schoolId:N;gradingPeriodReference.schoolYear:N;studentSectionAssociationReference:O;studentSectionAssociationReference.studentUniqueId:S;studentSectionAssociationReference.schoolId:N;studentSectionAssociationReference.schoolYear:N;studentSectionAssociationReference.localCourseCode:S;studentSectionAssociationReference.sectionIdentifier:S;studentSectionAssociationReference.sessionName:S;studentSectionAssociationReference.beginDate:S?isString;letterGradeEarned:S?isString;numericGradeEarned:N?isNumber'],
+  ['02 - 2nd Grade is valid',200,'','='],
+  ['03 - 1st Grade - numericGradeEarned & letterGradeEarned were Updated',200,'letterGradeEarned','id:S?isString,eq {{firstGradeUniqueId}};gradeTypeDescriptor:S;gradingPeriodReference:O;gradingPeriodReference.gradingPeriodDescriptor:S;gradingPeriodReference.periodSequence:N;gradingPeriodReference.schoolId:N;gradingPeriodReference.schoolYear:N;studentSectionAssociationReference:O;studentSectionAssociationReference.studentUniqueId:S;studentSectionAssociationReference.schoolId:N;studentSectionAssociationReference.schoolYear:N;studentSectionAssociationReference.localCourseCode:S;studentSectionAssociationReference.sectionIdentifier:S;studentSectionAssociationReference.sessionName:S;studentSectionAssociationReference.beginDate:S?isString;letterGradeEarned:S?isString;numericGradeEarned:N?isNumber'],
+  ['04 - 2nd Grade - numericGradeEarned & letterGradeEarned were Updated',200,'letterGradeEarned','id:S?isString,eq {{secondGradeUniqueId}};gradeTypeDescriptor:S;gradingPeriodReference:O;gradingPeriodReference.gradingPeriodDescriptor:S;gradingPeriodReference.periodSequence:N;gradingPeriodReference.schoolId:N;gradingPeriodReference.schoolYear:N;studentSectionAssociationReference:O;studentSectionAssociationReference.studentUniqueId:S;studentSectionAssociationReference.schoolId:N;studentSectionAssociationReference.schoolYear:N;studentSectionAssociationReference.localCourseCode:S;studentSectionAssociationReference.sectionIdentifier:S;studentSectionAssociationReference.sessionName:S;studentSectionAssociationReference.beginDate:S?isString;letterGradeEarned:S?isString;numericGradeEarned:N?isNumber'],
+  ['05 - 1st Grade was Deleted',404,'','']]],
+ ['StudentProgram','StudNeglectedOrDelinquentProgAssocs',[
+  ['01 - 1st StudNeglectedOrDelinquentProgAssocs is valid',200,'','id:S;beginDate:S;endDate:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;programReference:O;programReference.educationOrganizationId:N;programReference.programName:S;programReference.programTypeDescriptor:S;studentReference:O;studentReference.studentUniqueId:S;neglectedOrDelinquentProgramDescriptor:S;neglectedOrDelinquentProgramServices:A;neglectedOrDelinquentProgramServices[0].neglectedOrDelinquentProgramServiceDescriptor:S;neglectedOrDelinquentProgramServices[0].serviceBeginDate:S;neglectedOrDelinquentProgramServices[0].primaryIndicator:O']]],
+ ['StudentProgram','StudSchoolFoodServProgAssocs',[
+  ['01 - 1st StudSchoolFoodServProgAssocs is valid',200,'','id:S;beginDate:S;endDate:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;programReference:O;programReference.educationOrganizationId:N;programReference.programName:S;programReference.programTypeDescriptor:S;studentReference:O;studentReference.studentUniqueId:S;schoolFoodServiceProgramServices:A;schoolFoodServiceProgramServices[0].schoolFoodServiceProgramServiceDescriptor:S'],
+  ['02 - 1st StudSchoolFoodServProgAssocs - service was Updated',200,'schoolFoodServiceProgramServices[0].schoolFoodServiceProgramServiceDescriptor','=']]],
+ ['StudentProgram','StudentCTEProgramAssociations',[
+  ['01 - 1st StudentCTEProgramAssociation is valid',200,'','id:S;beginDate:S;endDate:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;programReference:O;programReference.educationOrganizationId:N;programReference.programName:S;programReference.programTypeDescriptor:S;studentReference:O;studentReference.studentUniqueId:S;nonTraditionalGenderStatus:B;privateCTEProgram:B;technicalSkillsAssessmentDescriptor:S;cteProgramServices:A;cteProgramServices[0].cteProgramServiceDescriptor:S;cteProgramServices[0].cipCode:S;cteProgramServices[0].primaryIndicator:B']]],
+ ['StudentProgram','StudentHomelessProgramAssociations',[
+  ['01 - 1st StudentHomelessProgramAssociation is valid',200,'','id:S;beginDate:S;endDate:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;programReference:O;programReference.educationOrganizationId:N;programReference.programName:S;programReference.programTypeDescriptor:S;studentReference:O;studentReference.studentUniqueId:S;homelessPrimaryNighttimeResidenceDescriptor:S;homelessUnaccompaniedYouth:B']]],
+ ['StudentProgram','StudentLangInstProgramAssociations',[
+  ['01 - 1st StudentLangInstProgramAssociation is valid',200,'','id:S;beginDate:S;endDate:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;programReference:O;programReference.educationOrganizationId:N;programReference.programName:S;programReference.programTypeDescriptor:S;studentReference:O;studentReference.studentUniqueId:S;englishLanguageProficiencyAssessments:A;englishLanguageProficiencyAssessments[0].schoolYearTypeReference:O;englishLanguageProficiencyAssessments[0].schoolYearTypeReference.schoolYear:N;englishLanguageProficiencyAssessments[0].participationDescriptor:S;englishLanguageProficiencyAssessments[0].proficiencyDescriptor:S;englishLanguageProficiencyAssessments[0].monitoredDescriptor:S;languageInstructionProgramServices:A;languageInstructionProgramServices[0].languageInstructionProgramServiceDescriptor:S;englishLearnerParticipation:B']]],
+ ['StudentProgram','StudentMigrantProgramAssociations',[
+  ['01 - 1st StudentMigrantEducationProgramAssociation is valid',200,'','id:S;beginDate:S;endDate:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;programReference:O;programReference.educationOrganizationId:N;programReference.programName:S;programReference.programTypeDescriptor:S;studentReference:O;studentReference.studentUniqueId:S;priorityForServices:B;lastQualifyingMove:S;migrantEducationProgramServices:A;migrantEducationProgramServices[0].migrantEducationProgramServiceDescriptor:S'],
+  ['02 - 1st StudentMigrantEducationProgramAssociation - priorityForServices was Updated',200,'priorityForServices','=']]],
+ ['StudentProgram','StudentProgramAssociations',[
+  ['01 - 1st StudentProgramAssociation is valid',200,'','id:S;beginDate:S;endDate:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;programReference:O;programReference.educationOrganizationId:N;programReference.programName:S;programReference.programTypeDescriptor:S;studentReference:O;studentReference.studentUniqueId:S'],
+  ['02 - 2nd StudentProgramAssociation is valid',200,'','='],
+  ['03 - 1st StudentProgramAssociation - beginDate was Updated',200,'beginDate','='],
+  ['04 - 2nd StudentProgramAssociation - beginDate was Updated',200,'beginDate','='],
+  ['05 - 1st StudentProgramAssociation was Deleted',404,'','']]],
+ ['StudentProgram','StudentSpecEduProgramAssocs',[
+  ['01 - 1st StudSpecEduProgramAssocs is valid',200,'','id:S;beginDate:S;endDate:S;reasonExitedDescriptor:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;programReference:O;programReference.educationOrganizationId:N;programReference.programName:S;programReference.programTypeDescriptor:S;studentReference:O;studentReference.studentUniqueId:S;specialEducationSettingDescriptor:S;ideaEligibility:O;specialEducationExitDate:S?isString'],
+  ['02 - 2nd StudSpecEduProgramAssocs is valid',200,'','=']]],
+ ['StudentProgram','StudentTitleIPartAProgAssocs',[
+  ['01 - 1st StudTitleIPartAProgAssocs is valid',200,'','id:S;beginDate:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;programReference:O;programReference.educationOrganizationId:N;programReference.programName:S;programReference.programTypeDescriptor:S;studentReference:O;studentReference.studentUniqueId:S;titleIPartAParticipantDescriptor:S'],
+  ['02 - 2nd StudTitleIPartAProgAssocs is valid',200,'','=']]],
+ ['StudentTranscript','CourseTranscript',[
+  ['01 - 1st CourseTranscript is valid',200,'','id:S;courseReference.courseCode:S;courseReference.educationOrganizationId:N?isNumber;studentAcademicRecordReference.educationOrganizationId:N?isNumber;studentAcademicRecordReference.schoolYear:N?isNumber;studentAcademicRecordReference.studentUniqueId:S;studentAcademicRecordReference.termDescriptor:S;courseAttemptResultDescriptor:S;attemptedCredits:N?isNumber;earnedCredits:N?isNumber;finalLetterGradeEarned:S;finalNumericGradeEarned:N?isNumber'],
+  ['02 - 1st CourseTranscript - finalNumericGradeEarned was Updated',200,'finalNumericGradeEarned','id:S;finalNumericGradeEarned:N?isNumber'],
+  ['03 - 2nd CourseTranscript is valid',200,'','id:S;courseReference.courseCode:S;courseReference.educationOrganizationId:N?isNumber;studentAcademicRecordReference.educationOrganizationId:N?isNumber;studentAcademicRecordReference.schoolYear:N?isNumber;studentAcademicRecordReference.studentUniqueId:S;studentAcademicRecordReference.termDescriptor:S;courseAttemptResultDescriptor:S;attemptedCredits:N?isNumber;earnedCredits:N?isNumber;finalLetterGradeEarned:S;finalNumericGradeEarned:N?isNumber']]],
+ ['StudentTranscript','StudentAcademicRecords',[
+  ['01 - 1st StudentAcademicRecord is valid',200,'','id:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;schoolYearTypeReference:O;schoolYearTypeReference.schoolYear:N;studentReference:O;studentReference.studentUniqueId:S;termDescriptor:S;cumulativeAttemptedCredits:N?gte 0;cumulativeEarnedCredits:N?gte 0;gradePointAverages:A;gradePointAverages[0].gradePointAverageTypeDescriptor:S;gradePointAverages[0].gradePointAverageValue:N?gte 0;gradePointAverages[0].isCumulative:B;gradePointAverages[0].maxGradePointAverageValue:N?gte 0;sessionAttemptedCredits:O?isUndefined;sessionEarnedCredits:O?isUndefined'],
+  ['02 - 2nd StudentAcademicRecord is valid',200,'','id:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;schoolYearTypeReference:O;schoolYearTypeReference.schoolYear:N;studentReference:O;studentReference.studentUniqueId:S;termDescriptor:S;cumulativeAttemptedCredits:N?gte 0;cumulativeEarnedCredits:N?gte 0;gradePointAverages:A;gradePointAverages[0].gradePointAverageTypeDescriptor:S;gradePointAverages[0].gradePointAverageValue:N?gte 0;gradePointAverages[0].isCumulative:B;gradePointAverages[0].maxGradePointAverageValue:N?gte 0;sessionAttemptedCredits:N?gte 0;sessionEarnedCredits:N?gte 0']]]
+];
+
+/* No MTSS/Interventions collection exists upstream yet, so these are written in
+   the same constraint style against real Ed-Fi Intervention element paths. */
+const MTSS_V1 = [
+ ['Intervention','Interventions',[
+  ['01 - 1st Intervention is valid',200,'','id:S;interventionIdentificationCode:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;interventionClassDescriptor:S;deliveryMethodDescriptor:S;beginDate:S;endDate:S;minutesPerSession:N;interventionPrescriptions:A'],
+  ['02 - 2nd Intervention is valid',200,'','='],
+  ['03 - 1st Intervention - minutesPerSession was Updated',200,'minutesPerSession','='],
+  ['04 - 2nd Intervention - endDate was Updated',200,'endDate','=']]],
+ ['Intervention','InterventionPrescriptions',[
+  ['01 - 1st InterventionPrescription is valid',200,'','id:S;interventionPrescriptionIdentificationCode:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;deliveryMethodDescriptor:S;interventionClassDescriptor:S;minutesPerSession:N;populationServed:A'],
+  ['02 - 2nd InterventionPrescription is valid',200,'','='],
+  ['03 - 1st InterventionPrescription was Deleted',404,'','']]],
+ ['Cohort','Cohorts',[
+  ['01 - 1st Cohort is valid',200,'','id:S;cohortIdentifier:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;cohortDescription:S;cohortTypeDescriptor:S;cohortScopeDescriptor:S'],
+  ['02 - 2nd Cohort is valid',200,'','='],
+  ['03 - 1st Cohort - cohortDescription was Updated',200,'cohortDescription','=']]],
+ ['Cohort','StudentCohortAssociations',[
+  ['01 - 1st StudentCohortAssociation is valid',200,'','id:S;cohortReference:O;cohortReference.cohortIdentifier:S;cohortReference.educationOrganizationId:N;studentReference:O;studentReference.studentUniqueId:S;beginDate:S;endDate:S'],
+  ['02 - 2nd StudentCohortAssociation is valid',200,'','='],
+  ['03 - 1st StudentCohortAssociation - endDate was Updated',200,'endDate','=']]],
+ ['StudentIntervention','StudentInterventionAssociations',[
+  ['01 - 1st StudentInterventionAssociation is valid',200,'','id:S;interventionReference:O;interventionReference.interventionIdentificationCode:S;interventionReference.educationOrganizationId:N;studentReference:O;studentReference.studentUniqueId:S;cohortReference:O;dosage:N'],
+  ['02 - 2nd StudentInterventionAssociation is valid',200,'','='],
+  ['03 - 1st StudentInterventionAssociation - dosage was Updated',200,'dosage','='],
+  ['04 - 1st StudentInterventionAssociation was Deleted',404,'','']]],
+ ['StudentIntervention','StudentInterventionAttendanceEvents',[
+  ['01 - 1st StudentInterventionAttendanceEvent is valid',200,'','id:S;attendanceEventCategoryDescriptor:S;eventDate:S;interventionReference:O;interventionReference.interventionIdentificationCode:S;interventionReference.educationOrganizationId:N;studentReference:O;studentReference.studentUniqueId:S;interventionDuration:N'],
+  ['02 - 2nd StudentInterventionAttendanceEvent is valid',200,'','='],
+  ['03 - 1st StudentInterventionAttendanceEvent - interventionDuration was Updated',200,'interventionDuration','=']]],
+ ['Goal','StudentGoals',[
+  ['01 - 1st StudentGoal is valid',200,'','id:S;goalTitle:S;studentReference:O;studentReference.studentUniqueId:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;goalStartDate:S;goalEndDate:S;goalDescription:S'],
+  ['02 - 2nd StudentGoal is valid',200,'','='],
+  ['03 - 1st StudentGoal - goalEndDate was Updated',200,'goalEndDate','=']]],
+ ['ProgressMonitoring','StudentProgressMonitoringResults',[
+  ['01 - 1st StudentProgressMonitoringResult is valid',200,'','id:S;studentReference:O;studentReference.studentUniqueId:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;assessmentIdentifier:S;administrationDate:S;result:N;resultDatatypeTypeDescriptor:S'],
+  ['02 - 2nd StudentProgressMonitoringResult is valid',200,'','='],
+  ['03 - 1st StudentProgressMonitoringResult - result was Updated',200,'result','=']]]
+];
+const COLLECTION = {sis: SIS_V5, mtss: MTSS_V1};
+
+/* Scenarios seeded to fail in a "realistic" run. `el` names the element row that
+   carries the failure in the expanded detail, so the scenario summary line and
+   the element table always agree. */
 const BRUNO_FAILS = {
-  sis: {'MasterSchedule/Sections':{step:2, msg:'Expected sectionIdentifier "ALG-1-S1-A", observed "ALG1S1A"'},
-        'StudentAttendance/StudentSchoolAttendanceEvents':{step:3, msg:'PUT returned 400: attendanceEventCategoryDescriptor could not be resolved'}},
-  mtss: {'StudentIntervention/StudentInterventionAttendanceEvents':{step:1, msg:'GET returned 404 — resource not implemented by vendor API'}}
+  sis: {
+    'MasterSchedule/Sections': {step:4, el:'availableCredits', kind:'fail-unchanged',
+      msg:'availableCredits is still 1 after the update — expectChanged(availableCredits) failed'},
+    'StudentAttendance/StudentSchoolAttendanceEvents': {step:2, el:'attendanceEventCategoryDescriptor',
+      kind:'fail-absent',
+      msg:'attendanceEventCategoryDescriptor was absent from the response — isString, isNotEmpty failed'},
+    'StudentGrade/Grades': {step:1, el:'numericGradeEarned', kind:'fail-assert',
+      msg:'numericGradeEarned returned as the string "88" — isNumber failed'}
+  },
+  mtss: {
+    'StudentIntervention/StudentInterventionAttendanceEvents': {step:1, el:null, kind:'fail-status',
+      msg:'GET returned 404 — resource not implemented by vendor API'}
+  }
 };
 
+/* Well-known values from the collection's own scenario data, so an expanded step
+   reads like the Grand Bend sample set a vendor actually loaded. */
+const SAMPLE_VALUES = {
+  schoolId:'255901107', educationOrganizationId:'255901107', schoolYear:'2017',
+  sessionName:'2016-2017 Fall Semester', localCourseCode:'ELA-01', courseCode:'ELA-01',
+  sectionIdentifier:'ELA012017RM555', classPeriodName:'Class Period 01',
+  classroomIdentificationCode:'501', studentUniqueId:'604821', contactUniqueId:'204821',
+  staffUniqueId:'304821', cohortIdentifier:'CHRT-001',
+  interventionIdentificationCode:'INT-READ-01', firstName:'Alex', lastSurname:'Rivera',
+  city:'Grand Bend', postalCode:'78834', streetNumberName:'123 Main Street'
+};
+/* Descriptor values from the Grand Bend sample set. A descriptor whose codeValue
+   is picked at random reads as obviously fake, so the common ones are named. */
+const DESCRIPTOR_VALUES = {
+  educationalEnvironmentDescriptor:'Classroom', academicSubjectDescriptor:'English Language Arts',
+  addressTypeDescriptor:'Physical', attendanceEventCategoryDescriptor:'In Attendance',
+  calendarTypeDescriptor:'Student Specific', calendarEventDescriptor:'Instructional day',
+  gradeLevelDescriptor:'Ninth grade', entryGradeLevelDescriptor:'Ninth grade',
+  gradingPeriodDescriptor:'First Six Weeks', gradeTypeDescriptor:'Grading Period',
+  sexDescriptor:'Female', raceDescriptor:'White', stateAbbreviationDescriptor:'TX',
+  termDescriptor:'Fall Semester', electronicMailTypeDescriptor:'Home/Personal',
+  relationDescriptor:'Mother', entryTypeDescriptor:'Next year school',
+  exitWithdrawTypeDescriptor:'Student withdrew', programTypeDescriptor:'Special Education',
+  staffClassificationDescriptor:'Teacher', classroomPositionDescriptor:'Teacher of Record',
+  courseIdentificationSystemDescriptor:'LEA course code',
+  courseLevelCharacteristicDescriptor:'Basic', courseAttemptResultDescriptor:'Pass',
+  educationOrganizationCategoryDescriptor:'School', cohortTypeDescriptor:'Intervention',
+  cohortScopeDescriptor:'School', languageDescriptor:'English',
+  studentIdentificationSystemDescriptor:'Student Information System',
+  disciplineDescriptor:'In School Suspension', behaviorDescriptor:'School Code of Conduct',
+  deliveryMethodDescriptor:'Individual', interventionClassDescriptor:'Practice',
+  resultDatatypeTypeDescriptor:'Integer'
+};
+/* A stable pseudo-random pick, so the same element always shows the same value. */
+const seedOf = s => { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return h; };
 /* Assessments validation content — deliberately seeds every failure kind RC2 requires. */
 const ASSESSMENT_RESULTS = [
   {domain:'Assessment', resource:'assessments', elements:[
@@ -379,7 +653,13 @@ const ST_LABEL = {
   'fail-descriptor':['bad','Invalid descriptor'],
   'fail-value':['bad','Value mismatch'],
   'fail-type':['bad','Type error'],
-  'fail-empty':['bad','No data returned']
+  'fail-empty':['bad','No data returned'],
+  /* Bruno-side kinds. The assertions are constraints, not expected values, so a
+     failure is named after the constraint that broke. */
+  'fail-assert':['bad','Assertion failed'],
+  'fail-absent':['bad','Element absent'],
+  'fail-unchanged':['bad','Value not updated'],
+  'fail-status':['bad','Unexpected status']
 };
 
 /* ---------- mutable application state ---------- */
@@ -387,9 +667,10 @@ const APP = {
   persona: 'vendor',
   vendorUser: 'j.rivera@vendor-b.example.com',
   reviewerUser: 'cert-reviewer@ed-fi.org',
-  products: [],
+  applications: [],
   submissions: [],
   runs: [],
+  openSteps: {},
   loadedAt: new Date(NOW)
 };
 const me = () => APP.persona === 'vendor' ? APP.vendorUser : APP.reviewerUser;
@@ -420,14 +701,32 @@ function hist(sub, what, who, when){
   const R = 'cert-reviewer@ed-fi.org';
   const d = (day, h, m) => new Date(2026, 8, day, h, m); // Sept 2026
 
-  APP.products = [
-    {id:'p1', name:'Vendor B Student Suite', vendor:'Vendor B', team:'Test Vendor Dev Team', env:'Vendor_B'},
-    {id:'p2', name:'Vendor B Assessment Hub', vendor:'Vendor B', team:'Test Vendor Dev Team', env:'Vendor_B'},
-    {id:'p3', name:'Vendor B Intervention Manager', vendor:'Vendor B', team:'Test Vendor Dev Team', env:'Vendor_B'},
+  /* D26 — a certified product IS an Admin App application record. Name, vendor,
+     environment and ODS are inherited from the application, never re-entered. */
+  APP.applications = [
+    {id:'p1', name:'Test SIS App', vendor:'Vendor B Inc', team:'Test Vendor Dev Team',
+     env:'Vendor_B', tenant:'default', ods:'ODS', claimset:'SIS Vendor Test',
+     edorg:'Grand Bend ISD', url:'https://localhost/vendorb-api'},
+    {id:'p2', name:'Test Assessment App', vendor:'Vendor B Inc', team:'Test Vendor Dev Team',
+     env:'Vendor_B', tenant:'default', ods:'ODS', claimset:'Assessment Vendor Test',
+     edorg:'Grand Bend ISD', url:'https://localhost/vendorb-api'},
+    {id:'p3', name:'Test Intervention App', vendor:'Vendor B Inc', team:'Test Vendor Dev Team',
+     env:'Vendor_B', tenant:'default', ods:'ODS', claimset:'MTSS Vendor Test',
+     edorg:'Grand Bend ISD', url:'https://localhost/vendorb-api'},
+    /* registered applications with no certification started — the Start Certification path */
+    {id:'p7', name:'Test Roster App', vendor:'Vendor B Inc', team:'Test Vendor Dev Team',
+     env:'Vendor_B', tenant:'default', ods:'ODS', claimset:'SIS Vendor Test',
+     edorg:'Grand Bend ISD', url:'https://localhost/vendorb-api'},
+    {id:'p8', name:'Test Analytics App', vendor:'Vendor B Inc', team:'Test Vendor Dev Team',
+     env:'Vendor_B', tenant:'default', ods:'ODS_2', claimset:'Read-only Analytics',
+     edorg:'Grand Bend ISD', url:'https://localhost/vendorb-analytics'},
     /* other vendors — reviewer queue only */
-    {id:'p4', name:'Acme SIS', vendor:'Acme Learning', team:'Acme Dev', env:'Acme_Prod_Cert', foreign:true},
-    {id:'p5', name:'Northwind Assess', vendor:'Northwind Data', team:'Northwind Cert', env:'Northwind_Cert', foreign:true},
-    {id:'p6', name:'Larkspur MTSS', vendor:'Larkspur Ed', team:'Larkspur Cert', env:'Larkspur_Cert', foreign:true}
+    {id:'p4', name:'Acme SIS', vendor:'Acme Learning', team:'Acme Dev', env:'Acme_Prod_Cert',
+     tenant:'default', ods:'ODS', foreign:true},
+    {id:'p5', name:'Northwind Assess', vendor:'Northwind Data', team:'Northwind Cert',
+     env:'Northwind_Cert', tenant:'default', ods:'ODS', foreign:true},
+    {id:'p6', name:'Larkspur MTSS', vendor:'Larkspur Ed', team:'Larkspur Cert',
+     env:'Larkspur_Cert', tenant:'default', ods:'ODS', foreign:true}
   ];
 
   /* p1 / SIS v5 — complete artifacts, one qualifying run: Ready for Review */
@@ -570,16 +869,68 @@ function hist(sub, what, who, when){
 })();
 
 /* ---------- result builders ---------- */
+function mockObserved(path, letter, key){
+  const leaf = path.split('.').pop().replace(/\[\d+\]$/, '');
+  if (SAMPLE_VALUES[leaf]) return SAMPLE_VALUES[leaf];
+  const h = seedOf(key + '|' + path);
+  if (letter === 'B') return h % 2 ? 'true' : 'false';
+  if (letter === 'N') return String(h % 40 + 1);
+  if (letter === 'O') return '{ … }';
+  if (letter === 'A') return '[ ' + (h % 3 + 1) + ' item(s) ]';
+  if (/Descriptor$/.test(leaf)) return 'uri://ed-fi.org/' + leaf.charAt(0).toUpperCase() + leaf.slice(1) +
+    '#' + (DESCRIPTOR_VALUES[leaf] || leaf.replace(/Descriptor$/, '').replace(/([A-Z])/g, ' $1')
+      .trim().replace(/^./, c => c.toUpperCase()));
+  if (/Date$/.test(leaf)) return '2016-09-' + String(h % 28 + 1).padStart(2, '0');
+  if (/Time$/.test(leaf)) return String(h % 12 + 8).padStart(2, '0') + ':00:00';
+  if (leaf === 'id') return h.toString(16).padStart(8, '0') + '-4a1c-9f2e-' + (h % 9999);
+  return leaf.replace(/([A-Z])/g, ' $1').trim().replace(/^./, c => c.toUpperCase()) + ' ' + (h % 90 + 10);
+}
+/* Decode one "path:type[?ops]" token into a displayable element row. */
+function decodeElement(token, key, changedField, f, isFailStep){
+  const [path, rest] = token.split(':');
+  const letter = rest.charAt(0);
+  const explicit = rest.indexOf('?') >= 0 ? rest.slice(rest.indexOf('?') + 1) : null;
+  const meta = ASSERT_TYPE[letter] || ASSERT_TYPE.S;
+  const leaf = path.split('.').pop().replace(/\[\d+\]$/, '');
+  const type = /Descriptor$/.test(leaf) && letter === 'S' ? 'Descriptor' : meta[0];
+  const el = {el:path, type, assertions: explicit ? explicit.split(',').join(', ') : meta[1],
+              observed: mockObserved(path, letter, key), st:'pass'};
+  /* The one real value check the collection makes. */
+  if (changedField && path === changedField){
+    const before = seedOf(key + path) % 5 + 1;
+    el.assertions = 'changed from ' + before;
+    el.observed = String(before + 1);
+  }
+  if (isFailStep && f.el === path){
+    el.st = f.kind;
+    el.why = f.msg;
+    if (f.kind === 'fail-absent') el.observed = '(absent)';
+    if (f.kind === 'fail-unchanged') el.observed = (el.assertions.match(/\d+$/) || ['1'])[0];
+    if (f.kind === 'fail-assert') el.observed = '"' + el.observed + '"';
+  }
+  return el;
+}
 function brunoResults(model, mode){
   const fails = mode === 'pass' ? {} : (BRUNO_FAILS[model] || {});
-  return {kind:'bruno', scenarios: SCENARIOS[model].map(([area, scenario]) => {
+  return {kind:'bruno', scenarios: COLLECTION[model].map(([area, scenario, rawSteps]) => {
     const key = area + '/' + scenario;
     const f = fails[key];
-    return {area, scenario, steps: stepsFor(scenario).map((label, i) => ({
-      label,
-      st: f && i + 1 === f.step ? 'fail' : (f && i + 1 > f.step ? 'skipped' : 'pass'),
-      msg: f && i + 1 === f.step ? f.msg : ''
-    })), st: f ? 'fail' : 'pass'};
+    let spec = '';
+    const steps = rawSteps.map(([label, status, changedField, elementSpec], i) => {
+      if (elementSpec && elementSpec !== '=') spec = elementSpec;
+      const mine = elementSpec === '' ? '' : spec;
+      const st = f && i + 1 === f.step ? 'fail' : (f && i + 1 > f.step ? 'skipped' : 'pass');
+      const isFailStep = st === 'fail';
+      /* A status-only failure means the request never returned a body to assert on. */
+      const statusFailed = isFailStep && f.kind === 'fail-status';
+      return {
+        label, st, msg: isFailStep ? f.msg : '',
+        status, observedStatus: statusFailed ? 404 : status,
+        elements: st === 'skipped' || statusFailed || !mine ? []
+          : mine.split(';').map(t => decodeElement(t, key, changedField, f, isFailStep))
+      };
+    });
+    return {area, scenario, steps, st: f ? 'fail' : 'pass'};
   })};
 }
 function assessmentResults(mode){
@@ -605,7 +956,15 @@ function resultTally(r){
 }
 
 /* ---------- derived state ---------- */
-const product = id => APP.products.find(p => p.id === id);
+/* D26 — product identity is the application record, so a product lookup is an
+   application lookup. `productId` on a submission or run is an application id. */
+const product = id => APP.applications.find(p => p.id === id);
+const certStarted = appId => APP.submissions.some(s => s.productId === appId);
+/* §8 / D22 — a product may hold one open submission per certification model. */
+const openModels = appId => APP.submissions.filter(s => s.productId === appId &&
+  !['approved','rejected'].includes(s.status)).map(s => s.model);
+const startableModels = appId => Object.values(MODELS)
+  .filter(m => !openModels(appId).includes(m.id));
 const submission = id => APP.submissions.find(s => s.id === id);
 const run = id => APP.runs.find(r => r.id === id);
 const runsFor = sub => APP.runs.filter(r => r.submissionId === sub.id)
@@ -652,6 +1011,18 @@ function recomputeStatus(sub){
 }
 
 /* ---------- actions ---------- */
+
+/* FR5 — starting certification from an application registers it as a product and
+   opens a Draft submission for the chosen model (§8). Nothing about the
+   application is copied or re-entered; the submission points at it. */
+function startCertification(appId, model){
+  const sub = mkSubmission({productId:appId, model, status:'draft',
+    artifacts:artifactSet([]), created:tick()});
+  hist(sub, 'Submission created — certification started from application ' +
+    product(appId).name + ' (' + MODELS[model].label + ')');
+  return sub;
+}
+
 function uploadArtifact(sub, type, name, malformed){
   if (type === 'mapping' && malformed){
     hist(sub, 'Vendor mapping CSV upload rejected — structural validation failed (' + name + ')');
@@ -782,7 +1153,8 @@ function navHTML(route){
       <a href="#/env"${on('env')}><span class="ic">&#9707;</span>Vendor_B</a>
       <div class="sub">
         <a href="#/env">ODSs</a><a href="#/env">Ed-Orgs</a><a href="#/env">Vendors</a>
-        <a href="#/env">Applications</a><a href="#/env">Claimsets</a><a href="#/env">Profiles</a>
+        <a href="#/applications"${on('applications') || on('application')}>Applications</a>
+        <a href="#/env">Claimsets</a><a href="#/env">Profiles</a>
       </div>
     </nav>
     <div class="sidenote">Prototype &mdash; mock data, no server. Illustrates
@@ -826,7 +1198,9 @@ function placeholder(title){
 /* ---------------- VENDOR ---------------- */
 function vendorScreen(route){
   switch (route.name){
-    case 'products':   return vendorProducts();
+    case 'products':   return vendorProducts(route.args[0]);
+    case 'applications': return vendorApplications();
+    case 'application':  return vendorApplication(route.args[0]);
     case 'submission': return vendorSubmission(route.args[0]);
     case 'newrun':     return vendorNewRun(route.args[0]);
     case 'run':        return runResults(route.args[0], false);
@@ -835,7 +1209,7 @@ function vendorScreen(route){
   }
 }
 
-function vendorProducts(){
+function vendorProducts(focusId){
   const subs = mySubmissions();
   const ready = subs.filter(s => s.status === 'ready').length;
   const needsMe = subs.filter(s => ['draft','incomplete','changes'].includes(s.status)).length;
@@ -844,7 +1218,9 @@ function vendorProducts(){
   return crumbs([['Home', '#/products'], ['My products']]) + `
     <div class="pagehead">
       <div><h1>My products</h1>
-        <div class="sub">Certifications are granted to products, not vendors (§8).</div></div>
+        <div class="sub">Certifications are granted to products, not vendors (§8). A product is one of
+          your registered applications &mdash; certification starts from
+          <a href="#/applications">Applications</a> (D26, FR5).</div></div>
       <div class="acts"><button class="btn red" data-act="newsub">+ Create new</button></div>
     </div>
     <div class="kpis">
@@ -852,11 +1228,12 @@ function vendorProducts(){
       <div class="kpi"><div class="n">${ready}</div><div class="l">Ready for Ed-Fi review</div></div>
       <div class="kpi"><div class="n">${inflight}</div><div class="l">Runs executing now</div></div>
     </div>
-    <div class="grid">${APP.products.filter(p => !p.foreign).map(p => {
+    <div class="grid">${APP.applications.filter(p => !p.foreign && certStarted(p.id)).map(p => {
       const ps = subs.filter(s => s.productId === p.id);
-      return `<div class="tile">
+      return `<div class="tile${p.id === focusId ? ' focus' : ''}" id="tile-${p.id}">
         <h3>${esc(p.name)}</h3>
-        <div class="meta">${esc(p.vendor)} &middot; environment <span class="tag">${esc(p.env)}</span></div>
+        <div class="meta">${esc(p.vendor)} &middot; <span class="tag">${esc(p.env)}</span>
+          &middot; <span class="tag">${esc(p.ods)}</span></div>
         ${ps.map(s => {
           const g = gate(s);
           return `<div class="row">
@@ -869,9 +1246,104 @@ function vendorProducts(){
               : (g.missing.length ? 'Missing: ' + g.missing.map(a => esc(a.label)).join(', ')
                                   : 'Artifacts complete — no qualifying run yet.')}
           </div>`;
-        }).join('') || '<div class="row muted">No submissions yet.</div>'}
+        }).join('')}
+        ${startableModels(p.id).length ? `<div class="row" style="padding-top:10px">
+          <button class="linkish" data-act="startcert" data-app="${p.id}">+ Start another
+            certification model</button></div>` : ''}
       </div>`;
-    }).join('')}</div>`;
+    }).join('') || `<div class="card"><div class="empty">No products yet. A product is one of your
+      registered applications; open <a href="#/applications">Applications</a> and choose
+      <strong>Start Certification</strong> on the application you want certified (FR5, D26).</div></div>`}</div>`;
+}
+
+/* FR5 — the Admin App applications list, with certification as an added column.
+   Everything except the Certification column is existing Admin App furniture. */
+function vendorApplications(){
+  const rows = APP.applications.filter(p => !p.foreign);
+  return crumbs([['Home', '#/products'], ['Environments', '#/env'], ['Vendor_B', '#/env'],
+      ['Tenants', '#/env'], ['default', '#/env'], ['Applications']]) + `
+    <div class="pagehead">
+      <div><h1>Applications</h1>
+        <div class="sub">Applications registered in the certification environment Ed-Fi provisioned for
+          this team (D6, FR5). A certification attaches to one of these &mdash; the application
+          <em>is</em> the product (D26).</div></div>
+      <div class="acts"><button class="btn ghost sm" data-act="viewartifact">+ Add application</button></div>
+    </div>
+    <div class="card" style="padding:0;overflow:hidden">
+      <table class="t">
+        <thead><tr><th>Application</th><th>Vendor</th><th>ODS</th><th>Claimset</th>
+          <th class="act">Certification</th></tr></thead>
+        <tbody>${rows.map(p => {
+          const subs = APP.submissions.filter(s => s.productId === p.id);
+          return `<tr>
+            <td><a href="#/application/${p.id}">${esc(p.name)}</a></td>
+            <td>${esc(p.vendor)}</td>
+            <td><span class="tag">${esc(p.ods)}</span></td>
+            <td>${esc(p.claimset)}</td>
+            <td class="act">${certButton(p, subs)}</td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table>
+    </div>
+    <div class="card"><h2>What the button does</h2>
+      <div class="muted">Starting a certification registers this application as a product under
+        <a href="#/products">My products</a> and opens a <strong>Draft</strong> submission for the
+        certification model you pick. The product's name, vendor, environment and ODS are the
+        application's own &mdash; they are never re-entered, and a certification cannot be pointed at an
+        application Ed-Fi did not provision (D6, D26). A single application may certify against more than
+        one model at a time (§8, D22).</div></div>`;
+}
+
+/* The green button in the Certification column. One button per application,
+   regardless of how many models are in flight. */
+function certButton(p, subs){
+  if (!subs.length) return `<button class="btn sm" data-act="startcert" data-app="${p.id}">
+    Start Certification</button>`;
+  const labels = subs.map(s => MODELS[s.model].label).join(', ');
+  return `<button class="btn sm" data-act="viewcert" data-app="${p.id}"
+    title="${esc(labels)}">View Certification</button>`;
+}
+
+/* Read-only application detail — mirrors the existing Admin App screen, with the
+   certification action added alongside the page's own buttons. */
+function vendorApplication(id){
+  const p = product(id);
+  if (!p || p.foreign) return placeholder('Application');
+  const subs = APP.submissions.filter(s => s.productId === p.id);
+  const f = (k, v) => `<div><div class="k">${k}</div><div class="v">${v || '&ndash;'}</div></div>`;
+  return crumbs([['Home', '#/products'], ['Environments', '#/env'], ['Vendor_B', '#/env'],
+      ['Tenants', '#/env'], ['default', '#/env'], ['Applications', '#/applications'], [p.name]]) + `
+    <div class="pagehead">
+      <div><h1>${esc(p.name)}</h1></div>
+      <div class="acts">
+        ${certButton(p, subs)}
+        <button class="btn ghost sm" data-act="viewartifact">&#9906; Manage creds</button>
+        <button class="btn ghost sm" data-act="viewartifact">&#9998; Edit</button>
+        <button class="btn ghost sm" data-act="viewartifact">&#9003; Delete</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="summary" style="border-bottom:0;padding-bottom:0;margin-bottom:0;gap:40px">
+        ${f('Application name', esc(p.name))}
+        ${f('ODS', '<span class="tag">' + esc(p.ods) + '</span>')}
+        ${f('Vendor', esc(p.vendor))}
+        ${f('Profiles', '')}
+        ${f('Claimset', esc(p.claimset))}
+        ${f('Ed-org', esc(p.edorg))}
+        ${f('Integration Provider', '')}
+        ${f('URL', '<a href="#/application/' + p.id + '">' + esc(p.url) + '</a>')}
+      </div>
+    </div>
+    <div class="card"><h2>Certification<span class="hint">D26 &mdash; this application is the
+      product a certification is granted to</span></h2>
+      ${subs.length ? `<table class="t">
+        <thead><tr><th>Model</th><th>Status</th><th class="act"></th></tr></thead>
+        <tbody>${subs.map(s => `<tr><td>${esc(MODELS[s.model].label)}</td>
+          <td>${badge(s.status)}</td>
+          <td class="act"><a href="#/submission/${s.id}">Open submission</a></td></tr>`).join('')}
+        </tbody></table>`
+      : `<div class="empty">No certification started for this application yet.</div>`}
+    </div>`;
 }
 
 function vendorRunHistory(){
@@ -889,11 +1361,13 @@ function vendorSubmission(id){
   const p = product(sub.productId), g = gate(sub), m = MODELS[sub.model];
   const runs = runsFor(sub);
   const busy = busyRun(sub.productId);
-  return crumbs([['Home', '#/products'], ['My products', '#/products'], [p.name], [m.label]]) + `
+  return crumbs([['Home', '#/products'], ['My products', '#/products'],
+      [p.name, '#/application/' + p.id], [m.label]]) + `
     <div class="pagehead">
       <div><h1>${esc(m.label)} certification</h1>
-        <div class="sub">${esc(p.name)} &middot; ${esc(p.vendor)} &middot;
-          environment <span class="tag">${esc(p.env)}</span></div></div>
+        <div class="sub"><a href="#/application/${p.id}">${esc(p.name)}</a> &middot; ${esc(p.vendor)}
+          &middot; <span class="tag">${esc(p.env)}</span>
+          &middot; <span class="tag">${esc(p.ods)}</span></div></div>
       <div class="acts">
         <button class="btn ghost sm" data-act="export">&#8682; Export</button>
         <button class="btn" data-act="gotorun" data-sub="${sub.id}">Start a certification run</button>
@@ -1105,7 +1579,7 @@ function vendorNewRun(id){
   const scenarioTable = m.kind === 'bruno' ? `
     <div class="card">
       <div class="cardhead"><h2>Scenarios</h2>
-        <div class="right muted" style="font-size:12.5px">${SCENARIOS[sub.model].length} scenarios in
+        <div class="right muted" style="font-size:12.5px">${COLLECTION[sub.model].length} scenarios in
           <span class="tag">${esc(m.tag)}</span></div></div>
       <div class="tools">
         <div class="search"><input placeholder="Search" id="scenSearch" /></div>
@@ -1113,17 +1587,17 @@ function vendorNewRun(id){
         <span class="chip">Area or group filter
           <select id="areaFilter">
             <option value="">All area or group values</option>
-            ${[...new Set(SCENARIOS[sub.model].map(s => s[0]))].map(a =>
+            ${[...new Set(COLLECTION[sub.model].map(s => s[0]))].map(a =>
               `<option ${APP.areaFilter === a ? 'selected' : ''}>${esc(a)}</option>`).join('')}
           </select></span>
       </div>
       <table class="t">
         <thead><tr><th>Area or group</th><th>Scenario</th><th>Steps</th><th class="act">Action</th></tr></thead>
-        <tbody>${SCENARIOS[sub.model]
+        <tbody>${COLLECTION[sub.model]
           .filter(s => !APP.areaFilter || s[0] === APP.areaFilter)
-          .map(([area, scenario]) => `<tr>
+          .map(([area, scenario, steps]) => `<tr>
             <td>${esc(area)}</td><td>${esc(scenario)}</td>
-            <td class="muted">4</td>
+            <td class="muted">${steps.length}</td>
             <td class="act"><button class="btn sm" ${blocked ? 'disabled' : ''}
               data-act="onescenario">Validate Scenario</button></td></tr>`).join('')}</tbody>
       </table>
@@ -1267,6 +1741,42 @@ function runResults(id, reviewerView){
     ${body}`;
 }
 
+/* The expanded element detail for one step. Every step in the collection is a
+   GET, so the columns read as constraint-and-observation rather than the
+   expected-versus-observed pair the Assessments view uses (§9.1 applies only
+   there — Bruno asserts shape and presence, not values). */
+function stepElementsHTML(scen, s){
+  const statusOk = s.observedStatus === s.status;
+  const rows = s.elements.map(e => `<tr>
+    <td class="mono">${esc(e.el)}</td>
+    <td class="muted">${esc(e.type)}</td>
+    <td class="mono muted">${esc(e.assertions)}</td>
+    <td class="mono ${e.st === 'pass' ? '' : 'err'}">${esc(e.observed)}</td>
+    <td><span class="dotstate ${ST_LABEL[e.st][0]}"><i></i>${esc(ST_LABEL[e.st][1])}</span>
+      ${e.why ? `<div class="muted" style="font-size:12px">${esc(e.why)}</div>` : ''}</td>
+  </tr>`).join('');
+  return `<tr><td colspan="3" style="background:#f8f9fa;padding:14px 16px">
+    <div class="muted" style="font-size:12.5px;margin-bottom:8px">
+      <span class="mono">GET</span> &middot; <span class="mono">${esc(scen.scenario)}</span> &mdash;
+      asserted on the response the vendor's API returned for data they loaded themselves.</div>
+    <table class="t">
+      <thead><tr><th>Element</th><th>Ed-Fi type</th><th>Assertions</th>
+        <th>Observed (API response)</th><th>Result</th></tr></thead>
+      <tbody><tr>
+        <td class="mono">res.status</td><td class="muted">Integer</td>
+        <td class="mono muted">eq ${s.status}</td>
+        <td class="mono ${statusOk ? '' : 'err'}">${s.observedStatus}</td>
+        <td><span class="dotstate ${statusOk ? 'ok' : 'bad'}"><i></i>${statusOk
+          ? 'Pass' : esc(ST_LABEL['fail-status'][1])}</span>
+          ${statusOk ? '' : `<div class="muted" style="font-size:12px">${esc(s.msg)}</div>`}</td>
+      </tr>${rows}</tbody>
+    </table>
+    ${s.elements.length ? '' : `<p class="muted" style="font-size:12.5px;margin:8px 0 0">
+      ${statusOk ? 'This step asserts on the status alone — a Delete scenario confirms the resource is gone, so there is no body to check.'
+                 : 'No body was returned, so no element assertions ran.'}</p>`}
+  </td></tr>`;
+}
+
 function brunoResultsHTML(r){
   const sel = APP.openScenario || null;
   const scen = sel ? r.results.scenarios.find(s => s.area + '/' + s.scenario === sel) : null;
@@ -1282,13 +1792,19 @@ function brunoResultsHTML(r){
       </div>
       <table class="t">
         <thead><tr><th>Step</th><th>Status</th><th>Detail</th></tr></thead>
-        <tbody>${scen.steps.map(s => `<tr>
+        <tbody>${scen.steps.map((s, i) => {
+          const open = APP.openSteps[sel + '#' + i];
+          return `<tr>
           <td>${esc(s.label)}</td>
           <td>${s.st === 'pass' ? '<span class="dotstate ok"><i></i>Passed</span>'
               : s.st === 'fail' ? '<span class="dotstate bad"><i></i>Failed</span>'
               : '<span class="dotstate">Not executed</span>'}</td>
-          <td class="muted">${esc(s.msg) || (s.st === 'skipped' ? 'Skipped — a prior step in the scenario failed.' : '')}</td>
-        </tr>`).join('')}</tbody>
+          <td class="muted">${esc(s.msg) || (s.st === 'skipped' ? 'Skipped — a prior step in the scenario failed.' : '')}
+            ${s.st === 'skipped' ? '' : `<div style="margin-top:4px"><button class="linkish"
+              data-act="togglestepels" data-key="${esc(sel + '#' + i)}">${open
+                ? 'Hide elements &#9652;' : 'View elements &#9662;'}</button></div>`}</td>
+        </tr>${open ? stepElementsHTML(scen, s) : ''}`;
+        }).join('')}</tbody>
       </table>
       <div style="margin-top:16px"><button class="linkish" data-act="closescenario">Back to all scenarios</button></div>
       <div class="summary" style="margin-top:18px;border-bottom:0;padding-bottom:0">
@@ -1649,8 +2165,14 @@ function bind(){
           render();
           break;
         }
-        case 'openscenario': APP.openScenario = node.dataset.key; render(); break;
-        case 'closescenario': APP.openScenario = null; render(); break;
+        case 'openscenario': APP.openScenario = node.dataset.key; APP.openSteps = {}; render(); break;
+        case 'closescenario': APP.openScenario = null; APP.openSteps = {}; render(); break;
+        case 'togglestepels': {
+          const k = node.dataset.key;
+          if (APP.openSteps[k]) delete APP.openSteps[k]; else APP.openSteps[k] = true;
+          render();
+          break;
+        }
         case 'onescenario':
           toast('In the product this runs the single scenario and loads its dynamic parameters. ' +
                 'The prototype only simulates whole runs.');
@@ -1665,6 +2187,8 @@ function bind(){
         case 'approve': decisionModal(sub, 'approved'); break;
         case 'reject': decisionModal(sub, 'rejected'); break;
         case 'newsub': newSubmissionModal(); break;
+        case 'startcert': ev.preventDefault(); startCertModal(node.dataset.app); break;
+        case 'viewcert': go('#/products/' + node.dataset.app); break;
         case 'export':
         case 'viewartifact':
           toast('Not implemented in the prototype — the button is here because the existing Admin App ' +
@@ -1750,9 +2274,22 @@ function bindOverlay(){
         toast('Decision recorded: <strong>' + STATUS[kind].label + '</strong>. Terminal for this submission.');
         return;
       }
-      if (act === 'donewsub'){
+      if (act === 'pickapp'){
+        const appId = $('#certApp').value;
         closeModal();
-        toast('Creating products and submissions is part of the same module, but the prototype ships with three seeded submissions so the workflow states are all visible at once.');
+        startCertModal(appId);
+        return;
+      }
+      if (act === 'dostartcert'){
+        const appId = node.dataset.app;
+        const model = $('#certModel').value;
+        const s = startCertification(appId, model);
+        closeModal();
+        go('#/submission/' + s.id);
+        render();
+        toast('Certification started for <strong>' + esc(product(appId).name) + '</strong> — ' +
+          esc(MODELS[model].label) + '. It now appears under <strong>My products</strong> in ' +
+          '<strong>Draft</strong>; upload artifacts to move it forward (FR6, FR13).');
         return;
       }
     });
@@ -1786,19 +2323,50 @@ function decisionModal(sub, kind){
       <button class="btn ${kind === 'rejected' ? 'red' : ''}" data-act="dodecide"
         data-kind="${kind}" data-sub="${sub.id}">${kind === 'approved' ? 'Approve' : 'Reject'}</button>`);
 }
-function newSubmissionModal(){
-  modal('Create new', `
-    <div class="field"><label>Product</label><select>${APP.products.filter(p => !p.foreign)
-      .map(p => `<option>${esc(p.name)}</option>`).join('')}</select></div>
-    <div class="field"><label>Certification model</label><select>${Object.values(MODELS)
-      .map(m => `<option>${esc(m.label)}</option>`).join('')}</select>
+/* FR5 / D26 — start certification for one application. Everything that identifies
+   the product is inherited from the application and shown locked; the only decision
+   is which certification model. */
+function startCertModal(appId){
+  const p = product(appId);
+  const startable = startableModels(appId);
+  const taken = openModels(appId);
+  const locked = (k, v) => `<div><div class="k">${k}</div><div class="v">${esc(v)}</div></div>`;
+  modal('Start certification &mdash; ' + esc(p.name), `
+    <div class="summary" style="gap:36px;padding-bottom:14px;margin-bottom:16px">
+      ${locked('Application', p.name)}
+      ${locked('Vendor', p.vendor)}
+      ${locked('Environment', p.env)}
+      ${locked('ODS', p.ods)}
+    </div>
+    <div class="field"><label>Certification model</label>
+      <select id="certModel">${Object.values(MODELS).map(m => {
+        const used = taken.includes(m.id);
+        return `<option value="${m.id}"${used ? ' disabled' : ''}>${esc(m.label)}${
+          used ? ' — already in progress' : ''}</option>`;
+      }).join('')}</select>
       <div class="help">A product may hold concurrent open submissions across different models — SIS,
-        Assessments and MTSS are distinct certification models (§8).</div></div>
-    <div class="field"><label>Environment</label>
-      <div class="muted">Ed-Fi provisions and operates the certification environment on the vendor’s behalf;
-        vendors cannot register an arbitrary external base URL (D6, FR4).</div></div>
+        Assessments and MTSS are distinct certification models (§8). Only one <em>run</em> executes at a
+        time (D22).</div></div>
+    <div class="banner"><h3>The product is this application</h3>
+      <p>Name, vendor, environment and ODS come from the application record and are not re-entered
+        (D26). Ed-Fi provisions and operates the certification environment on the vendor's behalf, so a
+        certification cannot be pointed at a self-hosted ODS/API instance (D6, FR4).</p></div>
   `, `<button class="btn ghost" data-act="cancel">Cancel</button>
-      <button class="btn red" data-act="donewsub">Create submission</button>`);
+      <button class="btn" data-act="dostartcert" data-app="${appId}"${
+        startable.length ? '' : ' disabled'}>Start certification</button>`);
+}
+
+function newSubmissionModal(){
+  const candidates = APP.applications.filter(p => !p.foreign && startableModels(p.id).length);
+  modal('Create new', `
+    <div class="field"><label>Application</label>
+      <select id="certApp">${candidates.map(p =>
+        `<option value="${p.id}">${esc(p.name)} &mdash; ${esc(p.env)} / ${esc(p.ods)}</option>`
+      ).join('')}</select>
+      <div class="help">A certification is granted to a product, and a product is one of your registered
+        applications (D26). Applications with every model already in progress are not listed.</div></div>
+  `, `<button class="btn ghost" data-act="cancel">Cancel</button>
+      <button class="btn red" data-act="pickapp"${candidates.length ? '' : ' disabled'}>Continue</button>`);
 }
 
 /* boot */
