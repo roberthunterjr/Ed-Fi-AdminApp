@@ -1274,8 +1274,12 @@ function gate(sub){
 }
 /* §8.1 — completeness is decided from artifacts alone, at run start. */
 const wouldStamp = sub => gate(sub).artifactsComplete ? 'Complete' : 'Incomplete';
-/* D22 — one execution at a time per product. */
-const busyRun = productId => APP.runs.find(r => r.productId === productId &&
+/* D22 as revised (ID6) — one check executing per environment at a time. An open
+   run is idle between checks, so it does not hold the slot; blocking a product
+   for the days a SIS run takes would serialize independent certifications for no
+   benefit. A prototype check is synchronous, so no Bruno run is ever mid-check
+   when this is read; a real executor would also test for that. */
+const busyEnv = env => APP.runs.find(r => r.env === env &&
   (r.state === 'queued' || r.state === 'running'));
 /* FR11 — a run is stale when its pinned versions are no longer current. */
 function isStale(sub, r){
@@ -1661,7 +1665,7 @@ function vendorSubmission(id){
   if (!sub) return placeholder('Submission');
   const p = product(sub.productId), g = gate(sub), m = MODELS[sub.model];
   const runs = runsFor(sub);
-  const busy = busyRun(sub.productId);
+  const busy = busyEnv(product(sub.productId).env);
   return crumbs([['Home', '#/products'], ['My products', '#/products'],
       [p.name, '#/application/' + p.id], [m.label]]) + `
     <div class="pagehead">
@@ -1848,7 +1852,7 @@ function vendorNewRun(id){
   const sub = submission(id);
   if (!sub) return placeholder('Start a run');
   const p = product(sub.productId), m = MODELS[sub.model], g = gate(sub);
-  const busy = busyRun(sub.productId);
+  const busy = busyEnv(product(sub.productId).env);
   const mapping = currentVersion(sub, 'mapping');
   const assessmentsBlocked = m.kind === 'assessments' && !mapping;
   const stamp = wouldStamp(sub);

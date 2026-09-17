@@ -163,3 +163,82 @@ test('an Assessments run still uses the batch path', () => {
   const run = p.startRun(sub, 'realistic');
   assert.equal(run.state, 'queued', 'Assessments is unchanged');
 });
+
+const sectionsRun = p => {
+  const run = openSisRun(p);
+  return {run, key: 'MasterSchedule/Sections'};
+};
+
+test('checking a task records a pass with its element rows', () => {
+  const p = loadPrototype();
+  const {run, key} = sectionsRun(p);
+  const check = p.runCheck(run, key, 1);
+  assert.equal(check.st, 'pass');
+  assert.equal(check.attempts, 1);
+  assert.ok(check.elements.length > 10, 'Sections asserts on 19 elements');
+  assert.ok(check.at, 'records when');
+  assert.ok(check.by, 'records who');
+  assert.equal(p.scenarioOf(run, key).tasks[0].check, check, 'stored on the task');
+});
+
+test('re-checking overwrites the slot and increments attempts', () => {
+  const p = loadPrototype();
+  const {run, key} = sectionsRun(p);
+  p.runCheck(run, key, 1);
+  const second = p.runCheck(run, key, 1);
+  assert.equal(second.attempts, 2);
+  assert.equal(p.scenarioOf(run, key).tasks[0].check, second, 'only the latest is kept');
+});
+
+test('a seeded failure fails the task it names and marks the element', () => {
+  const p = loadPrototype();
+  const {run, key} = sectionsRun(p);
+  const check = p.runCheck(run, key, 4);
+  assert.equal(check.st, 'fail');
+  assert.equal(check.kind, 'fail-unchanged');
+  const bad = check.elements.filter(e => e.st !== 'pass');
+  assert.equal(bad.length, 1, 'exactly one element carries the failure');
+  assert.equal(bad[0].el, 'availableCredits');
+  assert.match(check.msg, /availableCredits/);
+});
+
+test('a status failure records no element rows', () => {
+  const p = loadPrototype();
+  const sub = p.APP.submissions.find(s => s.model === 'mtss');
+  const run = p.startRun(sub, 'realistic');
+  const check = p.runCheck(run, 'StudentIntervention/StudentInterventionAttendanceEvents', 1);
+  assert.equal(check.kind, 'fail-status');
+  assert.equal(check.observedStatus, 404);
+  assert.deepEqual(check.elements, [], 'no body was returned, so nothing was asserted');
+});
+
+test('a task with no verification step cannot be checked', () => {
+  const p = loadPrototype();
+  const run = openSisRun(p);
+  const result = p.runCheck(run, 'StudentAttendance/StudentSchoolAttendanceEvents', 3);
+  assert.equal(result, null);
+});
+
+test('pass mode makes every check pass', () => {
+  const p = loadPrototype();
+  const sub = p.APP.submissions.find(s => s.model === 'sis');
+  const run = p.startRun(sub, 'pass');
+  assert.equal(p.runCheck(run, 'MasterSchedule/Sections', 4).st, 'pass');
+});
+
+test('the check records the scenario parameters in effect', () => {
+  const p = loadPrototype();
+  const {run, key} = sectionsRun(p);
+  p.scenarioOf(run, key).params = {schoolId: '255901107'};
+  const check = p.runCheck(run, key, 1);
+  assert.deepEqual(check.params, {schoolId: '255901107'});
+  p.scenarioOf(run, key).params.schoolId = 'changed-later';
+  assert.equal(check.params.schoolId, '255901107', 'the check keeps a snapshot');
+});
+
+test('an open run does not block the product', () => {
+  const p = loadPrototype();
+  const run = openSisRun(p);
+  assert.equal(run.state, 'open');
+  assert.equal(p.busyEnv(run.env), undefined, 'idle between checks');
+});
