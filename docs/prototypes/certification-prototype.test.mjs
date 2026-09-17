@@ -531,3 +531,30 @@ test('run state badges name each state plainly', () => {
   p.abandonRun(gone);
   assert.match(p.runStateBadge(gone), /Abandoned/);
 });
+
+test('the seal summary states what is being sealed', () => {
+  const p = loadPrototype();
+  const {run, key} = sectionsRun(p);
+  p.runCheck(run, key, 1);
+  assert.equal(p.sealSummary(run), '1 of 45 scenarios checked, 44 not attempted');
+});
+
+test('the seal summary reads cleanly when everything was checked', () => {
+  const p = loadPrototype();
+  const run = openSisRun(p);
+  p.COLLECTION.sis.forEach(([a, s]) => p.checkAll(run, a + '/' + s));
+  assert.match(p.sealSummary(run), /45 of 45 scenarios checked$/);
+});
+
+test('an open run offers seal and abandon; a sealed one offers neither', () => {
+  const p = loadPrototype();
+  const {run} = sectionsRun(p);
+  p.APP.prepare = null;
+  const open = p.runResults(run.id);
+  assert.match(open, /data-act="sealrun"/);
+  assert.match(open, /data-act="abandonrun"/);
+  p.sealRun(run);
+  const sealed = p.runResults(run.id);
+  assert.ok(!/data-act="sealrun"/.test(sealed), 'a sealed run cannot be re-sealed');
+  assert.ok(!/data-act="abandonrun"/.test(sealed));
+});

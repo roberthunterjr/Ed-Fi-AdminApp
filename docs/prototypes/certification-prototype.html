@@ -1283,6 +1283,15 @@ function checkAll(run, scenarioKey){
   return n;
 }
 
+/* Sealing a partial run is allowed (ID9), so the action says plainly what is
+   being frozen rather than letting it happen by accident. */
+function sealSummary(run){
+  const t = resultTally(run.results);
+  const checked = t.pass + t.fail;
+  return checked + ' of ' + t.total + ' scenarios checked' +
+    (t.notAttempted ? ', ' + t.notAttempted + ' not attempted' : '');
+}
+
 /* Sealing freezes the latest check per task and re-executes nothing (ID2). The
    accumulated checks are the evidence. A run may be sealed with tasks never
    checked (ID9) — whether partial evidence suffices is the reviewer's call, not
@@ -2201,9 +2210,20 @@ function runResults(id, reviewerView){
         ${r.results ? `<div><div class="k">Checks</div><div class="v">${t.pass} passed,
           ${t.fail} failed <span class="muted">of ${t.total} ${esc(t.unit)}</span></div></div>` : ''}
       </div>
-      <div class="muted" style="font-size:12.5px">Determinism: re-running this submission against an unchanged
-        environment produces the same result (§13). Run records are immutable (FR11).</div>
+      <div class="muted" style="font-size:12.5px">${r.state === 'open'
+        ? 'Determinism: each recorded check is reproducible against an unchanged environment (§13). ' +
+          'A sealed run is not re-executed as a whole — its checks are the evidence (ID2).'
+        : 'Determinism: re-running this submission against an unchanged environment produces the same ' +
+          'result (§13). Run records are immutable (FR11).'}</div>
     </div>
+    ${r.state === 'open' ? `<div class="banner amber"><h3>This run is open</h3>
+      <p>Work through the scenarios and check each task as its data lands. Sealing freezes the
+      latest check per task as the evidence for review — nothing re-executes (ID2).</p>
+      <div class="btnrow">
+        <button class="btn" data-act="sealrun" data-run="${esc(r.id)}">Seal and submit</button>
+        <button class="btn ghost" data-act="abandonrun" data-run="${esc(r.id)}">Abandon run</button>
+        <span class="muted" style="font-size:12.5px">${esc(sealSummary(r))}</span>
+      </div></div>` : ''}
     ${body}`;
 }
 
@@ -2749,6 +2769,24 @@ function bind(){
           scen.params[node.dataset.param] = node.value;
           break;
         }
+        case 'sealrun': {
+          const run = APP.runs.find(x => x.id === node.dataset.run);
+          const summary = sealSummary(run);
+          sealRun(run);
+          APP.prepare = null;
+          toast('Run <strong>' + run.id + '</strong> sealed — ' + esc(summary) +
+            '. Its checks are now immutable evidence.');
+          render();
+          break;
+        }
+        case 'abandonrun': {
+          const run = APP.runs.find(x => x.id === node.dataset.run);
+          abandonRun(run);
+          APP.prepare = null;
+          toast('Run <strong>' + run.id + '</strong> abandoned — its checks were discarded.');
+          render();
+          break;
+        }
         case 'toggleopenruns': APP.showOpenRuns = !APP.showOpenRuns; render(); break;
         case 'openprepare':
           APP.prepare = {run: node.dataset.run, key: node.dataset.key};
@@ -2768,7 +2806,10 @@ function bind(){
         case 'checkall': {
           const run = APP.runs.find(x => x.id === node.dataset.run);
           const n = checkAll(run, node.dataset.key);
-          toast('Checked ' + n + ' task(s), stopping at the first failure.');
+          const scen = scenarioOf(run, node.dataset.key);
+          const stopped = scen.tasks.some(x => x.check && x.check.st === 'fail');
+          toast('Checked ' + n + ' task(s)' + (stopped
+            ? ' — stopped at the first failure.' : '. All verified.'));
           render();
           break;
         }
