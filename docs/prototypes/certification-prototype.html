@@ -320,190 +320,369 @@ const SIS_V5 = [
   ['01 - 1st Contact is valid',200,'','id:S;contactUniqueId:S;firstName:S;lastSurname:S;sexDescriptor:S;addresses:A;addresses[0].addressTypeDescriptor:S;addresses[0].city:S;addresses[0].postalCode:S;addresses[0].stateAbbreviationDescriptor:S;addresses[0].streetNumberName:S;addresses[0].apartmentRoomSuiteNumber:S;addresses[0].nameOfCounty:S;addresses[0].doNotPublishIndicator:B;electronicMails:A;electronicMails[0].electronicMailAddress:S;electronicMails[0].electronicMailTypeDescriptor:S;electronicMails[0].primaryEmailAddressIndicator:B'],
   ['02 - 2nd Contact is valid',200,'','id:S;contactUniqueId:S;firstName:S;lastSurname:S;sexDescriptor:S;addresses:A;addresses[0].addressTypeDescriptor:S;addresses[0].city:S;addresses[0].postalCode:S;addresses[0].stateAbbreviationDescriptor:S;addresses[0].streetNumberName:S;addresses[0].nameOfCounty:S;electronicMails:A;electronicMails[0].electronicMailAddress:S;electronicMails[0].electronicMailTypeDescriptor:S'],
   ['03 - 1st Contact - electronicMailAddress was Updated',200,'electronicMailAddress','id:S;contactUniqueId:S;firstName:S;lastSurname:S;sexDescriptor:S;addresses:A;addresses[0].addressTypeDescriptor:S;addresses[0].city:S;addresses[0].postalCode:S;addresses[0].stateAbbreviationDescriptor:S;addresses[0].streetNumberName:S;addresses[0].apartmentRoomSuiteNumber:S;addresses[0].nameOfCounty:S;addresses[0].doNotPublishIndicator:B;electronicMails:A;electronicMails[0].electronicMailAddress:S;electronicMails[0].electronicMailTypeDescriptor:S;electronicMails[0].primaryEmailAddressIndicator:B'],
-  ['04 - 2nd Contact - streetNumberName was Updated',200,'streetNumberName','id:S;contactUniqueId:S;firstName:S;lastSurname:S;sexDescriptor:S;addresses:A;addresses[0].addressTypeDescriptor:S;addresses[0].city:S;addresses[0].postalCode:S;addresses[0].stateAbbreviationDescriptor:S;addresses[0].streetNumberName:S;addresses[0].nameOfCounty:S;electronicMails:A;electronicMails[0].electronicMailAddress:S;electronicMails[0].electronicMailTypeDescriptor:S']]],
+  ['04 - 2nd Contact - streetNumberName was Updated',200,'streetNumberName','id:S;contactUniqueId:S;firstName:S;lastSurname:S;sexDescriptor:S;addresses:A;addresses[0].addressTypeDescriptor:S;addresses[0].city:S;addresses[0].postalCode:S;addresses[0].stateAbbreviationDescriptor:S;addresses[0].streetNumberName:S;addresses[0].nameOfCounty:S;electronicMails:A;electronicMails[0].electronicMailAddress:S;electronicMails[0].electronicMailTypeDescriptor:S']],
+  {seq:1,prereqs:[],tasks:[
+  [1,'CREATE the first Contact',0],
+  [2,'CREATE the second Contact',0],
+  [3,'UPDATE the electronicMailAddress on the first added Contact',0],
+  [4,'UPDATE the streetNumberName on the second added Contact',0]]}],
  ['Contact','StudentContactAssociations',[
   ['01 - 1st StudentContactAssociation is valid',200,'','id:S;contactReference:O;contactReference.contactUniqueId:S;studentReference:O;studentReference.studentUniqueId:S;relationDescriptor:S;primaryContactStatus:B;emergencyContactStatus:B'],
   ['02 - 2nd StudentContactAssociation is valid',200,'','='],
-  ['03 - 1st StudentContactAssociation - primaryContactStatus was Updated',200,'primaryContactStatus','=']]],
+  ['03 - 1st StudentContactAssociation - primaryContactStatus was Updated',200,'primaryContactStatus','=']],
+  {seq:2,prereqs:[],tasks:[
+  [1,'CREATE the first StudentContactAssociation',0],
+  [2,'CREATE the second StudentContactAssociation',0],
+  [3,'UPDATE the primaryContactStatus on the first added StudentContactAssociation',0],
+  [4,'UPDATE the emergencyContactStatus on the second added StudentContactAssociation',0]]}],
  ['DescriptorMapping','Mappings',[
   ['01 - 1st DescriptorMapping is valid',200,'','id:S;value:S;namespace:S;mappedValue:S;mappedNamespace:S'],
-  ['02 - 2nd DescriptorMapping is valid',200,'','=']]],
+  ['02 - 2nd DescriptorMapping is valid',200,'','=']],
+  {seq:42,prereqs:[],tasks:[]}],
  ['EducationOrganization','ClassPeriods',[
   ['01 - 1st ClassPeriod is valid',200,'','id:S;classPeriodName:S;schoolReference:O;schoolReference.schoolId:N;meetingTimes:A;meetingTimes[0].startTime:S;meetingTimes[0].endTime:S'],
   ['02 - 2nd ClassPeriod is valid',200,'','='],
   ['03 - 1st ClassPeriod - classPeriodName was Updated',200,'classPeriodName','='],
-  ['04 - 2nd ClassPeriod - meetingTimes was Updated',200,'meetingTimes[0]','=']]],
+  ['04 - 2nd ClassPeriod - meetingTimes was Updated',200,'meetingTimes[0]','=']],
+  {seq:4,prereqs:[],tasks:[
+  [1,'CREATE a first Class Period for Grand Bend Elementary School',0],
+  [2,'CREATE a second Class Period for Grand Bend High School',0],
+  [3,'UPDATE the classPeriodName on the first added Grand Bend Elementary School',0],
+  [4,'UPDATE the second meetingTimes on the second added Grand Bend High',0]]}],
  ['EducationOrganization','Courses',[
   ['01 - 1st Course is valid',200,'','id:S;courseCode:S;courseTitle:S;academicSubjects[0].academicSubjectDescriptor:S;identificationCodes:A;identificationCodes[0].courseIdentificationSystemDescriptor:S;identificationCodes[0].identificationCode:S;levelCharacteristics:A;levelCharacteristics[0].courseLevelCharacteristicDescriptor:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;numberOfParts:N;maxCompletionsForCredit:N'],
   ['02 - 2nd Course is valid',200,'','='],
   ['03 - 1st Course - courseTitle was Updated',200,'courseTitle','='],
-  ['04 - 2nd Course - levelCharacteristics was Updated',200,'courseLevelCharacteristicDescriptor','=']]],
+  ['04 - 2nd Course - levelCharacteristics was Updated',200,'courseLevelCharacteristicDescriptor','=']],
+  {seq:2,prereqs:[],tasks:[]}],
  ['EducationOrganization','Locations',[
   ['01 - 1st Location is valid',200,'','id:S;classroomIdentificationCode:S;schoolReference:O;schoolReference.schoolId:N;maximumNumberOfSeats:N'],
   ['02 - 2nd Location is valid',200,'','='],
   ['03 - 1st Location - maximumNumberOfSeats was Updated',200,'maximumNumberOfSeats','='],
-  ['04 - 2nd Location - maximumNumberOfSeats was Updated',200,'maximumNumberOfSeats','=']]],
+  ['04 - 2nd Location - maximumNumberOfSeats was Updated',200,'maximumNumberOfSeats','=']],
+  {seq:5,prereqs:[],tasks:[
+  [1,'CREATE a first classroom Location for Grand Bend Elementary School',0],
+  [2,'CREATE a second classroom Location for Grand Bend High School',0],
+  [3,'UPDATE the maximumNumberOfSeats on the first added Grand Bend Elementary',0],
+  [4,'UPDATE the maximumNumberOfSeats on the second added Grand Bend High',0]]}],
  ['EducationOrganization','Programs',[
   ['01 - 1st Program is valid',200,'','id:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;programId:S;programName:S;programTypeDescriptor:S'],
-  ['02 - 1st Program was Deleted',404,'','']]],
+  ['02 - 1st Program was Deleted',404,'','']],
+  {seq:3,prereqs:[],tasks:[
+  [1,'CREATE a first new Bilingual Program.',0],
+  [2,'DELETE the first Bilingual Program.',0]]}],
  ['EducationOrganization','Schools',[
   ['01 - 1st School is valid',200,'','id:S;schoolId:N;nameOfInstitution:S;localEducationAgencyReference:O;localEducationAgencyReference.localEducationAgencyId:N;educationOrganizationCategories:A;educationOrganizationCategories[0].educationOrganizationCategoryDescriptor:S;gradeLevels:A;gradeLevels[0].gradeLevelDescriptor:S;addresses:A;addresses[0].addressTypeDescriptor:S;addresses[0].city:S;addresses[0].postalCode:S;addresses[0].stateAbbreviationDescriptor:S;addresses[0].streetNumberName:S;shortNameOfInstitution:S'],
   ['02 - 2nd School is valid',200,'','='],
   ['03 - 1st School - streetNumberName was Updated',200,'streetNumberName','id:S;schoolId:N;nameOfInstitution:S;localEducationAgencyReference:O;localEducationAgencyReference.localEducationAgencyId:N;educationOrganizationCategories:A;educationOrganizationCategories[0].educationOrganizationCategoryDescriptor:S;gradeLevels:A;gradeLevels[0].gradeLevelDescriptor:S;addresses:A;addresses[0].addressTypeDescriptor:S;addresses[0].city:S;addresses[0].postalCode:S;addresses[0].stateAbbreviationDescriptor:S;addresses[0].streetNumberName:S'],
-  ['04 - 2nd School - postalCode was Updated',200,'postalCode','=']]],
+  ['04 - 2nd School - postalCode was Updated',200,'postalCode','=']],
+  {seq:1,prereqs:[],tasks:[]}],
  ['EducationOrganizationCalendar','CalendarDates',[
   ['01 - 1st CalendarDate is valid',200,'','id:S;date:S;calendarReference:O;calendarReference.schoolId:N;calendarReference.schoolYear:N;calendarReference.calendarCode:S;calendarEvents:A;calendarEvents[0].calendarEventDescriptor:S'],
   ['02 - 2nd CalendarDate is valid',200,'','='],
   ['03 - 1st CalendarDate - calendarEventDescriptor was Updated',200,'calendarEventDescriptor','id:S;calendarEvents:A;calendarEvents[0].calendarEventDescriptor:S'],
-  ['04 - 2nd CalendarDate - calendarEventDescriptor was Updated',200,'calendarEventDescriptor','=']]],
+  ['04 - 2nd CalendarDate - calendarEventDescriptor was Updated',200,'calendarEventDescriptor','=']],
+  {seq:7,prereqs:['Calendar'],tasks:[
+  [1,'CREATE the first Holiday Calendar date for the calendar at Grand Bend Elementary',0],
+  [2,'CREATE the second Instructional day Calendar date for the calendar at Grand Bend High',0],
+  [3,'UPDATE the calendarEventDescriptor on the first added Calendar date for Grand Bend',0],
+  [4,'UPDATE the calendarEventDescriptor on the second added Calendar date for Grand Bend High',0]]}],
  ['EducationOrganizationCalendar','Calendars',[
   ['01 - 1st Calendar is valid',200,'','id:S;calendarCode:S;schoolReference:O;schoolReference.schoolId:N;schoolYearTypeReference:O;schoolYearTypeReference.schoolYear:N;calendarTypeDescriptor:S'],
   ['02 - 2nd Calendar is valid',200,'','id:S;calendarCode:S;schoolReference:O;schoolReference.schoolId:N;schoolYearTypeReference:O;schoolYearTypeReference.schoolYear:N;calendarTypeDescriptor:S;gradeLevels:A;gradeLevels[0].gradeLevelDescriptor:S'],
   ['03 - 1st Calendar - calendarTypeDescriptor was Updated',200,'calendarTypeDescriptor','id:S;calendarTypeDescriptor:S'],
-  ['04 - 2nd Calendar - gradeLevelDescriptor was Updated',200,'gradeLevelDescriptor','id:S;gradeLevels:A;gradeLevels[0].gradeLevelDescriptor:S']]],
+  ['04 - 2nd Calendar - gradeLevelDescriptor was Updated',200,'gradeLevelDescriptor','id:S;gradeLevels:A;gradeLevels[0].gradeLevelDescriptor:S']],
+  {seq:6,prereqs:[],tasks:[
+  [1,'CREATE a first new Calendar for the elementary school with calendarTypeDescriptor as "IEP".',0],
+  [2,'CREATE a second new Calendar for the high school with calendarTypeDescriptor as "IEP" and gradeLevelDescriptor as "Ninth grade".',0],
+  [3,'UPDATE the calendarTypeDescriptor on the first added Calendar for the elementary school to be "Student Specific".',0],
+  [4,'UPDATE the gradeLevelDescriptor on the second added Calendar for the high school to include "Tenth grade" also.',0]]}],
  ['EducationOrganizationCalendar','GradingPeriods',[
   ['01 - 1st GradingPeriod is valid',200,'','id:S;gradingPeriodDescriptor:S;periodSequence:N;schoolReference:O;schoolReference.schoolId:N;schoolYearTypeReference:O;schoolYearTypeReference.schoolYear:N;beginDate:S;endDate:S;totalInstructionalDays:N;gradingPeriodName:S'],
   ['02 - 2nd GradingPeriod is valid',200,'','='],
   ['03 - 3rd GradingPeriod is valid',200,'','='],
-  ['04 - 4th GradingPeriod is valid',200,'','=']]],
+  ['04 - 4th GradingPeriod is valid',200,'','=']],
+  {seq:9,prereqs:[],tasks:[
+  [1,'CREATE a first new Grading Period for Grand Bend Elementary School with gradingPeriodDescriptor as "First Six Weeks"',0],
+  [2,'CREATE a second new Grading Period for Grand Bend Elementary School with gradingPeriodDescriptor as "Second Six Weeks"',0],
+  [4,'CREATE a third new Grading Period for Grand Bend High School with gradingPeriodDescriptor as "First Six Weeks"',0],
+  [5,'CREATE a fourth new Grading Period for Grand Bend High School with gradingPeriodDescriptor as "Second Six Weeks"',0],
+  [3,'UPDATE the endDate and totalInstructionalDays on the first added Grading Period for Grand Bend Elementary School',0],
+  [6,'UPDATE the endDate and totalInstructionalDays on the third added Grading Period for Grand Bend High School',0]]}],
  ['EducationOrganizationCalendar','Sessions',[
   ['01 - 1st Session is valid',200,'','id:S;sessionName:S;schoolReference:O;schoolReference.schoolId:N;schoolYearTypeReference:O;schoolYearTypeReference.schoolYear:N;termDescriptor:S;beginDate:S;endDate:S;totalInstructionalDays:N;gradingPeriods:A;gradingPeriods.length:N?gte 2;gradingPeriods[0].gradingPeriodReference:O;gradingPeriods[0].gradingPeriodReference.schoolId:N;gradingPeriods[0].gradingPeriodReference.schoolYear:N;gradingPeriods[0].gradingPeriodReference.gradingPeriodDescriptor:S'],
   ['02 - 2nd Session is valid',200,'','='],
   ['03 - 1st Session - endDate & totalInstructionalDays were Updated',200,'','id:S;endDate:S;totalInstructionalDays:N'],
-  ['04 - 2nd Session - endDate & totalInstructionalDays were Updated',200,'','=']]],
+  ['04 - 2nd Session - endDate & totalInstructionalDays were Updated',200,'','=']],
+  {seq:10,prereqs:['School','GradingPeriod'],tasks:[
+  [1,'CREATE a first new Session with termDescriptor as "Fall Semester" which references the first and second six',0],
+  [2,'CREATE a second new Session with termDescriptor as "Fall Semester" which references the first and second six',0],
+  [3,'UPDATE the endDate and totalInstructionalDays on the first added Session',0],
+  [4,'UPDATE the endDate and totalInstructionalDays on the second added Session',0]]}],
  ['MasterSchedule','BellSchedules',[
-  ['01 - BellSchedule is valid',200,'','id:S;bellScheduleName:S;alternateDayName:S;schoolReference:O;schoolReference.schoolId:N;classPeriods:A;classPeriods[0].classPeriodReference:O;classPeriods[0].classPeriodReference.classPeriodName:S']]],
+  ['01 - BellSchedule is valid',200,'','id:S;bellScheduleName:S;alternateDayName:S;schoolReference:O;schoolReference.schoolId:N;classPeriods:A;classPeriods[0].classPeriodReference:O;classPeriods[0].classPeriodReference.classPeriodName:S']],
+  {seq:8,prereqs:['ClassPeriods','Schools'],tasks:[
+  [1,'CREATE a first new Normal Schedule A Day Bell Schedule',0],
+  [2,'CREATE a second Normal Schedule B Day Bell Schedule',1],
+  [3,'CREATE a third Early Release A Day Bell Schedule',1],
+  [4,'CREATE a fourth Early Release B Day Bell Schedule',1]]}],
  ['MasterSchedule','CourseOfferings',[
   ['01 - 1st CourseOffering is valid',200,'','id:S;localCourseCode:S;localCourseTitle:S;courseReference:O;courseReference.courseCode:S;courseReference.educationOrganizationId:N;schoolReference:O;schoolReference.schoolId:N;sessionReference:O;sessionReference.sessionName:S;sessionReference.schoolId:N;sessionReference.schoolYear:N'],
   ['02 - 2nd CourseOffering is valid',200,'','='],
   ['03 - 1st CourseOffering - localCourseTitle was Updated',200,'localCourseTitle','='],
-  ['04 - 2nd CourseOffering - localCourseTitle was Updated',200,'localCourseTitle','=']]],
+  ['04 - 2nd CourseOffering - localCourseTitle was Updated',200,'localCourseTitle','=']],
+  {seq:11,prereqs:['Session'],tasks:[
+  [1,'CREATE a first new Course Offering for Grand Bend Elementary School with sessionName as "Fall Semester 2015" which references the Course "English Language Arts, Grade 1"',0],
+  [2,'CREATE a second new Course Offering for Grand Bend High School with sessionName as "Fall Semester 2015" which references the Course "ALGEBRA 1"',0],
+  [3,'UPDATE the localCourseTitle on the first added Course Offering for Grand Bend Elementary School',0],
+  [4,'UPDATE the localCourseTitle on the second added Course Offering for Grand Bend High School',0]]}],
  ['MasterSchedule','Sections',[
   ['01 - 1st Section is valid',200,'','id:S;sectionIdentifier:S;courseOfferingReference:O;courseOfferingReference.localCourseCode:S;courseOfferingReference.schoolId:N;courseOfferingReference.schoolYear:N;courseOfferingReference.sessionName:S;locationReference:O;locationReference.classroomIdentificationCode:S;locationReference.schoolId:N;locationSchoolReference:O;locationSchoolReference.schoolId:N;classPeriods:A;classPeriods[0].classPeriodReference:O;classPeriods[0].classPeriodReference.classPeriodName:S;classPeriods[0].classPeriodReference.schoolId:N;sequenceOfCourse:N;availableCredits:N;educationalEnvironmentDescriptor:S'],
   ['02 - 2nd Section is valid',200,'','='],
   ['03 - 1st Section - availableCredits was Updated',200,'availableCredits','='],
-  ['04 - 2nd Section - availableCredits was Updated',200,'availableCredits','=']]],
+  ['04 - 2nd Section - availableCredits was Updated',200,'availableCredits','=']],
+  {seq:12,prereqs:['Class Period','Location','Course Offering'],tasks:[
+  [1,'CREATE a first Section for Grand Bend Elementary School which references the Course Offering added for "English Language Arts, Grade 1"',0],
+  [2,'CREATE a second Section for Grand Bend High School which references the Course Offering added for "ALGEBRA 1"',0],
+  [3,'UPDATE the availableCredits for the first Grand Bend Elementary School Section',0],
+  [4,'UPDATE the availableCredits for the second Grand Bend High School Section',0]]}],
  ['StaffAssociation','StaffEdOrgAssociations',[
   ['01 - 1st StaffEdOrgAssociation is valid',200,'','id:S;staffReference:O;staffReference.staffUniqueId:S;beginDate:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N?isNumber;staffClassificationDescriptor:S;positionTitle:S;endDate:S'],
   ['02 - 2nd StaffEdOrgAssociation is valid',200,'','id:S;staffReference:O;staffReference.staffUniqueId:S;beginDate:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N?isNumber;staffClassificationDescriptor:S;positionTitle:S'],
-  ['04 - 2nd StaffEdOrgAssociation - positionTitle was Updated',200,'positionTitle','id:S']]],
+  ['04 - 2nd StaffEdOrgAssociation - positionTitle was Updated',200,'positionTitle','id:S']],
+  {seq:14,prereqs:['Staff'],tasks:[
+  [1,'CREATE a first new StaffEducationOrganizationAssignmentAssociation for a Staff record at Grand Bend Elementary School',0],
+  [2,'CREATE a second new StaffEducationOrganizationAssignmentAssociation for a Staff record at Grand Bend High School',0],
+  [3,'UPDATE the positionTitle and remove the endDate on the first association record,.',0],
+  [4,'UPDATE the positionTitle on the second association record.',0]]}],
  ['StaffAssociation','StaffSchoolAssociations',[
   ['01 - 1st StaffSchoolAssociation is valid',200,'','id:S;schoolReference:O;schoolReference.schoolId:N?isNumber;staffReference:O;staffReference.staffUniqueId:S;programAssignmentDescriptor:S'],
   ['02 - 2nd StaffSchoolAssociation is valid',200,'','='],
-  ['03 - 1st StaffSchoolAssociation was Deleted',404,'','']]],
+  ['03 - 1st StaffSchoolAssociation was Deleted',404,'','']],
+  {seq:15,prereqs:['Staff','StaffEducationOrganizationAssignmentAssociations'],tasks:[
+  [1,'CREATE a first new StaffSchoolAssociation for a Staff record at Grand Bend Elementary School.',0],
+  [2,'CREATE a second new StaffSchoolAssociation for a Staff record at Grand Bend High School.',0],
+  [3,'DELETE the first added StaffSchoolAssociation at Grand Bend Elementary School.',0]]}],
  ['StaffAssociation','StaffSectionAssociations',[
   ['01 - 1st StaffSectionAssociation is valid',200,'','id:S;sectionReference:O;sectionReference.localCourseCode:S;sectionReference.schoolId:N;sectionReference.schoolYear:N;sectionReference.sessionName:S;sectionReference.sectionIdentifier:S;staffReference:O;staffReference.staffUniqueId:S;classroomPositionDescriptor:S;beginDate:S'],
   ['02 - 2nd StaffSectionAssociation is valid',200,'','='],
   ['04 - 2nd StaffSectionAssociation - endDate was Updated',200,'endDate','id:S;sectionReference:O;sectionReference.localCourseCode:S;sectionReference.schoolId:N;sectionReference.schoolYear:N;sectionReference.sessionName:S;sectionReference.sectionIdentifier:S;staffReference:O;staffReference.staffUniqueId:S;classroomPositionDescriptor:S;endDate:S'],
-  ['05 - 1st StaffSectionAssociation was Deleted',404,'','']]],
+  ['05 - 1st StaffSectionAssociation was Deleted',404,'','']],
+  {seq:16,prereqs:['Section','Staff'],tasks:[
+  [1,'CREATE a first new StaffSectionAssociation for a Staff record at Grand Bend Elementary School and the English Language Arts, Grade 1 section.',0],
+  [2,'CREATE a second new StaffSectionAssociation for a Staff record at Grand Bend High School and the ALGEBRA 1 section.',0],
+  [3,'UPDATE the classroomPositionDescriptor on the first added StaffSectionAssociation.',0],
+  [4,'UPDATE the endDate on the second added StaffSectionAssociation record',0],
+  [5,'DELETE the first added StaffSectionAssociation for the English Language Arts, Grade 1 section at Grand Bend Elementary School.',0]]}],
  ['StaffAssociation','Staffs',[
   ['01 - 1st Staff is valid',200,'','id:S;staffUniqueId:S;firstName:S;hispanicLatinoEthnicity:B;lastSurname:S;generationCodeSuffix:S;highestCompletedLevelOfEducationDescriptor:S;highlyQualifiedTeacher:B;sexDescriptor:S;electronicMails:A;electronicMails[0].electronicMailAddress:S;electronicMails[0].electronicMailTypeDescriptor:S;birthDate:S'],
   ['02 - 2nd Staff is valid',200,'','id:S;staffUniqueId:S;firstName:S;hispanicLatinoEthnicity:B;lastSurname:S;highestCompletedLevelOfEducationDescriptor:S;highlyQualifiedTeacher:B;middleName:S;sexDescriptor:S;electronicMails:A;electronicMails[0].electronicMailAddress:S;electronicMails[0].electronicMailTypeDescriptor:S;birthDate:S'],
   ['03 - 1st Staff - highlyQualifiedTeacher was Updated',200,'highlyQualifiedTeacher','id:S'],
-  ['04 - 2nd Staff - hispanicLatinoEthnicity was Updated',200,'hispanicLatinoEthnicity','=']]],
+  ['04 - 2nd Staff - hispanicLatinoEthnicity was Updated',200,'hispanicLatinoEthnicity','=']],
+  {seq:13,prereqs:[],tasks:[
+  [1,'CREATE a first new Staff Record',0],
+  [2,'CREATE a second new Staff Record',0],
+  [3,'UPDATE the highlyQualifiedTeacher for the first added Staff record',0],
+  [4,'UPDATE the hispanicLatinoEthnicity for the second added Staff record',0]]}],
  ['Student','Students',[
   ['01 - 1st Student is valid',200,'','id:S;studentUniqueId:S;birthCity:S;birthCountryDescriptor:S;birthDate:S;firstName:S;middleName:S;lastSurname:S;generationCodeSuffix:S;personalTitlePrefix:S'],
   ['02 - 2nd Student is valid',200,'','id:S;studentUniqueId:S;birthCity:S;birthCountryDescriptor:S;birthDate:S;firstName:S;middleName:S;lastSurname:S;personalTitlePrefix:S'],
   ['03 - 1st Student - birthDate was Updated',200,'birthDate','id:S;studentUniqueId:S;birthCity:S;birthCountryDescriptor:S;birthDate:S;firstName:S;middleName:S;lastSurname:S'],
-  ['04 - 2nd Student - birthCity was Updated',200,'birthCity','=']]],
+  ['04 - 2nd Student - birthCity was Updated',200,'birthCity','=']],
+  {seq:17,prereqs:[],tasks:[
+  [1,'CREATE a first 7-year-old Student, which will be later enrolled at Grand Bend Elementary School.',0],
+  [2,'CREATE a second 15-year-old Student, which will be later enrolled at Grand Bend High School.',0],
+  [3,'UPDATE the birthDate on the first Student.',0],
+  [4,'UPDATE the birthCity on the second Student.',0]]}],
  ['StudentAttendance','StudentSchoolAttendanceEvents',[
   ['01 - 1st StudentSchoolAttendanceEvent is valid',200,'','id:S;attendanceEventCategoryDescriptor:S;eventDate:S;schoolReference:O;schoolReference.schoolId:N;sessionReference:O;sessionReference.schoolId:N;sessionReference.schoolYear:N;sessionReference.sessionName:S;studentReference:O;studentReference.studentUniqueId:S;attendanceEventReason:S'],
   ['02 - 2nd StudentSchoolAttendanceEvent is valid',200,'','='],
-  ['05 - 1st StudentSchoolAttendanceEvent was Deleted',404,'','']]],
+  ['05 - 1st StudentSchoolAttendanceEvent was Deleted',404,'','']],
+  {seq:37,prereqs:['Student','Section','Student Enrollment'],tasks:[
+  [1,'CREATE a first new "Tardy" StudentSchoolAttendanceEvent for Austin Jones.',0],
+  [2,'CREATE a second new "Unexcused Absence" StudentSchoolAttendanceEvent for Madison Johnson.',0],
+  [3,'UPDATE the attendanceEventReason on the first added StudentSchoolAttendanceEvent for Austin Jones.',0],
+  [4,'UPDATE the attendanceEventReason on the second added StudentSchoolAttendanceEvent for Madison Johnson.',0],
+  [5,'DELETE the first added StudentSchoolAttendanceEvent for Austin Jones.',0]]}],
  ['StudentAttendance','StudentSectionAttendanceEvents',[
   ['01 - 1st StudentSectionAttendanceEvent is valid',200,'','id:S;attendanceEventCategoryDescriptor:S;eventDate:S;sectionReference:O;sectionReference.localCourseCode:S;sectionReference.schoolId:N;sectionReference.schoolYear:N;sectionReference.sectionIdentifier:S;sectionReference.sessionName:S;studentReference:O;studentReference.studentUniqueId:S;attendanceEventReason:S'],
   ['02 - 2nd StudentSectionAttendanceEvent is valid',200,'','='],
-  ['05 - 1st StudentSectionAttendanceEvent was Deleted',404,'','']]],
+  ['05 - 1st StudentSectionAttendanceEvent was Deleted',404,'','']],
+  {seq:38,prereqs:['Student','Section'],tasks:[
+  [1,'CREATE a first new "Tardy" StudentSectionAttendanceEvent for Austin Jones.',0],
+  [2,'CREATE a second new "Unexcused Absence" StudentSectionAttendanceEvent for Madison Johnson.',0],
+  [3,'UPDATE the attendanceEventReason on the first added StudentSectionAttendanceEvent for Austin Jones.',0],
+  [4,'UPDATE the attendanceEventReason on the second added StudentSectionAttendanceEvent for Madison Johnson.',0],
+  [5,'DELETE the first added StudentSectionAttendanceEvent for Austin Jones.',0]]}],
  ['StudentCohort','Cohorts',[
   ['01 - 1st Cohort is valid',200,'','id:S;cohortIdentifier:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;cohortTypeDescriptor:S;cohortDescription:S;cohortScopeDescriptor:S'],
   ['02 - 2nd Cohort is valid',200,'','='],
   ['03 - 1st Cohort - cohortTypeDescriptor was Updated',200,'cohortTypeDescriptor','id:S;cohortTypeDescriptor:S'],
-  ['04 - 2nd Cohort - cohortTypeDescriptor was Updated',200,'cohortTypeDescriptor','=']]],
+  ['04 - 2nd Cohort - cohortTypeDescriptor was Updated',200,'cohortTypeDescriptor','=']],
+  {seq:22,prereqs:[],tasks:[
+  [1,'CREATE a first new Cohort with cohortIdentifier as "1".',0],
+  [2,'CREATE a second new Cohort with cohortIdentifier as "2".',0],
+  [3,'UPDATE the cohortTypeDescriptor for the first added Cohort.',0],
+  [4,'UPDATE the cohortTypeDescriptor for the second added Cohort.',0]]}],
  ['StudentCohort','StaffCohortAssociations',[
   ['01 - 1st StaffCohortAssociation is valid',200,'','id:S;cohortReference:O;cohortReference.educationOrganizationId:N;cohortReference.cohortIdentifier:S;beginDate:S;staffReference:O;staffReference.staffUniqueId:S;endDate:S'],
   ['02 - 2nd StaffCohortAssociation is valid',200,'','='],
   ['03 - 1st StaffCohortAssociation - endDate was Updated',200,'endDate','='],
   ['04 - 2nd StaffCohortAssociation - endDate was Updated',200,'endDate','='],
-  ['05 - 1st StaffCohortAssociation was Deleted',404,'','']]],
+  ['05 - 1st StaffCohortAssociation was Deleted',404,'','']],
+  {seq:23,prereqs:['Staff','Cohort'],tasks:[]}],
  ['StudentCohort','StudentCohortAssociations',[
   ['01 - 1st StudentCohortAssociation is valid',200,'','id:S;cohortReference:O;cohortReference.educationOrganizationId:N;cohortReference.cohortIdentifier:S;studentReference:O;studentReference.studentUniqueId:S;beginDate:S;endDate:S'],
   ['02 - 2nd StudentCohortAssociation is valid',200,'','='],
-  ['03 - 1st StudentCohortAssociation - endDate was Updated',200,'endDate','id:S;endDate:S']]],
+  ['03 - 1st StudentCohortAssociation - endDate was Updated',200,'endDate','id:S;endDate:S']],
+  {seq:24,prereqs:['Cohort','Student'],tasks:[]}],
  ['StudentDiscipline','DisciplineAction',[
   ['01 - 1st DisciplineAction is valid',200,'','id:S;disciplineActionIdentifier:S;disciplines:A;disciplines[0].disciplineDescriptor:S;disciplineDate:S;studentReference:O;studentReference.studentUniqueId:S;actualDisciplineActionLength:N;studentDisciplineIncidentBehaviorAssociations:A;studentDisciplineIncidentBehaviorAssociations[0].studentDisciplineIncidentBehaviorAssociationReference:O;studentDisciplineIncidentBehaviorAssociations[0].studentDisciplineIncidentBehaviorAssociationReference.incidentIdentifier:S;studentDisciplineIncidentBehaviorAssociations[0].studentDisciplineIncidentBehaviorAssociationReference.schoolId:N;studentDisciplineIncidentBehaviorAssociations[0].studentDisciplineIncidentBehaviorAssociationReference.studentUniqueId:S;responsibilitySchoolReference:O;responsibilitySchoolReference.schoolId:N;iepPlacementMeetingIndicator:B'],
   ['02 - 2nd DisciplineAction is valid',200,'','id:S;disciplineActionIdentifier:S;disciplines:A;disciplines[0].disciplineDescriptor:S;disciplineDate:S;studentReference:O;studentReference.studentUniqueId:S;actualDisciplineActionLength:N;studentDisciplineIncidentBehaviorAssociations:A;studentDisciplineIncidentBehaviorAssociations[0].studentDisciplineIncidentBehaviorAssociationReference:O;studentDisciplineIncidentBehaviorAssociations[0].studentDisciplineIncidentBehaviorAssociationReference.incidentIdentifier:S;studentDisciplineIncidentBehaviorAssociations[0].studentDisciplineIncidentBehaviorAssociationReference.schoolId:N;studentDisciplineIncidentBehaviorAssociations[0].studentDisciplineIncidentBehaviorAssociationReference.studentUniqueId:S;responsibilitySchoolReference:O;responsibilitySchoolReference.schoolId:N'],
   ['03 - 1st DisciplineAction - disciplineDescriptor was Updated',200,'disciplineDescriptor','id:S;disciplines:A;disciplines[0].disciplineDescriptor:S'],
   ['04 - 2nd DisciplineAction - disciplineDescriptor was Updated',200,'disciplineDescriptor','='],
-  ['05 - 1st DisciplineAction was Deleted',404,'','']]],
+  ['05 - 1st DisciplineAction was Deleted',404,'','']],
+  {seq:27,prereqs:['Student','Staff','Enrollment','Discipline Incident'],tasks:[
+  [1,'CREATE a first new Discipline Action for an elementary school student\'s Discipline Incident.',0],
+  [2,'CREATE a second new Discipline Action for a high school student\'s Discipline Incident.',0],
+  [3,'UPDATE for the first added elementary student\'s Discipline Action the disciplineDescriptor from "Out of School Suspension" to "In School Suspension".',0],
+  [4,'UPDATE for the second added high school student\'s Discipline Action the disciplineDescriptor from "In School Suspension" to "Community Service".',0],
+  [5,'DELETE the first added Discipline Action for the elementary school student.',0]]}],
  ['StudentDiscipline','DisciplineIncident',[
   ['01 - 1st DisciplineIncident is valid',200,'','id:S;incidentDate:S;incidentIdentifier:S;schoolReference:O;schoolReference.schoolId:N;behaviors:A;behaviors[0].behaviorDescriptor:S;incidentLocationDescriptor:S;reporterDescriptionDescriptor:S;reporterName:S'],
   ['02 - 2nd DisciplineIncident is valid',200,'','='],
-  ['03 - 1st DisciplineIncident - reporterName was Updated',200,'reporterName','id:S;reporterName:S']]],
+  ['03 - 1st DisciplineIncident - reporterName was Updated',200,'reporterName','id:S;reporterName:S']],
+  {seq:25,prereqs:['Student','Staff','Enrollment'],tasks:[
+  [1,'CREATE a first School Code of Conduct DisciplineIncident event for an elementary school student.',0],
+  [2,'CREATE a second State Offense DisciplineIncident event for a high school student.',0],
+  [3,'UPDATE for the first added DisciplineIncident the reporterName on the elementary school.',0],
+  [4,'UPDATE for the second added DisciplineIncident the incidentLocationDescriptor for the high school.',0]]}],
  ['StudentDiscipline','StudDisciplineIncidentBehaviorAssocs',[
   ['01 - 1st StudDisciplineIncidentBehaviorAssocs is valid',200,'','id:S;behaviorDescriptor:S;disciplineIncidentReference:O;disciplineIncidentReference.incidentIdentifier:S;disciplineIncidentReference.schoolId:N;studentReference:O;studentReference.studentUniqueId:S;disciplineIncidentParticipationCodes:A;disciplineIncidentParticipationCodes[0].disciplineIncidentParticipationCodeDescriptor:S'],
   ['02 - 2nd StudDisciplineIncidentBehaviorAssocs is valid',200,'','='],
-  ['03 - 1st StudDisciplineIncidentBehaviorAssocs was Deleted',404,'','']]],
+  ['03 - 1st StudDisciplineIncidentBehaviorAssocs was Deleted',404,'','']],
+  {seq:26,prereqs:['DisciplineIncident','Student','Enrollment'],tasks:[]}],
  ['StudentEnrollment','GraduationPlans',[
   ['01 - 1st GraduationPlan is valid',200,'','id:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;graduationSchoolYearTypeReference:O;graduationSchoolYearTypeReference.schoolYear:N;graduationPlanTypeDescriptor:S;totalRequiredCredits:N'],
   ['02 - 2nd GraduationPlan is valid',200,'','='],
   ['03 - 1st GraduationPlan - totalRequiredCredits was Updated',200,'totalRequiredCredits','='],
-  ['04 - 2nd GraduationPlan - totalRequiredCredits was Updated',200,'totalRequiredCredits','=']]],
+  ['04 - 2nd GraduationPlan - totalRequiredCredits was Updated',200,'totalRequiredCredits','=']],
+  {seq:1,prereqs:[],tasks:[
+  [1,'CREATE a first Graduation Plan with "28" totalRequiredCredits and graduationPlanTypeDescriptor as "Recommended" for Grand Bend High School.',0],
+  [2,'CREATE a second Graduation Plan with "26" totalRequiredCredits and graduationPlanTypeDescriptor as "Minimum" for Grand Bend High School.',0],
+  [3,'UPDATE the first added Graduation Plan with "30" totalRequiredCredits for Grand Bend High School.',0],
+  [4,'UPDATE the second added Graduation Plan with "24" totalRequiredCredits for Grand Bend High School.',0]]}],
  ['StudentEnrollment','StudentEdOrgAssociations',[
   ['01 - 1st StudentEdOrgAssociation is valid',200,'','id:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;studentReference:O;studentReference.studentUniqueId:S;limitedEnglishProficiencyDescriptor:S;studentCharacteristics:A;studentCharacteristics[0].studentCharacteristicDescriptor:S;studentIdentificationCodes:A;studentIdentificationCodes[0].identificationCode:S;studentIdentificationCodes[0].assigningOrganizationIdentificationCode:S;studentIdentificationCodes[0].studentIdentificationSystemDescriptor:O?isDefined,isNotEmpty;sexDescriptor:S;addresses:A;addresses[0].addressTypeDescriptor:S;addresses[0].city:S;addresses[0].postalCode:S;addresses[0].stateAbbreviationDescriptor:S;addresses[0].streetNumberName:S;telephones:A;telephones[0].telephoneNumber:S;telephones[0].telephoneNumberTypeDescriptor:S;electronicMails:A;electronicMails[0].electronicMailAddress:S;electronicMails[0].electronicMailTypeDescriptor:S;hispanicLatinoEthnicity:B;races:A;races[0].raceDescriptor:S;languages[0].languageDescriptor:S;languages[0].uses[0].languageUseDescriptor:S'],
-  ['02 - 2nd StudentEdOrgAssociation is valid',200,'','=']]],
+  ['02 - 2nd StudentEdOrgAssociation is valid',200,'','=']],
+  {seq:3,prereqs:['Student'],tasks:[
+  [1,'CREATE a first Student EdOrg Association for an elementary Student at Grand Bend School District.',0],
+  [2,'CREATE a second Student EdOrg Association for a high school Student at Grand Bend School District.',0],
+  [3,'UPDATE the telephoneNumber on the first Student EdOrg Association.',0],
+  [4,'UPDATE the streetNumberName on the second Student EdOrg Association.',0]]}],
  ['StudentEnrollment','StudentEdOrgResponsibilityAssocs',[
   ['01 - 1st StudentEdOrgResponsibilityAssoc is valid',200,'','id:S;beginDate:S;responsibilityDescriptor:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;studentReference:O;studentReference.studentUniqueId:S;endDate:S'],
-  ['02 - 2nd StudentEdOrgResponsibilityAssoc is valid',200,'','=']]],
+  ['02 - 2nd StudentEdOrgResponsibilityAssoc is valid',200,'','=']],
+  {seq:999,prereqs:['Student','School','StudentSchoolAssociation (enrollment)'],tasks:[
+  [1,'CREATE a first Student EdOrg Responsibility Association for an elementary Student at Grand Bend Elementary School District.',0],
+  [1,'CREATE a second Student EdOrg Responsibility Association for the same elementary Student at Grand Bend High School District.',0],
+  [2,'UPDATE the endDate on the second Student EdOrg Responsibility Association.',0]]}],
  ['StudentEnrollment','StudentSchoolAssociations',[
   ['01 - 1st StudentSchoolAssociation is valid',200,'','id:S;schoolReference:O;schoolReference.schoolId:N;studentReference:O;studentReference.studentUniqueId:S;entryDate:S?isString;entryGradeLevelDescriptor:S;entryTypeDescriptor:S;exitWithdrawDate:S?isString;exitWithdrawTypeDescriptor:S;repeatGradeIndicator:B;residencyStatusDescriptor:S;primarySchool:B;fullTimeEquivalency:N?isNumber;calendarReference.calendarCode:S'],
   ['02 - 2nd StudentSchoolAssociation is valid',200,'','id:S;schoolReference:O;schoolReference.schoolId:N;studentReference:O;studentReference.studentUniqueId:S;entryDate:S?isString;entryGradeLevelDescriptor:S;entryTypeDescriptor:S;repeatGradeIndicator:B;residencyStatusDescriptor:S;primarySchool:B;fullTimeEquivalency:N?isNumber,gt 0;calendarReference.calendarCode:S'],
-  ['06 - 1st StudentSchoolAssociation was Deleted',404,'','']]],
+  ['06 - 1st StudentSchoolAssociation was Deleted',404,'','']],
+  {seq:2,prereqs:['Student','EdOrg','Graduation Plan (if applicable)'],tasks:[
+  [1,'CREATE a first Student School Association (school enrollment) for a Student at Grand Bend Elementary School.',0],
+  [2,'CREATE a second Student School Association (school enrollment) for a Student at Grand Bend High School.',0],
+  [3,'UPDATE the entryDate for the first elementary student\'s Student School Association. And, remove the exitWithdrawDate and exitWithdrawTypeDescriptor.',0],
+  [4,'UPDATE the graduationPlanReference and calendarCode to thesecond High School student\'s Student School Association.',0],
+  [5,'UPDATE the exitWithdrawDate for the first elementary school Student.',0],
+  [6,'DELETE the Student School Association for the first elementary school Student.',0]]}],
  ['StudentEnrollment','StudentSectionAssociations',[
   ['01 - 1st StudentSectionAssociation is valid',200,'','id:S;sectionReference:O;sectionReference.schoolId:N;sectionReference.schoolYear:N;sectionReference.localCourseCode:S;sectionReference.sectionIdentifier:S;sectionReference.sessionName:S;studentReference:O;studentReference.studentUniqueId:S;beginDate:S?isString;endDate:S?isString;homeroomIndicator:B'],
   ['02 - 2nd StudentSectionAssociation is valid',200,'','='],
   ['03 - 1st StudentSectionAssociation - endDate was Updated',200,'endDate','id:S;sectionReference:O;sectionReference.schoolId:N;sectionReference.schoolYear:N;sectionReference.localCourseCode:S;sectionReference.sectionIdentifier:S;sectionReference.sessionName:S;studentReference:O;studentReference.studentUniqueId:S;beginDate:S?isString;endDate:S?isString'],
   ['04 - 2nd StudentSectionAssociation - endDate was Updated',200,'endDate','='],
-  ['05 - 1st StudentSectionAssociation was Deleted',404,'','']]],
+  ['05 - 1st StudentSectionAssociation was Deleted',404,'','']],
+  {seq:5,prereqs:['Student','Section','Student School Association'],tasks:[]}],
  ['StudentGrade','Grades',[
   ['01 - 1st Grade is valid',200,'','id:S;gradeTypeDescriptor:S;gradingPeriodReference:O;gradingPeriodReference.gradingPeriodDescriptor:S;gradingPeriodReference.periodSequence:N;gradingPeriodReference.schoolId:N;gradingPeriodReference.schoolYear:N;studentSectionAssociationReference:O;studentSectionAssociationReference.studentUniqueId:S;studentSectionAssociationReference.schoolId:N;studentSectionAssociationReference.schoolYear:N;studentSectionAssociationReference.localCourseCode:S;studentSectionAssociationReference.sectionIdentifier:S;studentSectionAssociationReference.sessionName:S;studentSectionAssociationReference.beginDate:S?isString;letterGradeEarned:S?isString;numericGradeEarned:N?isNumber'],
   ['02 - 2nd Grade is valid',200,'','='],
   ['03 - 1st Grade - numericGradeEarned & letterGradeEarned were Updated',200,'letterGradeEarned','id:S?isString,eq {{firstGradeUniqueId}};gradeTypeDescriptor:S;gradingPeriodReference:O;gradingPeriodReference.gradingPeriodDescriptor:S;gradingPeriodReference.periodSequence:N;gradingPeriodReference.schoolId:N;gradingPeriodReference.schoolYear:N;studentSectionAssociationReference:O;studentSectionAssociationReference.studentUniqueId:S;studentSectionAssociationReference.schoolId:N;studentSectionAssociationReference.schoolYear:N;studentSectionAssociationReference.localCourseCode:S;studentSectionAssociationReference.sectionIdentifier:S;studentSectionAssociationReference.sessionName:S;studentSectionAssociationReference.beginDate:S?isString;letterGradeEarned:S?isString;numericGradeEarned:N?isNumber'],
   ['04 - 2nd Grade - numericGradeEarned & letterGradeEarned were Updated',200,'letterGradeEarned','id:S?isString,eq {{secondGradeUniqueId}};gradeTypeDescriptor:S;gradingPeriodReference:O;gradingPeriodReference.gradingPeriodDescriptor:S;gradingPeriodReference.periodSequence:N;gradingPeriodReference.schoolId:N;gradingPeriodReference.schoolYear:N;studentSectionAssociationReference:O;studentSectionAssociationReference.studentUniqueId:S;studentSectionAssociationReference.schoolId:N;studentSectionAssociationReference.schoolYear:N;studentSectionAssociationReference.localCourseCode:S;studentSectionAssociationReference.sectionIdentifier:S;studentSectionAssociationReference.sessionName:S;studentSectionAssociationReference.beginDate:S?isString;letterGradeEarned:S?isString;numericGradeEarned:N?isNumber'],
-  ['05 - 1st Grade was Deleted',404,'','']]],
+  ['05 - 1st Grade was Deleted',404,'','']],
+  {seq:39,prereqs:['Student','Student Enrollment','Section','StudentSectionAssociation','GradingPeriod'],tasks:[]}],
  ['StudentProgram','StudNeglectedOrDelinquentProgAssocs',[
-  ['01 - 1st StudNeglectedOrDelinquentProgAssocs is valid',200,'','id:S;beginDate:S;endDate:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;programReference:O;programReference.educationOrganizationId:N;programReference.programName:S;programReference.programTypeDescriptor:S;studentReference:O;studentReference.studentUniqueId:S;neglectedOrDelinquentProgramDescriptor:S;neglectedOrDelinquentProgramServices:A;neglectedOrDelinquentProgramServices[0].neglectedOrDelinquentProgramServiceDescriptor:S;neglectedOrDelinquentProgramServices[0].serviceBeginDate:S;neglectedOrDelinquentProgramServices[0].primaryIndicator:O']]],
+  ['01 - 1st StudNeglectedOrDelinquentProgAssocs is valid',200,'','id:S;beginDate:S;endDate:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;programReference:O;programReference.educationOrganizationId:N;programReference.programName:S;programReference.programTypeDescriptor:S;studentReference:O;studentReference.studentUniqueId:S;neglectedOrDelinquentProgramDescriptor:S;neglectedOrDelinquentProgramServices:A;neglectedOrDelinquentProgramServices[0].neglectedOrDelinquentProgramServiceDescriptor:S;neglectedOrDelinquentProgramServices[0].serviceBeginDate:S;neglectedOrDelinquentProgramServices[0].primaryIndicator:O']],
+  {seq:33,prereqs:['Ed-Org (pre-loaded)','Program (pre-loaded)','Student','Student Enrollment'],tasks:[]}],
  ['StudentProgram','StudSchoolFoodServProgAssocs',[
   ['01 - 1st StudSchoolFoodServProgAssocs is valid',200,'','id:S;beginDate:S;endDate:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;programReference:O;programReference.educationOrganizationId:N;programReference.programName:S;programReference.programTypeDescriptor:S;studentReference:O;studentReference.studentUniqueId:S;schoolFoodServiceProgramServices:A;schoolFoodServiceProgramServices[0].schoolFoodServiceProgramServiceDescriptor:S'],
-  ['02 - 1st StudSchoolFoodServProgAssocs - service was Updated',200,'schoolFoodServiceProgramServices[0].schoolFoodServiceProgramServiceDescriptor','=']]],
+  ['02 - 1st StudSchoolFoodServProgAssocs - service was Updated',200,'schoolFoodServiceProgramServices[0].schoolFoodServiceProgramServiceDescriptor','=']],
+  {seq:34,prereqs:['Student','EdOrg','Program'],tasks:[
+  [1,'CREATE a first new StudentSchoolFoodServicesProgramAssociation with schoolFoodServiceProgramServiceDescriptor as "Reduced Price Lunch" for an Elementary School Student.',0],
+  [2,'UPDATE the schoolFoodServiceProgramServiceDescriptor on the first added StudentSchoolFoodServicesProgramAssociation to "Free Lunch".',0]]}],
  ['StudentProgram','StudentCTEProgramAssociations',[
-  ['01 - 1st StudentCTEProgramAssociation is valid',200,'','id:S;beginDate:S;endDate:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;programReference:O;programReference.educationOrganizationId:N;programReference.programName:S;programReference.programTypeDescriptor:S;studentReference:O;studentReference.studentUniqueId:S;nonTraditionalGenderStatus:B;privateCTEProgram:B;technicalSkillsAssessmentDescriptor:S;cteProgramServices:A;cteProgramServices[0].cteProgramServiceDescriptor:S;cteProgramServices[0].cipCode:S;cteProgramServices[0].primaryIndicator:B']]],
+  ['01 - 1st StudentCTEProgramAssociation is valid',200,'','id:S;beginDate:S;endDate:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;programReference:O;programReference.educationOrganizationId:N;programReference.programName:S;programReference.programTypeDescriptor:S;studentReference:O;studentReference.studentUniqueId:S;nonTraditionalGenderStatus:B;privateCTEProgram:B;technicalSkillsAssessmentDescriptor:S;cteProgramServices:A;cteProgramServices[0].cteProgramServiceDescriptor:S;cteProgramServices[0].cipCode:S;cteProgramServices[0].primaryIndicator:B']],
+  {seq:29,prereqs:['Ed-Org (pre-loaded)','Program (pre-loaded)','Student','Student Enrollment'],tasks:[
+  [1,'CREATE a first new StudentCTEProgramAssociation for a high school student.',0],
+  [2,'UPDATE the primaryIndicator on the first added StudentCTEProgramAssociation',0]]}],
  ['StudentProgram','StudentHomelessProgramAssociations',[
-  ['01 - 1st StudentHomelessProgramAssociation is valid',200,'','id:S;beginDate:S;endDate:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;programReference:O;programReference.educationOrganizationId:N;programReference.programName:S;programReference.programTypeDescriptor:S;studentReference:O;studentReference.studentUniqueId:S;homelessPrimaryNighttimeResidenceDescriptor:S;homelessUnaccompaniedYouth:B']]],
+  ['01 - 1st StudentHomelessProgramAssociation is valid',200,'','id:S;beginDate:S;endDate:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;programReference:O;programReference.educationOrganizationId:N;programReference.programName:S;programReference.programTypeDescriptor:S;studentReference:O;studentReference.studentUniqueId:S;homelessPrimaryNighttimeResidenceDescriptor:S;homelessUnaccompaniedYouth:B']],
+  {seq:30,prereqs:['Ed-Org (pre-loaded)','Program (pre-loaded)','Student','Student Enrollment'],tasks:[
+  [1,'CREATE a first new StudentHomelessProgramAssociation for an elementary school student.',0],
+  [2,'UPDATE the homelessPrimaryNighttimeResidenceDescriptor on the first added StudentHomelessProgramAssociation from "Shelters" to "Doubled-up".',0]]}],
  ['StudentProgram','StudentLangInstProgramAssociations',[
-  ['01 - 1st StudentLangInstProgramAssociation is valid',200,'','id:S;beginDate:S;endDate:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;programReference:O;programReference.educationOrganizationId:N;programReference.programName:S;programReference.programTypeDescriptor:S;studentReference:O;studentReference.studentUniqueId:S;englishLanguageProficiencyAssessments:A;englishLanguageProficiencyAssessments[0].schoolYearTypeReference:O;englishLanguageProficiencyAssessments[0].schoolYearTypeReference.schoolYear:N;englishLanguageProficiencyAssessments[0].participationDescriptor:S;englishLanguageProficiencyAssessments[0].proficiencyDescriptor:S;englishLanguageProficiencyAssessments[0].monitoredDescriptor:S;languageInstructionProgramServices:A;languageInstructionProgramServices[0].languageInstructionProgramServiceDescriptor:S;englishLearnerParticipation:B']]],
+  ['01 - 1st StudentLangInstProgramAssociation is valid',200,'','id:S;beginDate:S;endDate:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;programReference:O;programReference.educationOrganizationId:N;programReference.programName:S;programReference.programTypeDescriptor:S;studentReference:O;studentReference.studentUniqueId:S;englishLanguageProficiencyAssessments:A;englishLanguageProficiencyAssessments[0].schoolYearTypeReference:O;englishLanguageProficiencyAssessments[0].schoolYearTypeReference.schoolYear:N;englishLanguageProficiencyAssessments[0].participationDescriptor:S;englishLanguageProficiencyAssessments[0].proficiencyDescriptor:S;englishLanguageProficiencyAssessments[0].monitoredDescriptor:S;languageInstructionProgramServices:A;languageInstructionProgramServices[0].languageInstructionProgramServiceDescriptor:S;englishLearnerParticipation:B']],
+  {seq:31,prereqs:['Ed-Org (pre-loaded)','Program (pre-loaded)','Student','Student Enrollment'],tasks:[]}],
  ['StudentProgram','StudentMigrantProgramAssociations',[
   ['01 - 1st StudentMigrantEducationProgramAssociation is valid',200,'','id:S;beginDate:S;endDate:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;programReference:O;programReference.educationOrganizationId:N;programReference.programName:S;programReference.programTypeDescriptor:S;studentReference:O;studentReference.studentUniqueId:S;priorityForServices:B;lastQualifyingMove:S;migrantEducationProgramServices:A;migrantEducationProgramServices[0].migrantEducationProgramServiceDescriptor:S'],
-  ['02 - 1st StudentMigrantEducationProgramAssociation - priorityForServices was Updated',200,'priorityForServices','=']]],
+  ['02 - 1st StudentMigrantEducationProgramAssociation - priorityForServices was Updated',200,'priorityForServices','=']],
+  {seq:32,prereqs:['Ed-Org (pre-loaded)','Program (pre-loaded)','Student','Student Enrollment'],tasks:[
+  [1,'CREATE a first new StudentMigrantEducationProgramAssociation for an elementary school student.',0],
+  [2,'UPDATE the priorityForServices on the first added StudentMigrantEducationProgramAssociation from FALSE to TRUE.',0]]}],
  ['StudentProgram','StudentProgramAssociations',[
   ['01 - 1st StudentProgramAssociation is valid',200,'','id:S;beginDate:S;endDate:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;programReference:O;programReference.educationOrganizationId:N;programReference.programName:S;programReference.programTypeDescriptor:S;studentReference:O;studentReference.studentUniqueId:S'],
   ['02 - 2nd StudentProgramAssociation is valid',200,'','='],
   ['03 - 1st StudentProgramAssociation - beginDate was Updated',200,'beginDate','='],
   ['04 - 2nd StudentProgramAssociation - beginDate was Updated',200,'beginDate','='],
-  ['05 - 1st StudentProgramAssociation was Deleted',404,'','']]],
+  ['05 - 1st StudentProgramAssociation was Deleted',404,'','']],
+  {seq:28,prereqs:['Ed-Org (pre-loaded)','Program (pre-loaded)','Student','Student Enrollment'],tasks:[
+  [1,'CREATE a first new "Gifted and Talented" StudentProgramAssociation for an elementary school student.',0],
+  [2,'CREATE a second new "Bilingual" StudentProgramAssociation for a high school student.',0],
+  [3,'UPDATE the beginDate on the first added StudentProgramAssociation for the elementary student.',0],
+  [4,'UPDATE the beginDate on the second added StudentProgramAssociation for the high school student.',0],
+  [5,'DELETE the first added StudentProgramAssociation for the elementary school student.',0]]}],
  ['StudentProgram','StudentSpecEduProgramAssocs',[
   ['01 - 1st StudSpecEduProgramAssocs is valid',200,'','id:S;beginDate:S;endDate:S;reasonExitedDescriptor:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;programReference:O;programReference.educationOrganizationId:N;programReference.programName:S;programReference.programTypeDescriptor:S;studentReference:O;studentReference.studentUniqueId:S;specialEducationSettingDescriptor:S;ideaEligibility:O;specialEducationExitDate:S?isString'],
-  ['02 - 2nd StudSpecEduProgramAssocs is valid',200,'','=']]],
+  ['02 - 2nd StudSpecEduProgramAssocs is valid',200,'','=']],
+  {seq:35,prereqs:['Ed-Org (pre-loaded)','Program (pre-loaded)','Student','Student Enrollment'],tasks:[
+  [1,'CREATE a first new StudentSpecialEducationProgramAssociation for an elementary school student.',0],
+  [2,'CREATE a second new StudentSpecialEducationProgramAssociation for a high school student.',0],
+  [3,'UPDATE the ideaEligibility on the first added StudentSpecialEducationProgramAssociation to FALSE.',0],
+  [4,'UPDATE the ideaEligibility on the second added StudentSpecialEducationProgramAssociation to FALSE.',0]]}],
  ['StudentProgram','StudentTitleIPartAProgAssocs',[
   ['01 - 1st StudTitleIPartAProgAssocs is valid',200,'','id:S;beginDate:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;programReference:O;programReference.educationOrganizationId:N;programReference.programName:S;programReference.programTypeDescriptor:S;studentReference:O;studentReference.studentUniqueId:S;titleIPartAParticipantDescriptor:S'],
-  ['02 - 2nd StudTitleIPartAProgAssocs is valid',200,'','=']]],
+  ['02 - 2nd StudTitleIPartAProgAssocs is valid',200,'','=']],
+  {seq:36,prereqs:['Ed-Org (pre-loaded)','Program (pre-loaded)','Student','Student Enrollment'],tasks:[
+  [1,'CREATE a first new StudentTitleIPartAProgramAssociation for an elementary school student.',0],
+  [2,'CREATE a second new StudentTitleIPartAProgramAssociation for a high school student.',0],
+  [3,'UPDATE the titleIPartAParticipantType on the first added StudentTitleIPartAProgramAssociation.',0],
+  [4,'UPDATE the titleIPartAParticipantType on the second added StudentTitleIPartAProgramAssociation.',0]]}],
  ['StudentTranscript','CourseTranscript',[
   ['01 - 1st CourseTranscript is valid',200,'','id:S;courseReference.courseCode:S;courseReference.educationOrganizationId:N?isNumber;studentAcademicRecordReference.educationOrganizationId:N?isNumber;studentAcademicRecordReference.schoolYear:N?isNumber;studentAcademicRecordReference.studentUniqueId:S;studentAcademicRecordReference.termDescriptor:S;courseAttemptResultDescriptor:S;attemptedCredits:N?isNumber;earnedCredits:N?isNumber;finalLetterGradeEarned:S;finalNumericGradeEarned:N?isNumber'],
   ['02 - 1st CourseTranscript - finalNumericGradeEarned was Updated',200,'finalNumericGradeEarned','id:S;finalNumericGradeEarned:N?isNumber'],
-  ['03 - 2nd CourseTranscript is valid',200,'','id:S;courseReference.courseCode:S;courseReference.educationOrganizationId:N?isNumber;studentAcademicRecordReference.educationOrganizationId:N?isNumber;studentAcademicRecordReference.schoolYear:N?isNumber;studentAcademicRecordReference.studentUniqueId:S;studentAcademicRecordReference.termDescriptor:S;courseAttemptResultDescriptor:S;attemptedCredits:N?isNumber;earnedCredits:N?isNumber;finalLetterGradeEarned:S;finalNumericGradeEarned:N?isNumber']]],
+  ['03 - 2nd CourseTranscript is valid',200,'','id:S;courseReference.courseCode:S;courseReference.educationOrganizationId:N?isNumber;studentAcademicRecordReference.educationOrganizationId:N?isNumber;studentAcademicRecordReference.schoolYear:N?isNumber;studentAcademicRecordReference.studentUniqueId:S;studentAcademicRecordReference.termDescriptor:S;courseAttemptResultDescriptor:S;attemptedCredits:N?isNumber;earnedCredits:N?isNumber;finalLetterGradeEarned:S;finalNumericGradeEarned:N?isNumber']],
+  {seq:40,prereqs:['Course','Student','Enrollment'],tasks:[
+  [1,'CREATE a first Course Transcript Record for "Fall Semester" of Current School Year for a student at Grand Bend High School.',0],
+  [2,'UPDATE for the first added Course Transcript the finalNumericGradeEarned on the high school Student\'s record.',0],
+  [3,'CREATE a second Course Transcript Record for "Spring Semester" from 5 years ago for the same student at Grand Bend High School.',0]]}],
  ['StudentTranscript','StudentAcademicRecords',[
   ['01 - 1st StudentAcademicRecord is valid',200,'','id:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;schoolYearTypeReference:O;schoolYearTypeReference.schoolYear:N;studentReference:O;studentReference.studentUniqueId:S;termDescriptor:S;cumulativeAttemptedCredits:N?gte 0;cumulativeEarnedCredits:N?gte 0;gradePointAverages:A;gradePointAverages[0].gradePointAverageTypeDescriptor:S;gradePointAverages[0].gradePointAverageValue:N?gte 0;gradePointAverages[0].isCumulative:B;gradePointAverages[0].maxGradePointAverageValue:N?gte 0;sessionAttemptedCredits:O?isUndefined;sessionEarnedCredits:O?isUndefined'],
-  ['02 - 2nd StudentAcademicRecord is valid',200,'','id:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;schoolYearTypeReference:O;schoolYearTypeReference.schoolYear:N;studentReference:O;studentReference.studentUniqueId:S;termDescriptor:S;cumulativeAttemptedCredits:N?gte 0;cumulativeEarnedCredits:N?gte 0;gradePointAverages:A;gradePointAverages[0].gradePointAverageTypeDescriptor:S;gradePointAverages[0].gradePointAverageValue:N?gte 0;gradePointAverages[0].isCumulative:B;gradePointAverages[0].maxGradePointAverageValue:N?gte 0;sessionAttemptedCredits:N?gte 0;sessionEarnedCredits:N?gte 0']]]
-];
+  ['02 - 2nd StudentAcademicRecord is valid',200,'','id:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;schoolYearTypeReference:O;schoolYearTypeReference.schoolYear:N;studentReference:O;studentReference.studentUniqueId:S;termDescriptor:S;cumulativeAttemptedCredits:N?gte 0;cumulativeEarnedCredits:N?gte 0;gradePointAverages:A;gradePointAverages[0].gradePointAverageTypeDescriptor:S;gradePointAverages[0].gradePointAverageValue:N?gte 0;gradePointAverages[0].isCumulative:B;gradePointAverages[0].maxGradePointAverageValue:N?gte 0;sessionAttemptedCredits:N?gte 0;sessionEarnedCredits:N?gte 0']],
+  {seq:41,prereqs:['Student','Enrollment'],tasks:[
+  [1,'CREATE a first Fall Semester StudentAcademicRecord for a student at Grand Bend Elementary School.',0],
+  [2,'CREATE a second Fall Semester StudentAcademicRecord for a student at Grand Bend High School. This should be a course that appears on the student\'s graduation transcript. Add a graduation plan reference to the High School student\'s StudentSchoolAssociation.',0],
+  [3,'UPDATE the schoolYear, cumulativeAttemptedCredits (+3), cumulativeEarnedCredits (+3), sessionEarnedCredits (+3), and sessionAttemptedCredits (+3) for the second added StudentAcademicRecord for the high school Student\'s record.',0]]}]];
 
 /* No MTSS/Interventions collection exists upstream yet, so these are written in
    the same constraint style against real Ed-Fi Intervention element paths. */
@@ -512,38 +691,88 @@ const MTSS_V1 = [
   ['01 - 1st Intervention is valid',200,'','id:S;interventionIdentificationCode:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;interventionClassDescriptor:S;deliveryMethodDescriptor:S;beginDate:S;endDate:S;minutesPerSession:N;interventionPrescriptions:A'],
   ['02 - 2nd Intervention is valid',200,'','='],
   ['03 - 1st Intervention - minutesPerSession was Updated',200,'minutesPerSession','='],
-  ['04 - 2nd Intervention - endDate was Updated',200,'endDate','=']]],
+  ['04 - 2nd Intervention - endDate was Updated',200,'endDate','=']],
+  {seq:1, prereqs:['Education Organization'], tasks:[
+   [1,'CREATE a first Intervention for Grand Bend Elementary School',0],
+   [2,'CREATE a second Intervention for Grand Bend High School',0],
+   [3,'UPDATE the minutesPerSession on the first Intervention',0],
+   [4,'UPDATE the endDate on the second Intervention',0]]}],
  ['Intervention','InterventionPrescriptions',[
   ['01 - 1st InterventionPrescription is valid',200,'','id:S;interventionPrescriptionIdentificationCode:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;deliveryMethodDescriptor:S;interventionClassDescriptor:S;minutesPerSession:N;populationServed:A'],
   ['02 - 2nd InterventionPrescription is valid',200,'','='],
-  ['03 - 1st InterventionPrescription was Deleted',404,'','']]],
+  ['03 - 1st InterventionPrescription was Deleted',404,'','']],
+  {seq:2, prereqs:['Education Organization'], tasks:[
+   [1,'CREATE a first InterventionPrescription for Grand Bend Elementary School',0],
+   [2,'CREATE a second InterventionPrescription for Grand Bend High School',0],
+   [3,'DELETE the first InterventionPrescription',0]]}],
  ['Cohort','Cohorts',[
   ['01 - 1st Cohort is valid',200,'','id:S;cohortIdentifier:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;cohortDescription:S;cohortTypeDescriptor:S;cohortScopeDescriptor:S'],
   ['02 - 2nd Cohort is valid',200,'','='],
-  ['03 - 1st Cohort - cohortDescription was Updated',200,'cohortDescription','=']]],
+  ['03 - 1st Cohort - cohortDescription was Updated',200,'cohortDescription','=']],
+  {seq:3, prereqs:['Education Organization'], tasks:[
+   [1,'CREATE a first Cohort for Grand Bend Elementary School',0],
+   [2,'CREATE a second Cohort for Grand Bend High School',0],
+   [3,'UPDATE the cohortDescription on the first Cohort',0]]}],
  ['Cohort','StudentCohortAssociations',[
   ['01 - 1st StudentCohortAssociation is valid',200,'','id:S;cohortReference:O;cohortReference.cohortIdentifier:S;cohortReference.educationOrganizationId:N;studentReference:O;studentReference.studentUniqueId:S;beginDate:S;endDate:S'],
   ['02 - 2nd StudentCohortAssociation is valid',200,'','='],
-  ['03 - 1st StudentCohortAssociation - endDate was Updated',200,'endDate','=']]],
+  ['03 - 1st StudentCohortAssociation - endDate was Updated',200,'endDate','=']],
+  {seq:4, prereqs:['Student','Cohort'], tasks:[
+   [1,'CREATE a first StudentCohortAssociation for the first Cohort',0],
+   [2,'CREATE a second StudentCohortAssociation for the second Cohort',0],
+   [3,'UPDATE the endDate on the first StudentCohortAssociation',0]]}],
  ['StudentIntervention','StudentInterventionAssociations',[
   ['01 - 1st StudentInterventionAssociation is valid',200,'','id:S;interventionReference:O;interventionReference.interventionIdentificationCode:S;interventionReference.educationOrganizationId:N;studentReference:O;studentReference.studentUniqueId:S;cohortReference:O;dosage:N'],
   ['02 - 2nd StudentInterventionAssociation is valid',200,'','='],
   ['03 - 1st StudentInterventionAssociation - dosage was Updated',200,'dosage','='],
-  ['04 - 1st StudentInterventionAssociation was Deleted',404,'','']]],
+  ['04 - 1st StudentInterventionAssociation was Deleted',404,'','']],
+  {seq:5, prereqs:['Student','Intervention','Cohort'], tasks:[
+   [1,'CREATE a first StudentInterventionAssociation for the first Intervention',0],
+   [2,'CREATE a second StudentInterventionAssociation for the second Intervention',0],
+   [3,'UPDATE the dosage on the first StudentInterventionAssociation',0],
+   [4,'DELETE the first StudentInterventionAssociation',0]]}],
  ['StudentIntervention','StudentInterventionAttendanceEvents',[
   ['01 - 1st StudentInterventionAttendanceEvent is valid',200,'','id:S;attendanceEventCategoryDescriptor:S;eventDate:S;interventionReference:O;interventionReference.interventionIdentificationCode:S;interventionReference.educationOrganizationId:N;studentReference:O;studentReference.studentUniqueId:S;interventionDuration:N'],
   ['02 - 2nd StudentInterventionAttendanceEvent is valid',200,'','='],
-  ['03 - 1st StudentInterventionAttendanceEvent - interventionDuration was Updated',200,'interventionDuration','=']]],
+  ['03 - 1st StudentInterventionAttendanceEvent - interventionDuration was Updated',200,'interventionDuration','=']],
+  {seq:6, prereqs:['Student','Intervention','StudentInterventionAssociation'], tasks:[
+   [1,'CREATE a first StudentInterventionAttendanceEvent for the first Intervention',0],
+   [2,'CREATE a second StudentInterventionAttendanceEvent for the second Intervention',0],
+   [3,'UPDATE the interventionDuration on the first StudentInterventionAttendanceEvent',0]]}],
  ['Goal','StudentGoals',[
   ['01 - 1st StudentGoal is valid',200,'','id:S;goalTitle:S;studentReference:O;studentReference.studentUniqueId:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;goalStartDate:S;goalEndDate:S;goalDescription:S'],
   ['02 - 2nd StudentGoal is valid',200,'','='],
-  ['03 - 1st StudentGoal - goalEndDate was Updated',200,'goalEndDate','=']]],
+  ['03 - 1st StudentGoal - goalEndDate was Updated',200,'goalEndDate','=']],
+  {seq:7, prereqs:['Student','Education Organization'], tasks:[
+   [1,'CREATE a first StudentGoal for an elementary Student',0],
+   [2,'CREATE a second StudentGoal for a high school Student',0],
+   [3,'UPDATE the goalEndDate on the first StudentGoal',0]]}],
  ['ProgressMonitoring','StudentProgressMonitoringResults',[
   ['01 - 1st StudentProgressMonitoringResult is valid',200,'','id:S;studentReference:O;studentReference.studentUniqueId:S;educationOrganizationReference:O;educationOrganizationReference.educationOrganizationId:N;assessmentIdentifier:S;administrationDate:S;result:N;resultDatatypeTypeDescriptor:S'],
   ['02 - 2nd StudentProgressMonitoringResult is valid',200,'','='],
-  ['03 - 1st StudentProgressMonitoringResult - result was Updated',200,'result','=']]]
+  ['03 - 1st StudentProgressMonitoringResult - result was Updated',200,'result','=']],
+  {seq:8, prereqs:['Student','Education Organization','StudentGoal'], tasks:[
+   [1,'CREATE a first StudentProgressMonitoringResult for an elementary Student',0],
+   [2,'CREATE a second StudentProgressMonitoringResult for a high school Student',0],
+   [3,'UPDATE the result on the first StudentProgressMonitoringResult',0]]}]
 ];
 const COLLECTION = {sis: SIS_V5, mtss: MTSS_V1};
+
+/* Tasks are what the vendor loads; a subset carry a verification step, numbered
+   to match (StudentSchoolAttendanceEvents documents 5 tasks and ships steps 01,
+   02 and 05). Ten scenarios document no tasks at all, so their step list stands
+   in — those show verification without prose instructions, which is a content
+   gap upstream rather than something the platform can invent. */
+function scenarioTasks(rawSteps, meta){
+  const stepNumber = s => parseInt(s[0], 10);
+  if (!meta.tasks.length){
+    return rawSteps.map((s, i) => ({n: stepNumber(s), text: s[0], outOfScope: false, stepIndex: i}));
+  }
+  return meta.tasks.map(([n, text, outOfScope]) => ({
+    n, text, outOfScope: !!outOfScope,
+    stepIndex: rawSteps.findIndex(s => stepNumber(s) === n)
+  }));
+}
 
 /* Scenarios seeded to fail in a "realistic" run. `el` names the element row that
    carries the failure in the expanded detail, so the scenario summary line and
