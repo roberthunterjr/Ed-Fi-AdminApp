@@ -46,7 +46,7 @@ All four areas below are in scope for a single MVP release. They are presented a
 ## 3.1 Automation Platform
 
 - **Hosted Ed-Fi Admin App.** Certification functionality is built as a new module inside the existing Ed-Fi Admin App codebase, reusing its vendor, application, and environment data model. It is not a separate service.
-- **Vendor identity and profile.** Vendor records, teams, users, and the product profile a certification attaches to.
+- **Vendor identity and profile.** Vendor records, teams, users, and the application record a certification attaches to as its product (D26).
 - **Event notifications (in-app).** Status is surfaced in the UI — persistent status badges on submissions and runs, and a reviewer-visible indicator when artifacts have changed since the last review. No outbound email in MVP.
 - **Vendor uploading artifacts.** Upload, versioning, and replacement of vendor-owned certification artifacts.
 - **Certification management view.** The reviewer's working surface: submissions awaiting review, their artifacts, and their run results.
@@ -158,6 +158,7 @@ Carried forward from the parent PRD without change.
 | D23 | **Reviewer awareness is same-business-day, via routine dashboard checks.** The dashboard must be accurate when loaded; it is not required to update live. Outbound email is a fast-follow, not an MVP gap. *Resolves OQ8.* |
 | D24 | **A structurally valid mapping runs even if the environment holds no data for the resources it declares.** The run fails loudly and reports what was missing. This is consistent with §8.1's trial-run philosophy: "this resource returned nothing" is the actionable feedback the vendor needs, and pre-screening would report the same thing later in the vendor's debugging loop, not earlier. *Resolves OQ9.* |
 | D25 | **A qualifying run must be finished and stamped Complete; it does not have to have passed.** The readiness gate (FR13) is a completeness check, not a quality check. A submission whose qualifying run reports failures still reaches **Ready for Review**, and the reviewer decides whether those failures are disqualifying, whether a re-run is needed, or whether they are acceptable for this certification. This keeps the platform out of certification judgment (§12) and avoids the platform silently withholding a submission a reviewer would have wanted to see. The cost — reviewers occasionally opening a submission whose run failed — is accepted; the dashboard and run results state the outcome plainly, so no reviewer is surprised by it. |
+| D26 | **Product identity is the Admin App application record.** A certification attaches to an application registered in the certification environment Ed-Fi provisioned for the vendor's team — the application *is* the product, one-to-one. Its name, vendor, environment, and ODS are inherited from the application record and are not separately entered or editable in the certification module. This means there is no second naming of the same thing to drift out of sync, and a certification cannot be pointed at anything Ed-Fi did not provision (D6). The vendor starts certification from the applications list they already use to manage credentials, so the module has one entry point rather than a parallel product registry. A single application may certify against more than one model at a time (§8, D22). |
 
 ---
 
@@ -283,10 +284,11 @@ Rules:
 4. The vendor administrator invites additional teammates to the team.
 5. The Ed-Fi Platform Administrator provisions a certification environment and associates the vendor's team with it.
 6. An application is created within that environment, and its credentials are issued to the vendor team.
+7. The vendor opens the applications list, finds that application, and chooses **Start Certification**. They pick a certification model; everything else is inherited from the application (D26). The application is now a product with a **Draft** submission, and the vendor is in the certification module.
 
 ## 10.2 Vendor uploading artifacts
 
-1. The vendor opens their product's certification submission (creating one puts it in **Draft**).
+1. The vendor opens their product's certification submission — created by **Start Certification** on the application (§10.1 step 7), which puts it in **Draft**.
 2. The vendor uploads the mapping CSV. The platform validates its structure immediately and either accepts it or rejects it with the specific structural errors.
 3. The vendor uploads sample data and product documentation.
 4. As each artifact lands, the submission's missing-artifact list shrinks. While anything is missing, the status reads **Submission Incomplete**.
@@ -372,8 +374,19 @@ Admin App already provisions a client ID and client secret for tenant environmen
 - Regeneration is recorded in certification audit history (FR17) so a run failure after a rotation is explicable.
 - Credentials are never written to run logs, run reports, or UI output.
 
-### FR6 — Associate vendor artifacts with a product profile
+**The applications list is the entry point into certification.** Because a product *is* an application (D26), the vendor starts a certification from the same applications list they use to manage credentials — not from a separate product registry.
+
+- Each row in the applications list carries a certification action: **Start Certification** when the application has no submissions, **View Certification** once it has at least one. The same action appears on the application detail page alongside its existing controls.
+- **Start Certification** asks for one thing — the certification model — and shows the application, vendor, environment, and ODS as inherited and locked (D26). Models with an open submission for that application are offered but not selectable, and the UI says they are already in progress rather than omitting them silently (§8, D22).
+- Confirming registers the application as a product, opens a **Draft** submission for the chosen model, and records the creation in audit history (FR17).
+- **View Certification** leads to the product's entry in the vendor's product list, which lists every model in flight for that application; it does not deep-link to one model, because an application may hold several.
+- An application with no certification started does not appear as a product. Products exist because a vendor started one.
+
+### FR6 — Associate vendor artifacts with a product
 **As** a Vendor Certification Administrator, **I can** upload my mapping CSV, sample data, and product documentation to my product's submission **so that** it can be reviewed.
+
+The product a submission belongs to is an application record (D26), so a submission identifies itself by application name, vendor, environment, and ODS throughout — there is no separately maintained product profile to keep aligned.
+
 - All three artifact types from §9 can be uploaded and replaced.
 - The mapping CSV is structurally validated on upload; a malformed file is rejected with specific errors and is not stored as the active mapping.
 - Replacing an artifact creates a new version; prior versions remain visible in audit history.
@@ -428,6 +441,7 @@ Admin App already provisions a client ID and client secret for tenant environmen
 ### FR12 — Certification management view
 **As** a Certification Reviewer, **I can** see all submissions and their statuses in one place **so that** I can work through a queue rather than chase vendors.
 - Submissions are listable and filterable by status.
+- Submissions and products are identified by application name, with vendor, environment, and ODS as supporting detail (D26) — so a reviewer and a vendor naming the same product name the same thing.
 - Opening a submission shows its artifacts, its run results, and its status history.
 - The view indicates when artifacts have changed since the reviewer last opened the submission.
 - The view defaults to qualifying runs, with trial runs available but not in the way (§8.1).
@@ -560,12 +574,13 @@ Kept here so the reasoning behind each decision is traceable rather than lost.
 | Term | Definition |
 | --- | --- |
 | **Admin App** | The Ed-Fi Admin App. In this MVP it is also the host application for certification functionality. |
+| **Application** | An Admin App application record within a certification environment, holding the credentials a vendor's integration uses. In the certification module it is also the product (D26). |
 | **Bruno** | The API client whose collections encode SIS and MTSS certification scenarios; executed by the platform via its CLI. |
 | **Certification testing repository** | The Ed-Fi repository holding Bruno collections. Source of truth for SIS and MTSS scenarios (D1). |
 | **Certification environment** | An ODS/API environment that a vendor's team certifies against, provisioned and operated by Ed-Fi on the vendor's behalf (D6). |
 | **Domains API v5** | The Ed-Fi API surface that lets vendors curate the resources their application depends on. |
 | **Mapping CSV** | The vendor-authored file declaring which Ed-Fi resources and descriptors their product uses. Source of truth for Assessments scope (D2). |
-| **Product** | The unit that receives certification. A vendor may have several (§8). |
+| **Product** | The unit that receives certification: an application record registered for certification (D26). A vendor may have several (§8). |
 | **Run** | One execution of a scenario set or validation against a certification environment. |
 | **Run completeness** | A designation — **Complete** or **Incomplete** — stamped on a run at start time, based on whether all required artifacts were present. Only Complete runs are admissible for review (§8.1). |
 | **Trial run** | Informal term for a run stamped Incomplete: real results, used by the vendor for debugging, not admissible as certification evidence. |
