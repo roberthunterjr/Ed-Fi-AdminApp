@@ -492,3 +492,42 @@ test('an open run offers Prepare on each scenario row', () => {
   const html = p.brunoResultsHTML(run);
   assert.equal((html.match(/data-act="openprepare"/g) || []).length, 45);
 });
+
+test('the reviewer sees sealed runs and not open ones by default', () => {
+  const p = loadPrototype();
+  const sub = p.APP.submissions.find(s => s.model === 'sis');
+  const open = p.startRun(sub, 'realistic');
+  assert.ok(!p.reviewerRuns(sub, false).some(r => r.id === open.id),
+    'an open run is the vendor workspace');
+  p.sealRun(open);
+  assert.ok(p.reviewerRuns(sub, false).some(r => r.id === open.id),
+    'sealing puts it in front of the reviewer');
+});
+
+test('the reviewer can opt into open runs', () => {
+  const p = loadPrototype();
+  const sub = p.APP.submissions.find(s => s.model === 'sis');
+  const open = p.startRun(sub, 'realistic');
+  assert.ok(p.reviewerRuns(sub, true).some(r => r.id === open.id));
+});
+
+test('abandoned runs never reach the reviewer', () => {
+  const p = loadPrototype();
+  const sub = p.APP.submissions.find(s => s.model === 'sis');
+  const run = p.startRun(sub, 'realistic');
+  p.abandonRun(run);
+  assert.ok(!p.reviewerRuns(sub, true).some(r => r.id === run.id),
+    'an abandoned run has no results to review');
+});
+
+test('run state badges name each state plainly', () => {
+  const p = loadPrototype();
+  const sub = p.APP.submissions.find(s => s.model === 'sis');
+  const open = p.startRun(sub, 'realistic');
+  assert.match(p.runStateBadge(open), /Open/);
+  p.sealRun(open);
+  assert.match(p.runStateBadge(open), /Sealed/);
+  const gone = p.startRun(sub, 'realistic');
+  p.abandonRun(gone);
+  assert.match(p.runStateBadge(gone), /Abandoned/);
+});

@@ -1370,6 +1370,19 @@ const submission = id => APP.submissions.find(s => s.id === id);
 const run = id => APP.runs.find(r => r.id === id);
 const runsFor = sub => APP.runs.filter(r => r.submissionId === sub.id)
   .sort((a,b) => new Date(b.started) - new Date(a.started));
+/* An open run is the vendor's workspace, so the queue holds sealed ones. A
+   reviewer may opt in to give feedback on work in progress (ID8). An abandoned
+   run has no results and is never shown. */
+function reviewerRuns(sub, includeOpen){
+  return runsFor(sub).filter(r => r.state !== 'abandoned' &&
+    (includeOpen || r.state === 'sealed' || r.state === 'completed'));
+}
+/* A Bruno run is open until sealed; Assessments keeps queued/running/completed. */
+const runStateBadge = r =>
+  r.state === 'open'      ? '<span class="badge b-amber">Open</span>' :
+  r.state === 'sealed'    ? '<span class="badge b-green">Sealed</span>' :
+  r.state === 'abandoned' ? '<span class="badge b-red">Abandoned</span>' :
+  '<span class="badge">' + esc(r.state.charAt(0).toUpperCase() + r.state.slice(1)) + '</span>';
 const currentVersion = (sub, type) => {
   const list = sub.artifacts[type];
   return list && list.length ? list[list.length - 1] : null;
@@ -1920,7 +1933,12 @@ function runTable(rows, opts){
           ${stale && isFinished(r) ? '<div class="badge b-gray stale">Stale — artifacts have changed since</div>' : ''}</td>
         <td>${esc(MODELS[r.model].label)}</td>
         <td>${completenessBadge(r.completeness)}</td>
-        <td>${runStateHTML(r)}</td>
+        <td>${runStateHTML(r)}${(() => {
+          if (!r.results || r.results.kind !== 'bruno') return '';
+          const t2 = resultTally(r.results);
+          return `<div class="muted" style="font-size:12px">${t2.pass} passed, ${t2.fail} failed` +
+            (t2.notAttempted ? `, ${t2.notAttempted} not attempted` : '') + '</div>';
+        })()}</td>
         <td class="mono muted">${ARTIFACTS.map(a =>
           a.id + ':' + (r.pinned && r.pinned[a.id] ? 'v' + r.pinned[a.id] : '—')).join('<br/>')}</td>
         <td><span class="tag">${esc(r.tag)}</span><div class="mono muted">${esc(r.sha)}</div></td>
@@ -2570,7 +2588,10 @@ function reviewerSubmission(id){
   if (!sub) return placeholder('Submission');
   const p = product(sub.productId), m = MODELS[sub.model], g = gate(sub);
   const runs = runsFor(sub);
-  const shown = APP.showTrial ? runs : runs.filter(r => r.completeness === 'Complete');
+  /* Sealed by default; a reviewer opts into open runs to unblock someone
+     mid-flight rather than waiting for a seal (ID8). */
+  const visible = reviewerRuns(sub, APP.showOpenRuns);
+  const shown = APP.showTrial ? visible : visible.filter(r => r.completeness === 'Complete');
   const terminal = ['approved','rejected'].includes(sub.status);
   const changedFlag = hasUnseenChanges(sub);
 
@@ -2633,10 +2654,15 @@ function reviewerSubmission(id){
         <span>${esc(c.text)}</span><span class="who">${esc(c.by)}</span></li>`).join('')}</ul></div>` : ''}
 
     <div class="card">
-      <div class="cardhead"><h2>Runs <span class="hint">Defaults to qualifying runs (FR12).</span></h2>
+      <div class="cardhead"><h2>Runs <span class="hint">Defaults to sealed, qualifying runs (FR12).</span></h2>
         <div class="right"><label class="muted" style="font-size:12.5px">
-          <input type="checkbox" id="showTrial" ${APP.showTrial ? 'checked' : ''} /> Include trial runs</label></div>
+          <input type="checkbox" id="showTrial" ${APP.showTrial ? 'checked' : ''} /> Include trial runs</label>
+          <label class="muted" style="font-size:12.5px;margin-left:14px">
+          <input type="checkbox" data-act="toggleopenruns" ${APP.showOpenRuns ? 'checked' : ''} />
+          Include open runs</label></div>
       </div>
+      <div class="muted" style="font-size:12.5px;margin-bottom:10px">An open run is a vendor's
+        working record, not submitted evidence. Include them to give feedback in progress.</div>
       ${runTable(shown, {sub})}
     </div>
     ${historyCard(sub)}`;
@@ -2723,6 +2749,7 @@ function bind(){
           scen.params[node.dataset.param] = node.value;
           break;
         }
+        case 'toggleopenruns': APP.showOpenRuns = !APP.showOpenRuns; render(); break;
         case 'openprepare':
           APP.prepare = {run: node.dataset.run, key: node.dataset.key};
           APP.openSteps = {};
