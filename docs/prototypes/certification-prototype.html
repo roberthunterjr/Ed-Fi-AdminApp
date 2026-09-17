@@ -1015,18 +1015,18 @@ function hist(sub, what, who, when){
   /* seeded runs */
   const mkRun = o => { const r = Object.assign({id:uid('run'), results:null}, o); APP.runs.push(r); return r; };
 
-  mkRun({submissionId:s1.id, productId:'p1', model:'sis', state:'completed', outcome:'failed',
+  mkRun({submissionId:s1.id, productId:'p1', model:'sis', state:'sealed', outcome:'failed',
     completeness:'Incomplete', pinned:{mapping:1, sample:1, docs:null},
     tag:MODELS.sis.tag, sha:MODELS.sis.sha, initiator:V2, env:'Vendor_B',
-    started:d(2,10,5), ended:d(2,10,12), results:brunoResults('sis','realistic')});
-  mkRun({submissionId:s1.id, productId:'p1', model:'sis', state:'completed', outcome:'failed',
+    started:d(2,10,5), ended:d(2,10,12), results:seededBrunoResults('sis','realistic')});
+  mkRun({submissionId:s1.id, productId:'p1', model:'sis', state:'sealed', outcome:'failed',
     completeness:'Complete', pinned:{mapping:1, sample:1, docs:1},
     tag:MODELS.sis.tag, sha:MODELS.sis.sha, initiator:V, env:'Vendor_B',
-    started:d(5,9,30), ended:d(5,9,38), results:brunoResults('sis','realistic')});
-  mkRun({submissionId:s1.id, productId:'p1', model:'sis', state:'completed', outcome:'passed',
+    started:d(5,9,30), ended:d(5,9,38), results:seededBrunoResults('sis','realistic')});
+  mkRun({submissionId:s1.id, productId:'p1', model:'sis', state:'sealed', outcome:'passed',
     completeness:'Complete', pinned:{mapping:1, sample:1, docs:1},
     tag:MODELS.sis.tag, sha:MODELS.sis.sha, initiator:V, env:'Vendor_B',
-    started:d(7,13,0), ended:d(7,13,9), results:brunoResults('sis','pass')});
+    started:d(7,13,0), ended:d(7,13,9), results:seededBrunoResults('sis','pass')});
 
   mkRun({submissionId:s2.id, productId:'p2', model:'assessments', state:'completed', outcome:'auth-error',
     completeness:'Incomplete', pinned:{mapping:1, sample:null, docs:null},
@@ -1037,15 +1037,15 @@ function hist(sub, what, who, when){
     tag:MODELS.assessments.tag, sha:MODELS.assessments.sha, initiator:V2, env:'Vendor_B',
     started:d(13,15,20), ended:d(13,15,26), results:assessmentResults('realistic')});
 
-  mkRun({submissionId:f1.id, productId:'p4', model:'sis', state:'completed', outcome:'passed',
+  mkRun({submissionId:f1.id, productId:'p4', model:'sis', state:'sealed', outcome:'passed',
     completeness:'Complete', pinned:{mapping:1, sample:1, docs:1},
     tag:MODELS.sis.tag, sha:MODELS.sis.sha, initiator:'dev@acme.example.com', env:'Acme_Prod_Cert',
-    started:d(12,9,0), ended:d(12,9,8), results:brunoResults('sis','pass')});
+    started:d(12,9,0), ended:d(12,9,8), results:seededBrunoResults('sis','pass')});
   mkRun({submissionId:f2.id, productId:'p5', model:'assessments', state:'completed', outcome:'passed',
     completeness:'Complete', pinned:{mapping:1, sample:1, docs:1},
     tag:MODELS.assessments.tag, sha:MODELS.assessments.sha, initiator:'eng@northwind.example.com',
     env:'Northwind_Cert', started:d(11,10,0), ended:d(11,10,7), results:assessmentResults('pass')});
-  mkRun({submissionId:f3.id, productId:'p6', model:'mtss', state:'completed', outcome:'infra-error',
+  mkRun({submissionId:f3.id, productId:'p6', model:'mtss', state:'sealed', outcome:'infra-error',
     completeness:'Complete', pinned:{mapping:1, sample:1, docs:1},
     tag:MODELS.mtss.tag, sha:MODELS.mtss.sha, initiator:'ops@larkspur.example.com',
     env:'Larkspur_Cert', started:d(14,17,40), ended:d(14,17,41)});
@@ -1139,28 +1139,77 @@ function decodeElement(token, key, changedField, f, isFailStep){
   }
   return el;
 }
-function brunoResults(model, mode){
-  const fails = mode === 'pass' ? {} : (BRUNO_FAILS[model] || {});
-  return {kind:'bruno', scenarios: COLLECTION[model].map(([area, scenario, rawSteps]) => {
-    const key = area + '/' + scenario;
-    const f = fails[key];
+/* A Bruno run materializes its whole scenario tree at start with every task
+   unchecked, and runCheck() fills one task's slot in place. That keeps "latest
+   check per task" structurally true — there is one slot per task, and
+   re-checking overwrites it. */
+function brunoRunState(model){
+  return {kind:'bruno', scenarios: COLLECTION[model].map(([area, scenario, rawSteps, meta]) => {
     let spec = '';
-    const steps = rawSteps.map(([label, status, changedField, elementSpec], i) => {
+    const steps = rawSteps.map(([name, status, changed, elementSpec]) => {
       if (elementSpec && elementSpec !== '=') spec = elementSpec;
-      const mine = elementSpec === '' ? '' : spec;
-      const st = f && i + 1 === f.step ? 'fail' : (f && i + 1 > f.step ? 'skipped' : 'pass');
-      const isFailStep = st === 'fail';
-      /* A status-only failure means the request never returned a body to assert on. */
-      const statusFailed = isFailStep && f.kind === 'fail-status';
-      return {
-        label, st, msg: isFailStep ? f.msg : '',
-        status, observedStatus: statusFailed ? 404 : status,
-        elements: st === 'skipped' || statusFailed || !mine ? []
-          : mine.split(';').map(t => decodeElement(t, key, changedField, f, isFailStep))
-      };
+      return {name, status, changed, spec: elementSpec === '' ? '' : spec};
     });
-    return {area, scenario, steps, st: f ? 'fail' : 'pass'};
+    return {
+      area, scenario, seq: meta.seq, prereqs: meta.prereqs, params: {},
+      tasks: scenarioTasks(rawSteps, meta).map(t => ({
+        n: t.n, text: t.text, outOfScope: t.outOfScope,
+        step: t.stepIndex >= 0 ? steps[t.stepIndex] : null,
+        check: null
+      }))
+    };
   })};
+}
+/* A function declaration, not a const arrow: seed() runs at load and reaches
+   this through runCheck, before a const in this position would initialize. */
+function scenarioOf(run, key){
+  return run.results.scenarios.find(s => s.area + '/' + s.scenario === key);
+}
+
+/* Executes one task's verification step and records the result. The run keeps
+   only the latest check per task plus a count of attempts (ID3) — enough for a
+   reviewer to see that a passing task took five tries, without retaining a
+   history we have decided not to show. */
+function runCheck(run, scenarioKey, taskNo){
+  const scen = scenarioOf(run, scenarioKey);
+  if (!scen) return null;
+  const task = scen.tasks.find(t => t.n === taskNo);
+  if (!task || !task.step) return null;
+
+  const fails = run.mode === 'pass' ? {} : (BRUNO_FAILS[run.model] || {});
+  const f = fails[scenarioKey];
+  const isFail = !!f && f.step === taskNo;
+  const statusFailed = isFail && f.kind === 'fail-status';
+
+  task.check = {
+    st: isFail ? 'fail' : 'pass',
+    kind: isFail ? f.kind : 'pass',
+    msg: isFail ? f.msg : '',
+    observedStatus: statusFailed ? 404 : task.step.status,
+    elements: statusFailed || !task.step.spec ? []
+      : task.step.spec.split(';').map(tok =>
+          decodeElement(tok, scenarioKey, task.step.changed, f, isFail)),
+    params: Object.assign({}, scen.params),
+    at: tick(), by: me(),
+    attempts: (task.check ? task.check.attempts : 0) + 1
+  };
+  return task.check;
+}
+
+/* Builds the run state a vendor would have arrived at by working every scenario
+   through to the end. Used only to seed the prototype's run history, so the
+   sealed runs on screen have real checks behind them. */
+function seededBrunoResults(model, mode){
+  const run = {model, mode, results: brunoRunState(model)};
+  run.results.scenarios.forEach(s => {
+    const key = s.area + '/' + s.scenario;
+    for (const task of s.tasks){
+      if (!task.step || task.outOfScope) continue;
+      const c = runCheck(run, key, task.n);
+      if (c && c.st === 'fail') break;   /* the collection's own dependency behaviour */
+    }
+  });
+  return run.results;
 }
 function assessmentResults(mode){
   const groups = ASSESSMENT_RESULTS.map(g => ({
@@ -1174,14 +1223,20 @@ function assessmentResults(mode){
   return {kind:'assessments', groups};
 }
 function resultTally(r){
-  if (!r) return {pass:0, fail:0, total:0};
+  if (!r) return {pass:0, fail:0, notAttempted:0, total:0, unit:'scenarios'};
   if (r.kind === 'bruno'){
-    const p = r.scenarios.filter(s => s.st === 'pass').length;
-    return {pass:p, fail:r.scenarios.length - p, total:r.scenarios.length, unit:'scenarios'};
+    let pass = 0, fail = 0, notAttempted = 0;
+    r.scenarios.forEach(s => {
+      const checked = s.tasks.filter(t => t.check);
+      if (!checked.length) notAttempted++;
+      else if (checked.some(t => t.check.st === 'fail')) fail++;
+      else pass++;
+    });
+    return {pass, fail, notAttempted, total:r.scenarios.length, unit:'scenarios'};
   }
   let pass = 0, fail = 0;
   r.groups.forEach(g => g.elements.forEach(e => e.st === 'pass' ? pass++ : fail++));
-  return {pass, fail, total:pass + fail, unit:'element checks'};
+  return {pass, fail, notAttempted:0, total:pass + fail, unit:'element checks'};
 }
 
 /* ---------- derived state ---------- */
@@ -1205,9 +1260,15 @@ const currentVersion = (sub, type) => {
 const mySubmissions = () => APP.submissions.filter(s => !product(s.productId).foreign);
 
 /* FR13 — deterministic readiness gate. */
+/* A finished run stamped Complete. Bruno models finish by sealing; Assessments
+   finishes on its own. An open run is still being worked and an abandoned one
+   has no results, so neither qualifies. */
+const isFinished = r => r.state === 'sealed' || r.state === 'completed';
+const isQualifying = r => r.completeness === 'Complete' &&
+  (r.state === 'sealed' || r.state === 'completed');
 function gate(sub){
   const missing = ARTIFACTS.filter(a => !currentVersion(sub, a.id));
-  const qualifying = runsFor(sub).find(r => r.state === 'completed' && r.completeness === 'Complete');
+  const qualifying = runsFor(sub).find(isQualifying);
   return {missing, qualifying, artifactsComplete: missing.length === 0,
           met: missing.length === 0 && !!qualifying};
 }
@@ -1284,6 +1345,16 @@ function startRun(sub, outcomeMode){
     started:tick(), ended:null, results:null, mode:outcomeMode
   };
   ARTIFACTS.forEach(a => { const c = currentVersion(sub, a.id); r.pinned[a.id] = c ? c.v : null; });
+  /* A Bruno run is worked through by the vendor, so it opens and waits. An
+     Assessments run is a batch the platform executes, so it keeps its timers. */
+  if (MODELS[sub.model].kind === 'bruno'){
+    r.state = 'open';
+    r.results = brunoRunState(sub.model);
+    APP.runs.push(r);
+    hist(sub, 'Run opened — ' + m.label + ' — stamped ' + r.completeness +
+      '. Check each task as its data lands.');
+    return r;
+  }
   APP.runs.push(r);
   hist(sub, 'Run started — ' + m.label + ' — stamped ' + r.completeness +
     (r.completeness === 'Incomplete'
@@ -1294,6 +1365,7 @@ function startRun(sub, outcomeMode){
 }
 function finishRun(r){
   if (r.state === 'completed') return;
+  if (MODELS[r.model].kind === 'bruno') return;   /* Bruno runs seal, they do not finish */
   const sub = submission(r.submissionId);
   r.state = 'completed';
   r.ended = tick();
@@ -1305,7 +1377,7 @@ function finishRun(r){
     hist(sub, 'Run ' + r.id + ' failed — authentication error (401 from environment ' + r.env + ')', 'Platform');
   } else {
     const mode = r.mode === 'pass' ? 'pass' : 'realistic';
-    r.results = MODELS[r.model].kind === 'bruno' ? brunoResults(r.model, mode) : assessmentResults(mode);
+    r.results = assessmentResults(mode);   /* Bruno runs returned above */
     const t = resultTally(r.results);
     r.outcome = t.fail === 0 ? 'passed' : 'failed';
     hist(sub, 'Run ' + r.id + ' completed — ' + r.completeness + ' — ' +
@@ -1724,7 +1796,7 @@ function runTable(rows, opts){
       return `<tr>
         ${opts.showProduct ? `<td>${esc(product(r.productId).name)}</td>` : ''}
         <td><a href="#/run/${r.id}" class="mono">${esc(r.id)}</a>
-          ${stale && r.state === 'completed' ? '<div class="badge b-gray stale">Stale — artifacts have changed since</div>' : ''}</td>
+          ${stale && isFinished(r) ? '<div class="badge b-gray stale">Stale — artifacts have changed since</div>' : ''}</td>
         <td>${esc(MODELS[r.model].label)}</td>
         <td>${completenessBadge(r.completeness)}</td>
         <td>${runStateHTML(r)}</td>
@@ -1751,6 +1823,8 @@ function runTable(rows, opts){
 function runStateHTML(r){
   if (r.state === 'queued')  return '<span class="dotstate">Queued</span>';
   if (r.state === 'running') return '<span class="dotstate run"><i></i>Running…</span>';
+  if (r.state === 'open')    return '<span class="dotstate run"><i></i>Open — checking in progress</span>';
+  if (r.state === 'abandoned') return '<span class="dotstate">Abandoned</span>';
   const map = {
     passed:['ok','All checks passed'],
     failed:['bad','Checks failed'],
@@ -1904,7 +1978,13 @@ function runResults(id, reviewerView){
   const back = reviewerView ? '#/review/' + sub.id : '#/submission/' + sub.id;
 
   let body;
-  if (r.state !== 'completed'){
+  if (r.state === 'abandoned'){
+    body = `<div class="card"><h2>Execution result</h2>
+      <div class="banner amber"><h3>Run abandoned</h3>
+      <p>The vendor discarded this run, so its checks were not kept. Abandoning is the
+      honest option when a run has gone the wrong way — forcing a seal would push a
+      meaningless record into the review queue (ID5).</p></div></div>`;
+  } else if (!isFinished(r) && r.state !== 'open'){
     body = `<div class="card"><h2>Execution</h2>
       <div class="banner blue"><h3>${runStateHTML(r)}</h3>
         <p>${r.state === 'queued'
@@ -1926,7 +2006,7 @@ function runResults(id, reviewerView){
       <span class="tag">${esc(r.env)}</span>. Scenarios did not run. If the application credentials were
       regenerated, that rotation is recorded in audit history (FR5) so a failure after a rotation is explicable.</p>
       <p class="muted">Credential values are never shown here or written to run output (§13).</p></div></div>`;
-  } else if (r.results.kind === 'bruno'){
+  } else if (r.results && r.results.kind === 'bruno'){
     body = brunoResultsHTML(r);
   } else {
     body = assessmentResultsHTML(r);
@@ -1974,7 +2054,7 @@ function runResults(id, reviewerView){
    GET, so the columns read as constraint-and-observation rather than the
    expected-versus-observed pair the Assessments view uses (§9.1 applies only
    there — Bruno asserts shape and presence, not values). */
-function stepElementsHTML(scen, s){
+function stepElementsHTML(scen, s, span){
   const statusOk = s.observedStatus === s.status;
   const rows = s.elements.map(e => `<tr>
     <td class="mono">${esc(e.el)}</td>
@@ -1984,7 +2064,7 @@ function stepElementsHTML(scen, s){
     <td><span class="dotstate ${ST_LABEL[e.st][0]}"><i></i>${esc(ST_LABEL[e.st][1])}</span>
       ${e.why ? `<div class="muted" style="font-size:12px">${esc(e.why)}</div>` : ''}</td>
   </tr>`).join('');
-  return `<tr><td colspan="3" style="background:#f8f9fa;padding:14px 16px">
+  return `<tr><td colspan="${span || 3}" style="background:#f8f9fa;padding:14px 16px">
     <div class="muted" style="font-size:12.5px;margin-bottom:8px">
       <span class="mono">GET</span> &middot; <span class="mono">${esc(scen.scenario)}</span> &mdash;
       asserted on the response the vendor's API returned for data they loaded themselves.</div>
@@ -2021,18 +2101,19 @@ function brunoResultsHTML(r){
       </div>
       <table class="t">
         <thead><tr><th>Step</th><th>Status</th><th>Detail</th></tr></thead>
-        <tbody>${scen.steps.map((s, i) => {
+        <tbody>${scen.tasks.filter(t => t.step).map((t, i) => {
           const open = APP.openSteps[sel + '#' + i];
+          const c = t.check;
           return `<tr>
-          <td>${esc(s.label)}</td>
-          <td>${s.st === 'pass' ? '<span class="dotstate ok"><i></i>Passed</span>'
-              : s.st === 'fail' ? '<span class="dotstate bad"><i></i>Failed</span>'
-              : '<span class="dotstate">Not executed</span>'}</td>
-          <td class="muted">${esc(s.msg) || (s.st === 'skipped' ? 'Skipped — a prior step in the scenario failed.' : '')}
-            ${s.st === 'skipped' ? '' : `<div style="margin-top:4px"><button class="linkish"
+          <td>${esc(t.step.name)}</td>
+          <td>${!c ? '<span class="dotstate">Not attempted</span>'
+              : c.st === 'pass' ? '<span class="dotstate ok"><i></i>Passed</span>'
+              : '<span class="dotstate bad"><i></i>Failed</span>'}</td>
+          <td class="muted">${c ? esc(c.msg) : 'No check has been recorded for this task.'}
+            ${c ? `<div style="margin-top:4px"><button class="linkish"
               data-act="togglestepels" data-key="${esc(sel + '#' + i)}">${open
-                ? 'Hide elements &#9652;' : 'View elements &#9662;'}</button></div>`}</td>
-        </tr>${open ? stepElementsHTML(scen, s) : ''}`;
+                ? 'Hide elements &#9652;' : 'View elements &#9662;'}</button></div>` : ''}</td>
+        </tr>${open && c ? stepElementsHTML(scen, Object.assign({}, t.step, c)) : ''}`;
         }).join('')}</tbody>
       </table>
       <div style="margin-top:16px"><button class="linkish" data-act="closescenario">Back to all scenarios</button></div>
@@ -2041,23 +2122,34 @@ function brunoResultsHTML(r){
       </div>
     </div>`;
   }
-  const failed = r.results.scenarios.filter(s => s.st !== 'pass');
+  /* A scenario fails if any checked task failed, passes if something was checked
+     and nothing failed, and is not attempted only when no task in it was checked
+     (ID9) — "never tried" and "tried and broke" call for different responses. */
+  const scenState = s => {
+    const checked = s.tasks.filter(t => t.check);
+    if (!checked.length) return 'none';
+    return checked.some(t => t.check.st === 'fail') ? 'fail' : 'pass';
+  };
+  const failed = r.results.scenarios.filter(s => scenState(s) === 'fail');
+  const t = resultTally(r.results);
   return `<div class="card">
     <div class="cardhead"><h2>Scenario results <span class="hint">Bruno-based results are shown by scenario (FR10).</span></h2>
-      <div class="right muted" style="font-size:12.5px">${r.results.scenarios.length - failed.length} passed
-        &middot; ${failed.length} failed</div></div>
+      <div class="right muted" style="font-size:12.5px">${t.pass} passed
+        &middot; ${t.fail} failed &middot; ${t.notAttempted} not attempted</div></div>
     ${failed.length ? `<div class="banner red"><h3>${failed.length} scenario(s) failed</h3>
       <ul>${failed.map(s => `<li><strong>${esc(s.area)}/${esc(s.scenario)}</strong> —
-        ${esc((s.steps.find(x => x.st === 'fail') || {}).msg || '')}</li>`).join('')}</ul></div>` : ''}
+        ${esc((s.tasks.find(x => x.check && x.check.st === 'fail') || {check:{}}).check.msg || '')}</li>`).join('')}</ul></div>` : ''}
     <table class="t">
-      <thead><tr><th>Area or group</th><th>Scenario</th><th>Steps passed</th><th>Status</th><th class="act">Action</th></tr></thead>
+      <thead><tr><th>Area or group</th><th>Scenario</th><th>Tasks verified</th><th>Status</th><th class="act">Action</th></tr></thead>
       <tbody>${r.results.scenarios.map(s => {
-        const okCount = s.steps.filter(x => x.st === 'pass').length;
+        const st = scenState(s);
+        const okCount = s.tasks.filter(x => x.check && x.check.st === 'pass').length;
         return `<tr>
           <td>${esc(s.area)}</td><td>${esc(s.scenario)}</td>
-          <td class="muted">${okCount} of ${s.steps.length}</td>
-          <td>${s.st === 'pass' ? '<span class="dotstate ok"><i></i>Passed</span>'
-                                : '<span class="dotstate bad"><i></i>Failed</span>'}</td>
+          <td class="muted">${okCount} of ${s.tasks.filter(x => x.step).length}</td>
+          <td>${st === 'pass' ? '<span class="dotstate ok"><i></i>Passed</span>'
+               : st === 'fail' ? '<span class="dotstate bad"><i></i>Failed</span>'
+               : '<span class="dotstate">Not attempted</span>'}</td>
           <td class="act"><button class="btn ghost sm" data-act="openscenario"
             data-key="${esc(s.area + '/' + s.scenario)}">View steps</button></td></tr>`;
       }).join('')}</tbody>
@@ -2126,7 +2218,7 @@ function reviewerDashboard(){
   const newlyReady = APP.submissions.filter(s => s.status === 'ready');
   const changed = APP.submissions.filter(hasUnseenChanges);
   const inflight = APP.runs.filter(r => r.state === 'queued' || r.state === 'running');
-  const recentFail = APP.runs.filter(r => r.state === 'completed' && r.outcome !== 'passed')
+  const recentFail = APP.runs.filter(r => isFinished(r) && r.outcome !== 'passed')
     .sort((a,b) => new Date(b.ended) - new Date(a.ended)).slice(0, 6);
   const rowLink = s => `<a href="#/review/${s.id}">${esc(product(s.productId).name)}</a>`;
 

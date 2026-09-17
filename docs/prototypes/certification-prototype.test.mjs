@@ -114,3 +114,52 @@ test('every SIS and MTSS scenario yields at least one task', () => {
     }
   }
 });
+
+const openSisRun = p => {
+  const sub = p.APP.submissions.find(s => s.model === 'sis');
+  return p.startRun(sub, 'realistic');
+};
+
+test('a Bruno run opens with every task unchecked', () => {
+  const p = loadPrototype();
+  const run = openSisRun(p);
+  assert.equal(run.state, 'open');
+  assert.equal(run.ended, null);
+  const scen = p.scenarioOf(run, 'MasterSchedule/Sections');
+  assert.equal(scen.tasks.length, 4);
+  assert.ok(scen.tasks.every(t => t.check === null), 'nothing is checked at start');
+  assert.equal(scen.seq, 12);
+});
+
+test('a task with a verification step carries its resolved spec', () => {
+  const p = loadPrototype();
+  const scen = p.scenarioOf(openSisRun(p), 'MasterSchedule/Sections');
+  const third = scen.tasks[2];
+  assert.ok(third.step, 'task 3 has a verification step');
+  assert.equal(third.step.changed, 'availableCredits');
+  assert.ok(third.step.spec.includes('sectionIdentifier:S'),
+    "step 3 inherits step 1's spec through '='");
+});
+
+test('a task without a verification step has a null step', () => {
+  const p = loadPrototype();
+  const scen = p.scenarioOf(openSisRun(p), 'StudentAttendance/StudentSchoolAttendanceEvents');
+  assert.equal(scen.tasks.length, 5);
+  assert.equal(scen.tasks[2].step, null, 'task 3 is not asserted');
+  assert.ok(scen.tasks[4].step, 'task 5 is the Delete check');
+  assert.equal(scen.tasks[4].step.status, 404);
+});
+
+test('completeness and artifact pins are stamped at start', () => {
+  const p = loadPrototype();
+  const run = openSisRun(p);
+  assert.ok(['Complete', 'Incomplete'].includes(run.completeness));
+  assert.ok('mapping' in run.pinned, 'artifact versions pinned at start');
+});
+
+test('an Assessments run still uses the batch path', () => {
+  const p = loadPrototype();
+  const sub = p.APP.submissions.find(s => s.model === 'assessments');
+  const run = p.startRun(sub, 'realistic');
+  assert.equal(run.state, 'queued', 'Assessments is unchanged');
+});
