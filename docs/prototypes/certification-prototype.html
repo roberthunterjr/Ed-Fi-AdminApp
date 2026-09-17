@@ -1196,6 +1196,36 @@ function runCheck(run, scenarioKey, taskNo){
   return task.check;
 }
 
+/* Sealing freezes the latest check per task and re-executes nothing (ID2). The
+   accumulated checks are the evidence. A run may be sealed with tasks never
+   checked (ID9) — whether partial evidence suffices is the reviewer's call, not
+   the platform's (§12, D25). */
+function sealRun(run){
+  if (run.state !== 'open') return run;
+  const sub = submission(run.submissionId);
+  run.state = 'sealed';
+  run.ended = tick();
+  const t = resultTally(run.results);
+  run.outcome = t.fail > 0 ? 'failed' : (t.pass > 0 ? 'passed' : 'not-attempted');
+  hist(sub, 'Run ' + run.id + ' sealed — ' + run.completeness + ' — ' +
+    t.pass + ' passed, ' + t.fail + ' failed, ' + t.notAttempted + ' not attempted');
+  recomputeStatus(sub);
+  return run;
+}
+/* Abandoning is the honest option when a run has gone the wrong way. Forcing a
+   seal instead would push a meaningless record into the review queue (ID5). */
+function abandonRun(run){
+  if (run.state !== 'open') return run;
+  const sub = submission(run.submissionId);
+  run.state = 'abandoned';
+  run.ended = tick();
+  run.results = null;
+  run.outcome = 'abandoned';
+  hist(sub, 'Run ' + run.id + ' abandoned — its checks were discarded');
+  recomputeStatus(sub);
+  return run;
+}
+
 /* Builds the run state a vendor would have arrived at by working every scenario
    through to the end. Used only to seed the prototype's run history, so the
    sealed runs on screen have real checks behind them. */

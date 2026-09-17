@@ -242,3 +242,88 @@ test('an open run does not block the product', () => {
   assert.equal(run.state, 'open');
   assert.equal(p.busyEnv(run.env), undefined, 'idle between checks');
 });
+
+test('sealing freezes the run and re-executes nothing', () => {
+  const p = loadPrototype();
+  const {run, key} = sectionsRun(p);
+  p.runCheck(run, key, 1);
+  const before = p.scenarioOf(run, key).tasks[0].check;
+  p.sealRun(run);
+  assert.equal(run.state, 'sealed');
+  assert.ok(run.ended, 'records when it was sealed');
+  assert.equal(p.scenarioOf(run, key).tasks[0].check, before, 'the check object is untouched');
+  assert.equal(p.scenarioOf(run, key).tasks[1].check, null, 'unchecked stays unchecked');
+});
+
+test('a sealed run with only passing checks reports passed', () => {
+  const p = loadPrototype();
+  const sub = p.APP.submissions.find(s => s.model === 'sis');
+  const run = p.startRun(sub, 'pass');
+  p.runCheck(run, 'MasterSchedule/Sections', 1);
+  p.sealRun(run);
+  assert.equal(run.outcome, 'passed');
+});
+
+test('a sealed run with a failure reports failed', () => {
+  const p = loadPrototype();
+  const {run, key} = sectionsRun(p);
+  p.runCheck(run, key, 4);
+  p.sealRun(run);
+  assert.equal(run.outcome, 'failed');
+});
+
+test('a sealed run with no checks at all reports not-attempted', () => {
+  const p = loadPrototype();
+  const run = openSisRun(p);
+  p.sealRun(run);
+  assert.equal(run.outcome, 'not-attempted');
+});
+
+test('abandoning discards the accumulated checks', () => {
+  const p = loadPrototype();
+  const {run, key} = sectionsRun(p);
+  p.runCheck(run, key, 1);
+  p.abandonRun(run);
+  assert.equal(run.state, 'abandoned');
+  assert.equal(run.results, null, 'checks are discarded');
+});
+
+test('an open run never satisfies the readiness gate', () => {
+  const p = loadPrototype();
+  const sub = p.APP.submissions.find(s => s.model === 'sis');
+  const run = p.startRun(sub, 'pass');
+  run.completeness = 'Complete';
+  assert.equal(p.isQualifying(run), false, 'open is not finished');
+  p.sealRun(run);
+  assert.equal(p.isQualifying(run), true);
+});
+
+test('an abandoned run never qualifies however complete it was', () => {
+  const p = loadPrototype();
+  const sub = p.APP.submissions.find(s => s.model === 'sis');
+  const run = p.startRun(sub, 'pass');
+  run.completeness = 'Complete';
+  p.abandonRun(run);
+  assert.equal(p.isQualifying(run), false);
+});
+
+test('a sealed run stamped Complete qualifies even when its checks failed (D25)', () => {
+  const p = loadPrototype();
+  const {run, key} = sectionsRun(p);
+  run.completeness = 'Complete';
+  p.runCheck(run, key, 4);
+  p.sealRun(run);
+  assert.equal(run.outcome, 'failed');
+  assert.equal(p.isQualifying(run), true, 'the gate is a completeness check, not a quality check');
+});
+
+test('sealing and abandoning are one-way', () => {
+  const p = loadPrototype();
+  const {run, key} = sectionsRun(p);
+  p.sealRun(run);
+  const ended = run.ended;
+  p.sealRun(run);
+  p.abandonRun(run);
+  assert.equal(run.state, 'sealed', 'a sealed run cannot be re-sealed or abandoned');
+  assert.equal(run.ended, ended);
+});
