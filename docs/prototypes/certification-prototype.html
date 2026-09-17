@@ -179,6 +179,8 @@ table.t td.act{text-align:right;white-space:nowrap}
 .asof{color:var(--muted-2);font-size:12px;margin:-6px 0 16px}
 
 /* ---------- forms ---------- */
+.paramgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.paramgrid .field{margin-bottom:0;max-width:none}
 .field{margin-bottom:16px;max-width:520px}
 .field label{display:block;font-weight:700;margin-bottom:6px;font-size:13.5px}
 .field input[type=text],.field input[type=password],.field select,.field textarea{
@@ -967,6 +969,8 @@ const APP = {
   submissions: [],
   runs: [],
   openSteps: {},
+  prepare: null,
+  showOpenRuns: false,
   loadedAt: new Date(NOW)
 };
 const me = () => APP.persona === 'vendor' ? APP.vendorUser : APP.reviewerUser;
@@ -1261,6 +1265,22 @@ function runCheck(run, scenarioKey, taskNo){
     attempts: (task.check ? task.check.attempts : 0) + 1
   };
   return task.check;
+}
+
+/* Runs a scenario's tasks in order and stops at the first failure, matching the
+   collection's own dependency behaviour — 03 calls validateDependency() against
+   variables 01 sets, so continuing past a failure would only produce noise. */
+function checkAll(run, scenarioKey){
+  const scen = scenarioOf(run, scenarioKey);
+  if (!scen) return 0;
+  let n = 0;
+  for (const task of scen.tasks){
+    if (!task.step || task.outOfScope) continue;
+    const check = runCheck(run, scenarioKey, task.n);
+    n++;
+    if (check && check.st === 'fail') break;
+  }
+  return n;
 }
 
 /* Sealing freezes the latest check per task and re-executes nothing (ID2). The
@@ -1980,6 +2000,9 @@ function vendorNewRun(id){
         return esc(a.label) + ' ' + (c ? 'v' + c.v : '—'); }).join(' · ')}</p></div>`;
   }
 
+  /* The Prepare panel is where a vendor actually works a scenario, so it needs an
+     open run to record checks against. */
+  const openRun = runsFor(sub).find(r => r.state === 'open');
   const scenarioTable = m.kind === 'bruno' ? `
     <div class="card">
       <div class="cardhead"><h2>Scenarios</h2>
@@ -1996,14 +2019,25 @@ function vendorNewRun(id){
           </select></span>
       </div>
       <table class="t">
-        <thead><tr><th>Area or group</th><th>Scenario</th><th>Steps</th><th class="act">Action</th></tr></thead>
+        <thead><tr><th>Area or group</th><th>Scenario</th><th>Steps</th><th>Verified</th>
+          <th class="act">Action</th></tr></thead>
         <tbody>${COLLECTION[sub.model]
           .filter(s => !APP.areaFilter || s[0] === APP.areaFilter)
-          .map(([area, scenario, steps]) => `<tr>
+          .map(([area, scenario, steps]) => {
+            const key = area + '/' + scenario;
+            const scen = openRun ? scenarioOf(openRun, key) : null;
+            const checkable = scen ? scen.tasks.filter(x => x.step && !x.outOfScope).length : 0;
+            const done = scen ? scen.tasks.filter(x => x.check && x.check.st === 'pass').length : 0;
+            return `<tr>
             <td>${esc(area)}</td><td>${esc(scenario)}</td>
             <td class="muted">${steps.length}</td>
-            <td class="act"><button class="btn sm" ${blocked ? 'disabled' : ''}
-              data-act="onescenario">Validate Scenario</button></td></tr>`).join('')}</tbody>
+            <td class="muted">${scen ? done + ' of ' + checkable : '—'}</td>
+            <td class="act">${openRun
+              ? `<button class="btn sm" data-act="openprepare" data-run="${esc(openRun.id)}"
+                   data-key="${esc(key)}">Prepare</button>`
+              : `<button class="btn sm" disabled title="Start a run to begin checking">Prepare</button>`}
+            </td></tr>`;
+          }).join('')}</tbody>
       </table>
       <div class="pager"><button>&laquo;</button><button>&lsaquo;</button><span>1 of 1</span>
         <button>&rsaquo;</button><button>&raquo;</button>
@@ -2065,7 +2099,11 @@ function vendorNewRun(id){
           : 'Blocked: a valid mapping CSV is required.'}</span>` : ''}
       </div>
     </div>
-    ${scenarioTable}`;
+    ${APP.prepare && openRun && APP.prepare.run === openRun.id
+        ? preparePanelHTML(openRun, APP.prepare.key) +
+          `<div style="margin:-6px 0 18px"><button class="linkish"
+             data-act="closeprepare">Back to all scenarios</button></div>`
+        : scenarioTable}`;
 }
 
 /* ---- run results ---- */
@@ -2187,7 +2225,93 @@ function stepElementsHTML(scen, s, span){
   </td></tr>`;
 }
 
+/* The vendor's working surface. Tasks are the rows because tasks are the work;
+   the verification steps only check it. Prerequisites are shown but do not block
+   — a check against missing prerequisite data fails on its own with a better
+   message than a pre-emptive block could give (D24). */
+function preparePanelHTML(run, scenarioKey){
+  const scen = scenarioOf(run, scenarioKey);
+  if (!scen) return '';
+  const sealed = run.state !== 'open';
+  const defs = scenarioParamDefs(scenarioKey);
+  const checkable = scen.tasks.filter(t => t.step && !t.outOfScope).length;
+  const done = scen.tasks.filter(t => t.check && t.check.st === 'pass').length;
+
+  return `<div class="card">
+    <div class="cardhead"><h2>${esc(scen.area)} <span class="hint">/
+      <span class="mono">${esc(scen.scenario)}</span></span></h2>
+      <div class="right muted" style="font-size:12.5px">load order ${scen.seq} of
+        ${COLLECTION[run.model].length} &middot; ${done} of ${checkable} verified</div></div>
+
+    ${sealed ? `<div class="banner amber"><h3>This run is ${esc(run.state)}</h3>
+      <p>Its checks are frozen as the evidence for review. Start a new run to check
+      tasks again (ID2).</p></div>` : ''}
+
+    ${scen.prereqs.length ? `<div class="muted" style="margin-bottom:12px">
+      <strong>Prerequisites:</strong> ${scen.prereqs.map(esc).join(' &middot; ')}
+      <div class="hint" style="margin-top:4px">Load these first. The platform does not block on
+      them — a check against missing data fails with a clearer message than a block would
+      give (D24).</div></div>` : ''}
+
+    ${defs.length ? `<div class="card" style="box-shadow:none;border:1px solid #e3e6e8;margin-bottom:14px">
+      <h3 style="margin-top:0">Parameters</h3>
+      <div class="hint" style="margin:-6px 0 10px">The identifiers you used when loading this
+        scenario's data. Shared by every step in it (ID4).</div>
+      <div class="paramgrid">${defs.map(d => `<div class="field">
+        <label>${esc(d.label)}</label>
+        <input data-act="setparam" data-run="${esc(run.id)}" data-key="${esc(scenarioKey)}"
+          data-param="${esc(d.key)}" value="${esc(scen.params[d.key] || '')}"
+          ${sealed ? 'disabled' : ''} /></div>`).join('')}</div>
+      ${scenarioParamsComplete(scen) ? '' :
+        '<div class="muted" style="font-size:12.5px">Some parameters are still blank.</div>'}
+    </div>` : ''}
+
+    <table class="t">
+      <thead><tr><th>#</th><th>Task</th><th>Result</th><th class="act">Action</th></tr></thead>
+      <tbody>${scen.tasks.map(t => {
+        const open = APP.openSteps[scenarioKey + '@' + t.n];
+        const c = t.check;
+        let result;
+        if (t.outOfScope) result = '<span class="muted">Out of scope</span>';
+        else if (!t.step) result = '<span class="muted">No verification step &mdash; asserted indirectly</span>';
+        else if (!c) result = '<span class="dotstate">Not attempted</span>';
+        else if (c.st === 'pass') result = '<span class="dotstate ok"><i></i>Verified</span>' +
+          (c.attempts > 1 ? `<div class="muted" style="font-size:12px">after ${c.attempts} attempts</div>` : '');
+        else result = `<span class="dotstate ${ST_LABEL[c.kind][0]}"><i></i>${esc(ST_LABEL[c.kind][1])}</span>
+          <div class="muted" style="font-size:12px">${esc(c.msg)}${c.attempts > 1
+            ? ' (still failing after ' + c.attempts + ' attempts)' : ''}</div>`;
+
+        return `<tr>
+          <td class="muted">${t.n}</td>
+          <td${t.outOfScope ? ' style="text-decoration:line-through;opacity:.55"' : ''}>${esc(t.text)}</td>
+          <td>${result}</td>
+          <td class="act">${t.step && !t.outOfScope && !sealed
+            ? `<button class="btn ghost sm" data-act="runcheck" data-run="${esc(run.id)}"
+                 data-key="${esc(scenarioKey)}" data-task="${t.n}">${c ? 'Re-check' : 'Check'}</button>`
+            : ''}
+            ${c ? `<button class="linkish" data-act="togglestepels"
+                 data-key="${esc(scenarioKey + '@' + t.n)}">${open
+                   ? 'Hide elements &#9652;' : 'View elements &#9662;'}</button>` : ''}</td>
+        </tr>${open && c ? stepElementsHTML(scen, Object.assign({}, t.step, c), 4) : ''}`;
+      }).join('')}</tbody>
+    </table>
+
+    ${sealed ? '' : `<div class="btnrow" style="margin-top:14px">
+      <button class="btn" data-act="checkall" data-run="${esc(run.id)}"
+        data-key="${esc(scenarioKey)}">Check all tasks</button>
+      <span class="muted" style="font-size:12.5px">Runs them in order and stops at the first
+        failure, as the collection's own dependencies do.</span></div>`}
+  </div>`;
+}
+
 function brunoResultsHTML(r){
+  /* While a run is open the vendor works a scenario in the Prepare panel, which
+     takes over the card rather than sitting beside the scenario list. */
+  if (APP.prepare && APP.prepare.run === r.id && r.state === 'open'){
+    return preparePanelHTML(r, APP.prepare.key) +
+      `<div style="margin:-6px 0 18px"><button class="linkish"
+         data-act="closeprepare">Back to all scenarios</button></div>`;
+  }
   const sel = APP.openScenario || null;
   const scen = sel ? r.results.scenarios.find(s => s.area + '/' + s.scenario === sel) : null;
   if (scen){
@@ -2251,8 +2375,11 @@ function brunoResultsHTML(r){
           <td>${st === 'pass' ? '<span class="dotstate ok"><i></i>Passed</span>'
                : st === 'fail' ? '<span class="dotstate bad"><i></i>Failed</span>'
                : '<span class="dotstate">Not attempted</span>'}</td>
-          <td class="act"><button class="btn ghost sm" data-act="openscenario"
-            data-key="${esc(s.area + '/' + s.scenario)}">View steps</button></td></tr>`;
+          <td class="act">${r.state === 'open'
+            ? `<button class="btn sm" data-act="openprepare" data-run="${esc(r.id)}"
+                 data-key="${esc(s.area + '/' + s.scenario)}">Prepare</button>`
+            : `<button class="btn ghost sm" data-act="openscenario"
+                 data-key="${esc(s.area + '/' + s.scenario)}">View steps</button>`}</td></tr>`;
       }).join('')}</tbody>
     </table>
     <div class="pager"><button>&laquo;</button><button>&lsaquo;</button><span>1 of 1</span>
@@ -2594,6 +2721,28 @@ function bind(){
           const run = APP.runs.find(x => x.id === node.dataset.run);
           const scen = scenarioOf(run, node.dataset.key);
           scen.params[node.dataset.param] = node.value;
+          break;
+        }
+        case 'openprepare':
+          APP.prepare = {run: node.dataset.run, key: node.dataset.key};
+          APP.openSteps = {};
+          render();
+          break;
+        case 'closeprepare': APP.prepare = null; APP.openSteps = {}; render(); break;
+        case 'runcheck': {
+          const run = APP.runs.find(x => x.id === node.dataset.run);
+          const c = runCheck(run, node.dataset.key, +node.dataset.task);
+          toast(c.st === 'pass'
+            ? 'Task <strong>' + node.dataset.task + '</strong> verified.'
+            : 'Task <strong>' + node.dataset.task + '</strong> failed — ' + esc(c.msg));
+          render();
+          break;
+        }
+        case 'checkall': {
+          const run = APP.runs.find(x => x.id === node.dataset.run);
+          const n = checkAll(run, node.dataset.key);
+          toast('Checked ' + n + ' task(s), stopping at the first failure.');
+          render();
           break;
         }
         case 'openscenario': APP.openScenario = node.dataset.key; APP.openSteps = {}; render(); break;

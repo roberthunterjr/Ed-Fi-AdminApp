@@ -379,3 +379,116 @@ test('every SCENARIO_PARAMS key names a real scenario', () => {
     assert.ok(known.has(key), `${key} is not a scenario in the collection`);
   }
 });
+
+test('the panel lists every task, including unverified ones', () => {
+  const p = loadPrototype();
+  const run = openSisRun(p);
+  const html = p.preparePanelHTML(run, 'StudentAttendance/StudentSchoolAttendanceEvents');
+  assert.match(html, /Tardy/, 'task text is shown');
+  assert.match(html, /no verification step/i, 'tasks 3 and 4 say so');
+  assert.equal((html.match(/data-act="runcheck"/g) || []).length, 3,
+    'only the three tasks with steps offer a check');
+});
+
+test('the panel shows prerequisites and load order', () => {
+  const p = loadPrototype();
+  const html = p.preparePanelHTML(openSisRun(p), 'MasterSchedule/Sections');
+  assert.match(html, /Class Period/);
+  assert.match(html, /Course Offering/);
+  assert.match(html, /load order 12\s+of\s+45/, 'load order is shown');
+});
+
+test('an out-of-scope task offers no check', () => {
+  const p = loadPrototype();
+  const html = p.preparePanelHTML(openSisRun(p), 'MasterSchedule/BellSchedules');
+  assert.match(html, /out of scope/i);
+  assert.equal((html.match(/data-act="runcheck"/g) || []).length, 1,
+    'only task 1 is in scope and asserted');
+});
+
+test('a checked task renders its result', () => {
+  const p = loadPrototype();
+  const {run, key} = sectionsRun(p);
+  p.runCheck(run, key, 4);
+  const html = p.preparePanelHTML(run, key);
+  assert.match(html, /Value not updated/, 'the failure kind is named');
+  assert.match(html, /Re-check/, 'a checked task offers a re-check');
+});
+
+test('the panel renders a parameter field per declared parameter', () => {
+  const p = loadPrototype();
+  const html = p.preparePanelHTML(openSisRun(p), 'MasterSchedule/Sections');
+  assert.equal((html.match(/data-act="setparam"/g) || []).length, 5);
+  assert.match(html, /Section Identifier/);
+});
+
+test('checkAll stops at the first failure', () => {
+  const p = loadPrototype();
+  const {run, key} = sectionsRun(p);
+  const n = p.checkAll(run, key);
+  assert.equal(n, 4, 'Sections fails on task 4, so all four are attempted');
+  const scen = p.scenarioOf(run, key);
+  assert.equal(scen.tasks[3].check.st, 'fail');
+});
+
+test('checkAll stops early when an earlier task fails', () => {
+  const p = loadPrototype();
+  const run = openSisRun(p);
+  const n = p.checkAll(run, 'StudentGrade/Grades');
+  assert.equal(n, 1, 'Grades fails on task 1, so nothing after it runs');
+  const scen = p.scenarioOf(run, 'StudentGrade/Grades');
+  assert.equal(scen.tasks[0].check.st, 'fail');
+  assert.equal(scen.tasks[1].check, null, 'later tasks are left unattempted');
+});
+
+test('the panel refuses to render checks for a sealed run', () => {
+  const p = loadPrototype();
+  const {run, key} = sectionsRun(p);
+  p.sealRun(run);
+  const html = p.preparePanelHTML(run, key);
+  assert.match(html, /sealed/i);
+  assert.equal((html.match(/data-act="runcheck"/g) || []).length, 0);
+});
+
+test('an attempt count is surfaced when a task took more than one try', () => {
+  const p = loadPrototype();
+  const {run, key} = sectionsRun(p);
+  p.runCheck(run, key, 1);
+  p.runCheck(run, key, 1);
+  assert.match(p.preparePanelHTML(run, key), /after 2 attempts/);
+});
+
+test('a repeatedly failing task says so', () => {
+  const p = loadPrototype();
+  const {run, key} = sectionsRun(p);
+  p.runCheck(run, key, 4);
+  p.runCheck(run, key, 4);
+  assert.match(p.preparePanelHTML(run, key), /still failing after 2 attempts/);
+});
+
+test('the run view hands over to the Prepare panel while a run is open', () => {
+  const p = loadPrototype();
+  const {run, key} = sectionsRun(p);
+  p.APP.prepare = {run: run.id, key};
+  const html = p.brunoResultsHTML(run);
+  assert.match(html, /data-act="runcheck"/, 'the panel took over the card');
+  assert.match(html, /Back to all scenarios/);
+});
+
+test('a sealed run shows the scenario list, not the Prepare panel', () => {
+  const p = loadPrototype();
+  const {run, key} = sectionsRun(p);
+  p.sealRun(run);
+  p.APP.prepare = {run: run.id, key};
+  const html = p.brunoResultsHTML(run);
+  assert.ok(!/data-act="runcheck"/.test(html), 'a sealed run offers no checks');
+  assert.match(html, /data-act="openscenario"/, 'it offers View steps instead');
+});
+
+test('an open run offers Prepare on each scenario row', () => {
+  const p = loadPrototype();
+  const run = openSisRun(p);
+  p.APP.prepare = null;
+  const html = p.brunoResultsHTML(run);
+  assert.equal((html.match(/data-act="openprepare"/g) || []).length, 45);
+});
