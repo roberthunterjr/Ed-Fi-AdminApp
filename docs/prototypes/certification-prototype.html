@@ -957,7 +957,11 @@ const ST_LABEL = {
   'fail-assert':['bad','Assertion failed'],
   'fail-absent':['bad','Element absent'],
   'fail-unchanged':['bad','Value not updated'],
-  'fail-status':['bad','Unexpected status']
+  'fail-status':['bad','Unexpected status'],
+  /* FR8 requires scenario, infrastructure and authentication failures to be told
+     apart, so a check can fail for a reason that is not the vendor's data. */
+  'fail-infra':['bad','Environment unreachable'],
+  'fail-auth':['bad','Authentication failed']
 };
 
 /* ---------- mutable application state ---------- */
@@ -1246,6 +1250,22 @@ function runCheck(run, scenarioKey, taskNo){
   if (!scen) return null;
   const task = scen.tasks.find(t => t.n === taskNo);
   if (!task || !task.step) return null;
+
+  /* The prototype's outcome switch reaches a single check as well as a whole run;
+     without it an interactive run could never demonstrate the distinction FR8
+     exists for, because it never executes as a batch. */
+  if (run.mode === 'infra' || run.mode === 'auth'){
+    const infra = run.mode === 'infra';
+    task.check = {
+      st:'fail', kind: infra ? 'fail-infra' : 'fail-auth',
+      msg: infra ? 'Executor could not reach the environment ' + run.env
+                 : '401 from the environment ' + run.env,
+      observedStatus: infra ? 0 : 401, elements: [],
+      params: Object.assign({}, scen.params), at: tick(), by: me(),
+      attempts: (task.check ? task.check.attempts : 0) + 1
+    };
+    return task.check;
+  }
 
   const fails = run.mode === 'pass' ? {} : (BRUNO_FAILS[run.model] || {});
   const f = fails[scenarioKey];
@@ -2117,8 +2137,10 @@ function vendorNewRun(id){
           <option value="infra">Infrastructure error — executor cannot reach the environment</option>
           <option value="auth">Authentication failure — 401 from the environment</option>
         </select>
-        <div class="help">Real runs have no such switch. It is here because FR8 requires scenario failures,
-          infrastructure failures and authentication failures to be told apart.</div></div>
+        <div class="help">Real runs have no such switch. It is here because FR8 requires scenario
+          failures, infrastructure failures and authentication failures to be told apart. For a SIS
+          or MTSS run the setting applies to every check in the run, so you can drive one open run
+          down a single branch.</div></div>
       <div class="btnrow">
         <button class="btn" data-act="startrun" data-sub="${sub.id}" ${blocked ? 'disabled' : ''}>
           Start ${esc(m.label)} run</button>

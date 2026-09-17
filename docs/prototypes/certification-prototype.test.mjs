@@ -558,3 +558,33 @@ test('an open run offers seal and abandon; a sealed one offers neither', () => {
   assert.ok(!/data-act="sealrun"/.test(sealed), 'a sealed run cannot be re-sealed');
   assert.ok(!/data-act="abandonrun"/.test(sealed));
 });
+
+test('infra mode fails a check without reaching the API', () => {
+  const p = loadPrototype();
+  const sub = p.APP.submissions.find(s => s.model === 'sis');
+  const run = p.startRun(sub, 'infra');
+  const c = p.runCheck(run, 'MasterSchedule/Sections', 1);
+  assert.equal(c.st, 'fail');
+  assert.equal(c.kind, 'fail-infra');
+  assert.deepEqual(c.elements, []);
+  assert.match(c.msg, /could not reach/i);
+});
+
+test('auth mode fails a check with a 401', () => {
+  const p = loadPrototype();
+  const sub = p.APP.submissions.find(s => s.model === 'sis');
+  const run = p.startRun(sub, 'auth');
+  const c = p.runCheck(run, 'MasterSchedule/Sections', 1);
+  assert.equal(c.kind, 'fail-auth');
+  assert.equal(c.observedStatus, 401);
+});
+
+test('infra and auth failures are distinguishable from scenario failures (FR8)', () => {
+  const p = loadPrototype();
+  const sub = p.APP.submissions.find(s => s.model === 'sis');
+  const kinds = ['realistic', 'infra', 'auth'].map(mode => {
+    const run = p.startRun(sub, mode);
+    return p.runCheck(run, 'MasterSchedule/Sections', 4).kind;
+  });
+  assert.deepEqual(kinds, ['fail-unchanged', 'fail-infra', 'fail-auth']);
+});
