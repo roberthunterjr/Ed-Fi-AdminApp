@@ -7,6 +7,10 @@ services:
   edfiadminapp-keycloak:
     image: quay.io/keycloak/keycloak:${KEYCLOAK_TAG:-26.1}
     container_name: edfiadminapp-keycloak
+    # Without a restart policy, Keycloak and the Admin App database stay down after a
+    # host reboot while nginx (restart: always) comes back and crash-loops on the
+    # unresolvable edfiadminapp-keycloak upstream, taking every route offline.
+    restart: unless-stopped
     ports:
       - '127.0.0.1:${KEYCLOAK_PORT_EXPOSED:-8080}:8080'
     volumes:
@@ -61,6 +65,7 @@ services:
     profiles:
       - postgresql
     container_name: edfiadminapp-postgres
+    restart: unless-stopped
     ports:
       - '127.0.0.1:${POSTGRES_PORT_EXPOSED:-5432}:5432'
     environment:
@@ -83,6 +88,7 @@ services:
     profiles:
       - mssql
     container_name: edfiadminapp-mssql
+    restart: unless-stopped
     ports:
       - '127.0.0.1:${MSSQL_PORT_EXPOSED:-1433}:1433'
     # The image's own entrypoint (launch_sqlservr.sh -> run_custom_setup.sh) creates the
