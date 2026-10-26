@@ -17,7 +17,7 @@ import {
   Ods,
   SbSyncQueue,
 } from '@edanalytics/models-server';
-import { EntityManager, Repository } from 'typeorm';
+import { EntityManager, IsNull, Not, Repository } from 'typeorm';
 import {
   StartingBlocksServiceV1,
   StartingBlocksServiceV2,
@@ -33,8 +33,13 @@ import {
   ISbEnvironmentConfigPublicV2,
   toSbSyncQueueDto,
 } from '@edanalytics/models';
+import { trimTrailingSlashes } from '@edanalytics/utils';
 import axios from 'axios';
-import { persistSyncTenant, SyncableOds } from '../sb-sync/sync-ods';
+import {
+  deleteOdsCertificationProcesses,
+  persistSyncTenant,
+  SyncableOds,
+} from '../sb-sync/sync-ods';
 import {
   EDFI_TENANT_ODSS_EDORGS_RELATIONS,
   SB_ENVIRONMENT_EDFI_TENANTS_RELATIONS,
@@ -333,7 +338,7 @@ export class SbEnvironmentsEdFiService {
     createSbEnvironmentDto: PostSbEnvironmentDto,
     tenant?: string,
   ): Promise<TenantCredentials> {
-    const registerUrl = `${createSbEnvironmentDto.adminApiUrl}/connect/register`;
+    const registerUrl = `${trimTrailingSlashes(createSbEnvironmentDto.adminApiUrl!)}/connect/register`;
     const secretCharset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
     const secretBytes = randomBytes(32);
     const clientSecret = Array.from(
@@ -492,7 +497,11 @@ export class SbEnvironmentsEdFiService {
         // When the Admin API URL changes on a v2/v3 environment, the stored credentials
         // are invalid for the new endpoint. Clear them so the pg_boss job's bootstrap
         // logic re-registers fresh credentials against the new URL.
-        const adminApiUrlChanged = updateDto.adminApiUrl !== existingEnvironment.adminApiUrl;
+        // Compare trimmed values: the DTO strips trailing slashes, but the entity getter
+        // returns new URL(...).toString(), which appends "/" to a path-less URL.
+        const adminApiUrlChanged =
+          trimTrailingSlashes(updateDto.adminApiUrl) !==
+          trimTrailingSlashes(existingEnvironment.adminApiUrl ?? '');
         if (existingStrategy?.supportsMultiTenant && adminApiUrlChanged) {
           this.logger.log(
             `Admin API URL changed for ${existingStrategy.version} environment ${id} — clearing tenant credentials for re-bootstrap`,
@@ -675,7 +684,8 @@ export class SbEnvironmentsEdFiService {
       // Remove all EdOrgs for this tenant's ODS instances
       await em.getRepository(Edorg).delete({ edfiTenantId: tenant.id });
 
-      // Remove all ODS instances for this tenant
+      // Remove all ODS instances for this tenant (certification processes tied to them first, for MSSQL)
+      await deleteOdsCertificationProcesses(em, { edfiTenantId: tenant.id, odsId: Not(IsNull()) });
       await em.getRepository(Ods).delete({ edfiTenantId: tenant.id });
 
       // Remove the tenant itself
@@ -691,7 +701,8 @@ export class SbEnvironmentsEdFiService {
       // Remove all EdOrgs for this tenant's ODS instances
       await em.getRepository(Edorg).delete({ edfiTenantId: tenant.id });
 
-      // Remove all ODS instances for this tenant
+      // Remove all ODS instances for this tenant (certification processes tied to them first, for MSSQL)
+      await deleteOdsCertificationProcesses(em, { edfiTenantId: tenant.id, odsId: Not(IsNull()) });
       await em.getRepository(Ods).delete({ edfiTenantId: tenant.id });
     });
   }

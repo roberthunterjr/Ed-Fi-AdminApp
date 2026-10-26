@@ -16,6 +16,10 @@ export class StepCatalog {
   @Column({ type: 'varchar', length: 255 })
   stepName: string;
 
+  /** The step's .bru file name; meta names and file names can differ. */
+  @Column({ type: 'varchar', length: 255 })
+  fileName: string;
+
   @Column({ type: 'varchar', length: 255, nullable: true })
   displayName: string | null;
 

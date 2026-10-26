@@ -13,7 +13,7 @@ import lunr, { Query, tokenizer } from 'lunr';
 import { useMemo, useRef, useState } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router';
 import { teamQueries } from '../api';
-import { AuthorizeConfig, useAuthorize, useTeamNavContext } from '../helpers';
+import { AuthorizeConfig, getOdsTerminology, useAuthorize, useTeamNavContext } from '../helpers';
 
 // by default this includes dashes, which we don't want because they're part of names
 lunr.tokenizer.separator = /[\s]+/;
@@ -33,8 +33,8 @@ export const EnvironmentsNav = () => {
       {
         enabled: useAuthorize(sbEnvironmentAuth),
       },
-      { teamId }
-    )
+      { teamId },
+    ),
   );
   const searchIndex = useMemo(() => {
     const items = Object.entries(envItems.data || {}).map(([key, value]) => {
@@ -74,8 +74,8 @@ export const EnvironmentsNav = () => {
           query.term(token, {
             wildcard: Query.wildcard.TRAILING | Query.wildcard.LEADING,
             presence: Query.presence.REQUIRED,
-          })
-        )
+          }),
+        ),
       )
       .map((result) => envItems.data![result.ref]);
   }, [searchText, searchIndex, envItems.data]);
@@ -98,12 +98,7 @@ export const EnvironmentsNav = () => {
         value={searchText}
         openWidth="40em"
         items={
-          <Box
-            overflowY="auto"
-            maxH="300px"
-            ref={parentRef}
-            mt={2}
-          >
+          <Box overflowY="auto" maxH="300px" ref={parentRef} mt={2}>
             <Box h={rowVirtualizer.getTotalSize() + 45 + 'px'}>
               <Table
                 css={`
@@ -133,6 +128,15 @@ export const EnvironmentsNav = () => {
                 <Tbody>
                   {rowVirtualizer.getVirtualItems().map((virtualItem, i) => {
                     const item = searchResults[virtualItem.index];
+                    // Reuses the shared v3 term from getOdsTerminology; the v1/v2 label stays the
+                    // pre-existing 'ODSs' literal, matching the TeamNav sidebar.
+                    const rowResourceNames: Record<string, string> = {
+                      ...resourceNames,
+                      odss:
+                        item.version === 'v3'
+                          ? getOdsTerminology(item.version).plural
+                          : resourceNames.odss,
+                    };
                     const tenantResourceActionConfigs: ActionsType = Object.fromEntries(
                       Object.entries(item)
                         .filter(([key, value]) => key in resourceNames && value === true)
@@ -140,15 +144,15 @@ export const EnvironmentsNav = () => {
                           key,
                           {
                             to: `/as/${teamId}/sb-environments/${item.sbEnvironmentId}/edfi-tenants/${item.edfiTenantId}/${key}`,
-                            title: `Go to ${resourceNames[key]}`,
-                            text: resourceNames[key],
+                            title: `Go to ${rowResourceNames[key]}`,
+                            text: rowResourceNames[key],
                             onClick: () =>
                               navigate(
-                                `/as/${teamId}/sb-environments/${item.sbEnvironmentId}/edfi-tenants/${item.edfiTenantId}/${key}`
+                                `/as/${teamId}/sb-environments/${item.sbEnvironmentId}/edfi-tenants/${item.edfiTenantId}/${key}`,
                               ),
                             icon: resourceIcons[key],
                           },
-                        ])
+                        ]),
                     );
                     return (
                       <Tr

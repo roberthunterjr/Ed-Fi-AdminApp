@@ -24,6 +24,7 @@ jest.mock('../../helpers', () => ({
   useAuthorize: jest.fn(() => false),
   globalOwnershipAuthConfig: jest.fn((privilege) => ({ privilege })),
   globalSbEnvironmentAuthConfig: jest.fn((id, privilege) => ({ privilege, subject: { id } })),
+  globalEdfiTenantAuthConfig: jest.fn((id, privilege) => ({ privilege, subject: { id } })),
   popSyncBanner: jest.fn(),
 }));
 
@@ -68,6 +69,7 @@ const buildSbEnvironment = (
     version,
     startingBlocks,
     configPublic,
+    odsDsVersion: '5.2.0',
   }) as unknown as GetSbEnvironmentDto;
 
 type Auth = {
@@ -76,6 +78,8 @@ type Auth = {
   canUpdate?: boolean;
   canDelete?: boolean;
   canRefreshResources?: boolean;
+  canReadTenants?: boolean;
+  canReadOdss?: boolean;
 };
 
 const PRIVILEGE_BY_AUTH: Record<keyof Auth, string> = {
@@ -84,6 +88,8 @@ const PRIVILEGE_BY_AUTH: Record<keyof Auth, string> = {
   canUpdate: 'sb-environment:update',
   canDelete: 'sb-environment:delete',
   canRefreshResources: 'sb-environment:refresh-resources',
+  canReadTenants: 'sb-environment.edfi-tenant:read',
+  canReadOdss: 'ods:read',
 };
 
 let navigate: jest.Mock;
@@ -297,11 +303,14 @@ describe('useSbEnvironmentGlobalActions', () => {
   });
 
   describe('RequestCert ("Request certification")', () => {
+    // The page lists tenants and ODSs, so update alone would land on an error page.
+    const certAuth = { canUpdate: true, canReadTenants: true, canReadOdss: true };
+
     it.each(['v1', 'v2', 'v3'] as const)(
       'is present for a %s environment when the flag is on and the user can update the environment',
       (version) => {
         enableCertificationFlag();
-        const actions = setup(buildSbEnvironment(version, false), { canUpdate: true });
+        const actions = setup(buildSbEnvironment(version, false), { ...certAuth });
         expect(actions.RequestCert).toMatchObject({
           text: 'Request certification',
           title: 'Request certification for Test Env',
@@ -312,14 +321,47 @@ describe('useSbEnvironmentGlobalActions', () => {
 
     it('is present for a startingBlocks environment too (not SB-gated)', () => {
       enableCertificationFlag();
-      const actions = setup(buildSbEnvironment('v2', true), { canUpdate: true });
+      const actions = setup(buildSbEnvironment('v2', true), { ...certAuth });
       expect(actions.RequestCert).toBeDefined();
     });
 
     it('is absent for an environment whose version is unknown, even when the flag is on', () => {
       enableCertificationFlag();
       const env = { ...buildSbEnvironment('v2', false), version: undefined } as GetSbEnvironmentDto;
-      const actions = setup(env, { canUpdate: true });
+      const actions = setup(env, { ...certAuth });
+      expect(actions.RequestCert).toBeUndefined();
+    });
+
+    it.each(['v1', 'v2', 'v3'] as const)(
+      'is absent for a %s environment on Ed-Fi Data Model 4.0.0, even when the flag is on',
+      (version) => {
+        enableCertificationFlag();
+        const env = { ...buildSbEnvironment(version, false), odsDsVersion: '4.0.0' };
+        expect(setup(env as GetSbEnvironmentDto, { ...certAuth }).RequestCert).toBeUndefined();
+      }
+    );
+
+    it('is absent for an environment whose data model is unknown, even when the flag is on', () => {
+      enableCertificationFlag();
+      const env = { ...buildSbEnvironment('v3', false), odsDsVersion: undefined };
+      expect(setup(env as GetSbEnvironmentDto, { ...certAuth }).RequestCert).toBeUndefined();
+    });
+
+    it.each([
+      ['tenants', { canUpdate: true, canReadOdss: true }],
+      ['ODSs', { canUpdate: true, canReadTenants: true }],
+      ['both', { canUpdate: true }],
+    ])('is absent when update is granted but the %s read is missing', (_name, auth) => {
+      enableCertificationFlag();
+      expect(setup(buildSbEnvironment('v2', false), auth).RequestCert).toBeUndefined();
+    });
+
+    it('is absent without update even when both reads are granted', () => {
+      enableCertificationFlag();
+      const actions = setup(buildSbEnvironment('v2', false), {
+        canReadTenants: true,
+        canReadOdss: true,
+      });
       expect(actions.RequestCert).toBeUndefined();
     });
 
@@ -348,6 +390,8 @@ describe('useSbEnvironmentGlobalActions', () => {
         canUpdate: true,
         canDelete: true,
         canRefreshResources: true,
+        canReadTenants: true,
+        canReadOdss: true,
       };
       const pageSplit = () => {
         const { visible, hidden } = splitActions(
@@ -367,7 +411,7 @@ describe('useSbEnvironmentGlobalActions', () => {
 
     it('navigates to the request-certification page on click', () => {
       enableCertificationFlag();
-      const actions = setup(buildSbEnvironment('v2', false), { canUpdate: true });
+      const actions = setup(buildSbEnvironment('v2', false), { ...certAuth });
       actions.RequestCert?.onClick();
       expect(navigate).toHaveBeenCalledWith('/sb-environments/1/request-certification');
     });

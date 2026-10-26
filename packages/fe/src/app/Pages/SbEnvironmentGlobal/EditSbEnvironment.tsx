@@ -12,7 +12,7 @@ import { GetSbEnvironmentDto, PutSbEnvironmentDto } from '@edanalytics/models';
 import { classValidatorResolver } from '@hookform/resolvers/class-validator';
 import { usePopBanner } from '../../Layout/FeedbackBanner';
 
-import { noop } from '@tanstack/react-table';
+import noop from 'lodash/noop';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router';
 import { sbEnvironmentQueriesGlobal } from '../../api';

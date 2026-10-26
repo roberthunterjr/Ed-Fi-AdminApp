@@ -1,0 +1,43 @@
+meta {
+  name: certification/request token - OK (200)
+  type: http
+  seq: 1
+  tags: Certification
+}
+
+post {
+  url: {{BASE_URL}}/sb-environments/{{process.env.CERT_SB_ENVIRONMENT_ID}}/edfi-tenants/{{process.env.CERT_EDFI_TENANT_ID}}/certification/token
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{ACCESS_TOKEN}}
+}
+
+body:json {
+  {}
+}
+
+script:pre-request {
+  if (!bru.getProcessEnv('CERT_SB_ENVIRONMENT_ID')) {
+    bru.runner.skipRequest();
+    return;
+  }
+  const odsId = bru.getProcessEnv('CERT_ODS_ID');
+  req.setBody({
+    ...(odsId ? { odsId: Number(odsId) } : {}),
+    key: bru.getProcessEnv('CERT_ODS_KEY'),
+    secret: bru.getProcessEnv('CERT_ODS_SECRET'),
+  });
+}
+
+script:post-response {
+  bru.setVar('certToken', res.getBody()?.token);
+}
+
+tests {
+  test("certification/request token - status is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+}

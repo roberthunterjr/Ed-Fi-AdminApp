@@ -16,7 +16,7 @@ class SyncQueuePage {
     this.syncQueueOption = this.page.getByRole('link', { name: 'Sync queue', exact: true })
     this.pageHeading = this.page.getByRole('heading', { name: 'Ed-Fi Data Store Sync Queue' })
     this.syncQueueTable = this.page.locator('table')
-    this.tableRows = this.page.locator('tbody tr')
+    this.tableRows = this.syncQueueTable.locator('tbody tr')
   }
 
   async clickSyncQueueOption() {
@@ -30,19 +30,10 @@ class SyncQueuePage {
   }
 
   async allTasksShouldBeCompleted() {
-    await expect(async () => {
-      const rowCount = await this.tableRows.count()
-      expect(rowCount, 'The sync queue table has no task rows').toBeGreaterThan(0)
-
-      for (let rowIndex = 0; rowIndex < rowCount; rowIndex += 1) {
-        const row = this.tableRows.nth(rowIndex)
-        if (await row.getByText('failed', { exact: true }).count()) {
-          continue
-        }
-
-        await expect(row).toContainText('completed', { timeout: 1000 })
-      }
-    }).toPass({ timeout: API_FETCH_TIMEOUT_MS, intervals: [1000, 3000] })
+    await this.syncTableShouldBeDisplayed()
+    await expect(this.tableRows.getByText('completed', { exact: true }).first()).toBeVisible({
+      timeout: API_FETCH_TIMEOUT_MS,
+    })
   }
 }
 

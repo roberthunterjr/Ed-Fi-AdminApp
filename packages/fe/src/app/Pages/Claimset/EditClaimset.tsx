@@ -13,7 +13,7 @@ import {
 import { GetClaimsetDto, PutClaimsetDto } from '@edanalytics/models';
 import { flattenFieldErrors } from '@edanalytics/utils';
 import { classValidatorResolver } from '@hookform/resolvers/class-validator';
-import { noop } from '@tanstack/react-table';
+import noop from 'lodash/noop';
 import { useForm } from 'react-hook-form';
 import { useNavigate, useParams } from 'react-router';
 import { usePopBanner } from '../../Layout/FeedbackBanner';

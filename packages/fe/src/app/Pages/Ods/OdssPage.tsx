@@ -1,4 +1,11 @@
-import { Icons, PageActions, PageTemplate, SbaaTableAllInOne, TableRowActions } from '@edanalytics/common-ui';
+import {
+  Icons,
+  PageActions,
+  PageTemplate,
+  SbaaTableAllInOne,
+  TableRowActions,
+  SbaaCellContext,
+} from '@edanalytics/common-ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { instancesV2, odsQueries } from '../../api';
 import {
@@ -7,13 +14,13 @@ import {
   useOdsTerminology,
   useTeamEdfiTenantNavContextLoaded,
 } from '../../helpers';
-import { CellContext } from '@tanstack/react-table';
 import { useOdssActions } from './useOdssActions';
 import { Badge, HStack, Link } from '@chakra-ui/react';
 import { Link as RouterLink, useNavigate } from 'react-router';
-import { GetOdsDto } from '@edanalytics/models';
+import { DeleteInstanceResponseDto, GetOdsDto } from '@edanalytics/models';
 import { odsStatusDisplayMap } from './Utils';
 import { usePopBanner } from '../../Layout/FeedbackBanner';
+import { popSyncBanner } from '../../helpers/popSyncBanner';
 import { mutationErrCallback } from '../../helpers/mutationErrCallback';
 
 const withPendingDeleteStatus = <T extends { status: string | null }>(value: T): T =>
@@ -63,7 +70,20 @@ const useOdsRowActions = (ods: GetOdsDto) => {
             );
             return deleteInstance.mutateAsync(
               { id: ods.instanceManageId! },
-              mutationErrCallback({ popGlobalBanner: popBanner })
+              {
+                ...mutationErrCallback({ popGlobalBanner: popBanner }),
+                onSuccess: (data: unknown) => {
+                  const syncQueue = (data as DeleteInstanceResponseDto | undefined)?.syncQueue;
+                  if (syncQueue) {
+                    popSyncBanner({
+                      popBanner,
+                      syncQueue,
+                      linkTo: `/as/${teamId}/sb-environments/${edfiTenant.sbEnvironmentId}/edfi-tenants/${edfiTenant.id}/odss/jobs/delete/${syncQueue.id}`,
+                      subject: `${terminology.singular} deletion`,
+                    });
+                  }
+                },
+              }
             );
           },
         }
@@ -85,7 +105,7 @@ const useOdsRowActions = (ods: GetOdsDto) => {
   };
 };
 
-const NameCell = (info: CellContext<GetOdsDto, unknown>) => {
+const NameCell = (info: SbaaCellContext<GetOdsDto>) => {
   const { teamId, edfiTenant } = useTeamEdfiTenantNavContextLoaded();
   const terminology = useOdsTerminology();
   const { id, displayName } = info.row.original;

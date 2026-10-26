@@ -6,6 +6,7 @@ import { useAuthorize, useTeamEdfiTenantNavContextLoaded } from '../../helpers';
 import { usePopBanner } from '../../Layout/FeedbackBanner';
 import { mutationErrCallback } from '../../helpers/mutationErrCallback';
 import { GetOdsDto } from '@edanalytics/models';
+import { popSyncBanner } from '../../helpers/popSyncBanner';
 
 jest.mock('@edanalytics/common-ui', () => ({
   Icons: { View: 'ViewIcon', Delete: 'DeleteIcon' },
@@ -60,6 +61,8 @@ jest.mock('../../api', () => ({
 jest.mock('../../Layout/FeedbackBanner', () => ({
   usePopBanner: jest.fn(),
 }));
+
+jest.mock('../../helpers/popSyncBanner', () => ({ popSyncBanner: jest.fn() }));
 
 jest.mock('../../helpers/mutationErrCallback', () => ({
   mutationErrCallback: jest.fn(() => ({})),
@@ -198,9 +201,35 @@ describe('OdssTable', () => {
 
     expect(instancesMutateAsync).toHaveBeenCalledWith(
       { id: 88 },
-      mutationOptions
+      expect.objectContaining({ ...mutationOptions, onSuccess: expect.any(Function) })
     );
     expect(odsMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it('delete action shows "ODS deletion queued" banner linking to odss/jobs/delete/<id>', () => {
+    getDeleteAction().onClick();
+    const { onSuccess } = instancesMutateAsync.mock.calls[0][1] as {
+      onSuccess: (data: unknown) => void;
+    };
+    onSuccess({ syncQueue: { id: 'job-4', state: 'created' } });
+
+    expect(popSyncBanner).toHaveBeenCalledWith(
+      expect.objectContaining({
+        syncQueue: { id: 'job-4', state: 'created' },
+        linkTo: '/as/1/sb-environments/2/edfi-tenants/3/odss/jobs/delete/job-4',
+        subject: 'ODS deletion',
+      })
+    );
+  });
+
+  it('shows no banner when the row delete response has no syncQueue', () => {
+    getDeleteAction().onClick();
+    const { onSuccess } = instancesMutateAsync.mock.calls[0][1] as {
+      onSuccess: (data: unknown) => void;
+    };
+    onSuccess(undefined);
+
+    expect(popSyncBanner).not.toHaveBeenCalled();
   });
 
   it('hides row Delete action when delete authorization is denied', () => {

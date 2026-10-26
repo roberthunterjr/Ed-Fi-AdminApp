@@ -4,6 +4,7 @@
 // See the LICENSE and NOTICES files in the project root for more information.
 
 import { Page, expect } from '@playwright/test'
+import { API_FETCH_TIMEOUT_MS, clickNavLink } from './support'
 
 class AccountPage {
 
@@ -20,11 +21,11 @@ class AccountPage {
   }
 
   async clickAccountOption() {
-    await this.accountNavOption.click()
+    await clickNavLink(this.page, this.accountNavOption, /\/adminapp\/account\/?$/)
   }
 
   async userInformationIsDisplayed() {
-    await expect(this.usernameDisplay).toBeVisible()
+    await expect(this.usernameDisplay).toBeVisible({ timeout: API_FETCH_TIMEOUT_MS })
     await expect(this.userRoleDisplay).toBeVisible()
     await expect(this.accountManagementDisplay).toBeVisible()
   }

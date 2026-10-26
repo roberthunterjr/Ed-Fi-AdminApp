@@ -1,4 +1,5 @@
-import { Column, Entity, JoinColumn, ManyToOne, PrimaryColumn } from 'typeorm';
+import * as config from 'config';
+import { Column, Entity, JoinColumn, ManyToOne, PrimaryColumn, UpdateDateColumn } from 'typeorm';
 import { CertificationProcess } from './cert-certification-process.entity';
 import { ScenarioCatalog } from './cert-scenario-catalog.entity';
 
@@ -20,4 +21,14 @@ export class CertificationProcessScenario {
 
   @Column({ type: 'varchar', length: 50 })
   status: string;
+
+  /**
+   * Bruno runtime variables captured by this scenario's steps, restored into its next run.
+   * Stored as plaintext on purpose (AC-466 D4): certification ODSs hold synthetic data.
+   */
+  @Column({ type: config.DB_ENGINE === 'pgsql' ? 'jsonb' : 'simple-json', nullable: true })
+  capturedVars: Record<string, string | number | boolean | null> | null;
+
+  @UpdateDateColumn()
+  updatedAt: Date;
 }

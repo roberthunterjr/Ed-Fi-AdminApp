@@ -65,7 +65,7 @@ export class Seeding1697203599392 implements MigrationInterface {
     }
     const idpsCount = await queryRunner.query('SELECT COUNT(*) as i_count FROM "oidc"');
     if (Number(idpsCount[0].i_count) === 0) {
-      if (config.SAMPLE_OIDC_CONFIG) {
+      if (config.SAMPLE_OIDC_CONFIG?.clientSecret) {
         Logger.verbose('Seeding OIDC connection');
         const oidc = config.SAMPLE_OIDC_CONFIG;
         await queryRunner.query(
@@ -75,7 +75,7 @@ export class Seeding1697203599392 implements MigrationInterface {
         );
       } else {
         Logger.warn(
-          'No OIDC config found, skipping seeding of OIDC. You will need to add one to the database in order to log in.'
+          'SAMPLE_OIDC_CONFIG.clientSecret is not set, skipping seeding of the sample OIDC connection. You will need to add one to the database in order to log in.'
         );
       }
     }

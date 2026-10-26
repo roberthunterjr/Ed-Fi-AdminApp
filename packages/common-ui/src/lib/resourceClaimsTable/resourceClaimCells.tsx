@@ -1,6 +1,5 @@
 import { Badge, BadgeProps, Flex, IconButton, StyleProps, Text } from '@chakra-ui/react';
-import { CellContext } from '@tanstack/react-table';
-import { useSbaaTableContext } from '../sbaaTable';
+import { useSbaaTableContext, SbaaCellContext } from '../sbaaTable';
 import { Icons } from '../Icons';
 
 // Shared by ResourceClaimsTableV2/V3 (and, via NameCell/NameHeader, the
@@ -41,7 +40,7 @@ export const NameHeader = () => {
   );
 };
 
-export function NameCell<T extends { name: string }>(props: CellContext<T, unknown>) {
+export function NameCell<T extends { name: string }>(props: SbaaCellContext<T>) {
   const table = useSbaaTableContext().table;
   const canAnyExpand = table?.getCanSomeRowsExpand();
   const canThisRowExpand = props.row.getCanExpand();

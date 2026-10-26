@@ -1,4 +1,4 @@
-import { isSbV2MetaEnv } from '@edanalytics/models';
+import { OdsManageJobData, isSbV2MetaEnv } from '@edanalytics/models';
 import { EdfiTenant, SbEnvironment, regarding } from '@edanalytics/models-server';
 import {
   Inject,
@@ -19,10 +19,12 @@ import { CustomHttpException } from '../utils/customExceptions';
 import { jsonValue } from '../utils/db-json-query';
 import {
   ENV_SYNC_CHNL,
+  ODS_MANAGE_CHNL,
   SYNC_SCHEDULER_CHNL,
   TENANT_SYNC_CHNL,
 } from './sb-sync.module';
 import { AdminApiSyncService } from './edfi/adminapi-sync.service';
+import { OdsManageJobService } from './ods-manage-job.service';
 import { IJobQueueService, Job } from './job-queue/job-queue.interface';
 
 @Injectable()
@@ -37,7 +39,8 @@ export class SbSyncConsumer implements OnModuleInit {
     private readonly sbServiceV1: StartingBlocksServiceV1,
     private readonly sbServiceV2: StartingBlocksServiceV2,
     private readonly metadataService: MetadataService,
-    private readonly adminapiSyncService: AdminApiSyncService
+    private readonly adminapiSyncService: AdminApiSyncService,
+    private readonly odsManageJobService: OdsManageJobService
   ) {}
   public async onModuleDestroy() {
     await this.jobQueue.stop();
@@ -48,6 +51,7 @@ export class SbSyncConsumer implements OnModuleInit {
       await this.jobQueue.createQueue(SYNC_SCHEDULER_CHNL);
       await this.jobQueue.createQueue(ENV_SYNC_CHNL);
       await this.jobQueue.createQueue(TENANT_SYNC_CHNL);
+      await this.jobQueue.createQueue(ODS_MANAGE_CHNL);
       await this.jobQueue.schedule(SYNC_SCHEDULER_CHNL, config.SB_SYNC_CRON, null, {
         tz: 'America/Chicago',
       });
@@ -108,6 +112,20 @@ export class SbSyncConsumer implements OnModuleInit {
       await this.jobQueue.work(TENANT_SYNC_CHNL, async (job: Job<{ edfiTenantId: number }>) => {
         return this.refreshEdfiTenant(job.data.edfiTenantId);
       });
+
+      // The handler polls Admin API in-process for a long time, so allow several datastore
+      // operations to be tracked at once instead of queueing them one behind another.
+      const rawConcurrency = Number(config.ADMINAPI_DATASTORE_JOB_CONCURRENCY);
+      await this.jobQueue.work(
+        ODS_MANAGE_CHNL,
+        async (job: Job<OdsManageJobData>) => {
+          return this.odsManageJobService.handle(job);
+        },
+        {
+          localConcurrency:
+            Number.isInteger(rawConcurrency) && rawConcurrency >= 1 ? rawConcurrency : 5,
+        }
+      );
 
       Logger.log('Sync workers registered successfully');
     } catch (error) {

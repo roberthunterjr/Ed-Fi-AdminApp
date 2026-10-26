@@ -12,6 +12,9 @@ export class EnvNavDto implements IEnvNav {
   edfiTenantId: null | number;
   @Expose()
   edfiTenantName: null | string;
+  /** Ed-Fi API version of the environment; not part of the env-nav view, added by the API. */
+  @Expose()
+  version?: 'v1' | 'v2' | 'v3';
 
   @Expose()
   odss: boolean;
@@ -36,5 +39,5 @@ export class EnvNavDto implements IEnvNav {
 }
 
 export const toEnvNavDto = makeSerializer<EnvNavDto, Omit<EnvNavDto, 'displayName' | 'id'>>(
-  EnvNavDto
+  EnvNavDto,
 );

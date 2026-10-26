@@ -32,6 +32,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { AuditDelete } from '../audit/audit-delete.decorator';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
@@ -318,6 +319,7 @@ export class SbEnvironmentsGlobalController {
   }
 
   @Delete(':sbEnvironmentId')
+  @AuditDelete(SbEnvironment, 'sbEnvironmentId')
   @Authorize({
     privilege: 'sb-environment:delete',
     subject: {

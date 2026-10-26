@@ -1,7 +1,12 @@
 import 'reflect-metadata';
-import { EntityManager, Repository } from 'typeorm';
-import { EdfiTenant, Ods } from '@edanalytics/models-server';
-import { computeOdsListDeltas, SyncableOds } from './sync-ods';
+import { EntityManager, In, Repository } from 'typeorm';
+import { CertificationProcess, EdfiTenant, Edorg, Ods } from '@edanalytics/models-server';
+import {
+  computeOdsListDeltas,
+  persistSyncDeleteOds,
+  persistSyncTenant,
+  SyncableOds,
+} from './sync-ods';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -287,5 +292,83 @@ describe('computeOdsListDeltas — edge cases', () => {
     const result = computeOdsListDeltas(incoming, [], makeTenant(), em);
 
     expect(result.insert).toHaveLength(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// MSSQL: certification_process.odsId does not cascade, so processes go first
+// ---------------------------------------------------------------------------
+
+const makeRecordingEntityManager = (odsRows: Partial<Ods>[] = []) => {
+  const repos: Record<string, Record<string, jest.Mock>> = {
+    [Ods.name]: {
+      find: jest.fn().mockResolvedValue(odsRows),
+      save: jest.fn(async (value) => value),
+      delete: jest.fn().mockResolvedValue({ affected: 1 }),
+      create: jest.fn((value) => value),
+    },
+    [Edorg.name]: {
+      find: jest.fn().mockResolvedValue([]),
+      save: jest.fn(async (value) => value),
+      delete: jest.fn().mockResolvedValue({ affected: 0 }),
+    },
+    [CertificationProcess.name]: { delete: jest.fn().mockResolvedValue({ affected: 1 }) },
+  };
+  const em = {
+    getRepository: jest.fn((entity: { name: string }) => repos[entity.name]),
+  } as unknown as EntityManager;
+  return { em, repos };
+};
+
+const calledBefore = (first: jest.Mock, second: jest.Mock) =>
+  first.mock.invocationCallOrder[0] < second.mock.invocationCallOrder[0];
+
+describe('persistSyncTenant - removed ODS', () => {
+  it('deletes the removed ODS certification processes before the ODS rows', async () => {
+    const { em, repos } = makeRecordingEntityManager([
+      makeOds({ id: 42, odsInstanceId: 7 }),
+      makeOds({ id: 43, odsInstanceId: 8 }),
+    ]);
+
+    await persistSyncTenant({
+      em,
+      edfiTenant: makeTenant(),
+      odss: [{ id: 8, name: 'kept', dbName: 'ods_db' }],
+    });
+
+    expect(repos[CertificationProcess.name].delete).toHaveBeenCalledWith({ odsId: In([42]) });
+    expect(repos[Ods.name].delete).toHaveBeenCalledWith([42]);
+    expect(calledBefore(repos[CertificationProcess.name].delete, repos[Ods.name].delete)).toBe(
+      true,
+    );
+  });
+
+  it('leaves certification processes alone when no ODS is removed', async () => {
+    const { em, repos } = makeRecordingEntityManager([makeOds({ id: 43, odsInstanceId: 8 })]);
+
+    await persistSyncTenant({
+      em,
+      edfiTenant: makeTenant(),
+      odss: [{ id: 8, name: 'kept', dbName: 'ods_db' }],
+    });
+
+    expect(repos[CertificationProcess.name].delete).not.toHaveBeenCalled();
+  });
+});
+
+describe('persistSyncDeleteOds', () => {
+  it('deletes the ODS certification processes before the ODS row', async () => {
+    const { em, repos } = makeRecordingEntityManager();
+
+    await persistSyncDeleteOds({
+      em,
+      edfiTenant: makeTenant(),
+      ods: makeOds({ id: 42 }),
+    });
+
+    expect(repos[CertificationProcess.name].delete).toHaveBeenCalledWith({ odsId: In([42]) });
+    expect(calledBefore(repos[CertificationProcess.name].delete, repos[Ods.name].delete)).toBe(
+      true,
+    );
   });
 });

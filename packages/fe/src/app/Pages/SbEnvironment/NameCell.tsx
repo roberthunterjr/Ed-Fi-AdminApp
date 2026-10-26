@@ -1,14 +1,13 @@
 import { HStack } from '@chakra-ui/react';
-import { TableRowActions } from '@edanalytics/common-ui';
+import { TableRowActions, SbaaCellContext } from '@edanalytics/common-ui';
 import { GetSbEnvironmentDto } from '@edanalytics/models';
 import { useQuery } from '@tanstack/react-query';
-import { CellContext } from '@tanstack/react-table';
 import { sbEnvironmentQueries } from '../../api';
 import { useTeamNavContext } from '../../helpers';
 import { useReadTeamEntity } from '../../helpers/useStandardRowActionsNew';
 import { SbEnvironmentLink, sbEnvironmentRoute } from '../../routes';
 
-export const NameCell = (info: CellContext<GetSbEnvironmentDto, unknown>) => {
+export const NameCell = (info: SbaaCellContext<GetSbEnvironmentDto>) => {
   const { teamId, asId } = useTeamNavContext();
   const sbEnvironments = useQuery(
     sbEnvironmentQueries.getAll({

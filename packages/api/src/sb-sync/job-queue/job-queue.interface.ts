@@ -22,9 +22,16 @@ export interface Job<T = object> {
 export interface JobOptions {
   singletonKey?: string;
   expireInHours?: number;
+  /** Handler timeout in seconds. pg-boss 12 only honors this (not expireInHours). */
+  expireInSeconds?: number;
   retryLimit?: number;
   retryDelay?: number;
   retryBackoff?: boolean;
+}
+
+export interface WorkOptions {
+  /** Max jobs from this queue handled concurrently by this process. */
+  localConcurrency?: number;
 }
 
 export interface ScheduleOptions {
@@ -45,7 +52,8 @@ export interface IJobQueueService {
   ): Promise<void>;
   work<T = object>(
     queueName: string,
-    handler: (job: Job<T>) => Promise<unknown>
+    handler: (job: Job<T>) => Promise<unknown>,
+    options?: WorkOptions
   ): Promise<void>;
   getJobById(id: string): Promise<Job>;
 }

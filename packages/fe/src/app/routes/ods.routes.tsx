@@ -13,6 +13,7 @@ import {
 } from '../helpers';
 import { getEntityFromQuery } from '../helpers/getEntityFromQuery';
 import { CreateOds } from '../Pages/Ods/CreateOdsPage';
+import { OdsManageJobPage } from '../Pages/Ods/OdsManageJobPage';
 
 const OdsBreadcrumb = withLoader(() => {
   const params = useParams() as { odsId: string };
@@ -38,6 +39,15 @@ export const odsCreateRoute: RouteObject = {
   path: '/as/:asId/sb-environments/:sbEnvironmentId/edfi-tenants/:edfiTenantId/odss/create',
   element: <CreateOds />,
   handle: { crumb: CreateOdsCrumb },
+};
+const OdsManageJobCrumb = withLoader(() => {
+  const terminology = useOdsTerminology();
+  return <>{`${terminology.singular} job`}</>;
+});
+export const odsManageJobRoute: RouteObject = {
+  path: '/as/:asId/sb-environments/:sbEnvironmentId/edfi-tenants/:edfiTenantId/odss/jobs/:operation/:jobId',
+  element: <OdsManageJobPage />,
+  handle: { crumb: OdsManageJobCrumb },
 };
 export const odsIndexRoute: RouteObject = {
   path: '/as/:asId/sb-environments/:sbEnvironmentId/edfi-tenants/:edfiTenantId/odss/:odsId/',

@@ -9,6 +9,7 @@ import {
   Res,
 } from '@nestjs/common';
 import { ApiOkResponse, ApiServiceUnavailableResponse, ApiTags } from '@nestjs/swagger';
+import { Expose } from 'class-transformer';
 import { IsUUID } from 'class-validator';
 import axios from 'axios';
 import config from 'config';
@@ -17,6 +18,8 @@ import { Public } from '../auth/authorization/public.decorator';
 import { Throttle } from '@nestjs/throttler';
 
 class SecretIdDto {
+  // @Expose() is required: the global pipe strips unexposed properties (AC-642).
+  @Expose()
   @IsUUID(4, { message: 'secretId must be a valid UUID' })
   secretId: string;
 }

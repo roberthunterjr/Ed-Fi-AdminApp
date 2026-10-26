@@ -1,14 +1,13 @@
 import { HStack } from '@chakra-ui/react';
-import { TableRowActions } from '@edanalytics/common-ui';
+import { TableRowActions, SbaaCellContext } from '@edanalytics/common-ui';
 import { GetEdfiTenantDto } from '@edanalytics/models';
 import { useQuery } from '@tanstack/react-query';
-import { CellContext } from '@tanstack/react-table';
 import { edfiTenantQueries } from '../../api';
 import { useTeamSbEnvironmentNavContext } from '../../helpers';
 import { EdfiTenantLink } from '../../routes';
 import { useEdfiTenantActions } from './useEdfiTenantActions';
 
-export const NameCell = (info: CellContext<GetEdfiTenantDto, unknown>) => {
+export const NameCell = (info: SbaaCellContext<GetEdfiTenantDto>) => {
   const { teamId, sbEnvironmentId } = useTeamSbEnvironmentNavContext();
 
   const edfiTenants = useQuery(

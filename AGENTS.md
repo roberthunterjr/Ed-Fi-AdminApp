@@ -151,6 +151,10 @@ pwsh ./eng/testing/run-e2e-ui.ps1 -DbEngine mssql
 
 # Rebuild Admin App images first, then stop all services after the run
 pwsh ./eng/testing/run-e2e-ui.ps1 -Rebuild -StopServices
+
+# Skip the Ed-Fi v6 topology and @v1 scenarios, and keep an existing compose/.env
+# (by default the script regenerates compose/.env from compose/.env.example)
+pwsh ./eng/testing/run-e2e-ui.ps1 -SkipV1 -KeepEnvFile
 ```
 
 The script checks prerequisites (Node dependencies, Playwright Chromium, TLS certificate) up front and tells you exactly what's missing. See [UI Playwright E2E Tests](eng/testing/README.md#ui-playwright-e2e-tests) for full options, what each step does, and troubleshooting. CI runs this same script against both `pgsql` and `mssql` via a matrix in `.github/workflows/run-e2e-ui.yml`.
@@ -160,6 +164,8 @@ If the stack is already running (e.g. via `eng/helpers/start-services-target.ps1
 ```bash
 npm run test:e2e:bdd
 ```
+
+The suite runs 4 workers from one IP, so the API must have a raised `RATE_LIMIT_LIMIT` (the default of 100 requests per minute gives 429s). `run-e2e-ui.ps1` sets it to `100000` for its own run. When you start the stack yourself, set `RATE_LIMIT_LIMIT=100000` first (for example `$env:RATE_LIMIT_LIMIT = '100000'` before `start-services-target.ps1`). See [UI Playwright E2E Tests](eng/testing/README.md#ui-playwright-e2e-tests).
 
 ## Contributing
 

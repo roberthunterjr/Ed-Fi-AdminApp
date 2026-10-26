@@ -9,3 +9,5 @@ stats.html
 /.nx/workspace-data
 /packages/fe/src/fonts
 docs
+
+packages/api/src/certification/runner/__fixtures__

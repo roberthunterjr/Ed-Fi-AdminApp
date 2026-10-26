@@ -1,0 +1,34 @@
+meta {
+  name: certification/run on SIS v4 - rejected (400)
+  type: http
+  seq: 4
+  tags: Certification
+}
+
+post {
+  url: {{BASE_URL}}/sb-environments/{{process.env.CERT_SB_ENVIRONMENT_ID}}/edfi-tenants/{{process.env.CERT_EDFI_TENANT_ID}}/certification/sis/v4/steps/{{process.env.CERT_STEP_01_ID}}/run
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{ACCESS_TOKEN}}
+}
+
+body:json {
+  {}
+}
+
+script:pre-request {
+  if (!bru.getProcessEnv('CERT_SB_ENVIRONMENT_ID')) {
+    bru.runner.skipRequest();
+    return;
+  }
+  req.setBody({ token: bru.getVar('certToken') || 'x', inputs: {} });
+}
+
+tests {
+  test("certification/run on v4 - status is 400", function() {
+    expect(res.getStatus()).to.equal(400);
+  });
+}

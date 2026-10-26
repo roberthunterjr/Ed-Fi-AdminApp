@@ -10,6 +10,7 @@ export * from './ownership.interface';
 export * from './privilege.interface';
 export * from './role.interface';
 export * from './sb-environment.interface';
+export * from './ods-manage-job.interface';
 export * from './sb-sync-queue.interface';
 export * from './team.interface';
 export * from './user-team-membership.interface';

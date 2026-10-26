@@ -91,6 +91,8 @@ if (Test-Path $EnvFile) {
     }
 }
 
+& (Join-Path $PSScriptRoot '..\eng\helpers\warn-env-placeholders.ps1') -EnvFile $EnvFile
+
 if ($Rebuild) {
     docker compose $files --env-file $EnvFile --profile $composeProfile --profile adminapp build --no-cache
     if ($LASTEXITCODE -ne 0) {

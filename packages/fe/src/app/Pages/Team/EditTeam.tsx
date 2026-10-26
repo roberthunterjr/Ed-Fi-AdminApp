@@ -13,7 +13,7 @@ import { classValidatorResolver } from '@hookform/resolvers/class-validator';
 import { useQuery } from '@tanstack/react-query';
 import { usePopBanner } from '../../Layout/FeedbackBanner';
 
-import { noop } from '@tanstack/react-table';
+import noop from 'lodash/noop';
 import { useForm } from 'react-hook-form';
 import { useNavigate, useParams } from 'react-router';
 import { teamQueries } from '../../api';

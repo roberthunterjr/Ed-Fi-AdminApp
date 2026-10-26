@@ -1,14 +1,13 @@
 import { HStack } from '@chakra-ui/react';
-import { TableRowActions } from '@edanalytics/common-ui';
+import { TableRowActions, SbaaCellContext } from '@edanalytics/common-ui';
 import { GetOdsDto } from '@edanalytics/models';
 import { useQuery } from '@tanstack/react-query';
-import { CellContext } from '@tanstack/react-table';
 import { odsQueries } from '../../api/queries/queries';
 import { useTeamEdfiTenantNavContextLoaded } from '../../helpers';
 import { useReadTeamEntity } from '../../helpers/useStandardRowActionsNew';
 import { OdsLink, odsRoute } from '../../routes';
 
-export const NameCell = (info: CellContext<GetOdsDto, unknown>) => {
+export const NameCell = (info: SbaaCellContext<GetOdsDto>) => {
   const { teamId, edfiTenant, asId, edfiTenantId, sbEnvironmentId } =
     useTeamEdfiTenantNavContextLoaded();
   const entities = useQuery(

@@ -1,17 +1,20 @@
 # Ignored vulnerabilities for OpenSSF Scorecard's "Vulnerabilities" check (osv-scanner).
-# All entries below are devDependency-only (build/CI tooling), confirmed via
-# `npm audit --omit=dev` returning 0 vulnerabilities, and have no upstream fix
-# available as of the date noted. Re-check before this date and remove entries
-# once a fix ships. eng/helpers/check-ignored-vuln-fixes.ps1 automates that check
-# (also runs as an informational step in .github/workflows/scorecard.yml).
+# Every entry below has no upstream fix available as of the date noted. Re-check before
+# the ignoreUntil date and remove entries once a fix ships.
+# eng/helpers/check-ignored-vuln-fixes.ps1 automates that check (also runs as an
+# informational step in .github/workflows/scorecard.yml).
+#
+# Entries are either devDependency-only (build/CI tooling) or, where stated, reachable in
+# production. A prod entry must say so in its reason and needs a fresh look at each review.
 
-# --- image-size: via less -> @nx/webpack (devDependency, build tooling) ---
+# --- braces: via micromatch, @chakra-ui/cli (devDependency, build/test tooling) ---
 [[IgnoredVulns]]
-id = "GHSA-5p2g-fcmc-qvqq"
-reason = "image-size, via less -> @nx/webpack (devDependency, build tooling). No patched image-size version exists yet (latest 2.0.2 still flagged)."
-ignoreUntil = 2026-10-05
+id = "GHSA-vfj7-8cjw-p6xm"
+reason = "braces, via micromatch (semantic-release and other build tooling) and @chakra-ui/cli -> chokidar (devDependency, build tooling). No patched braces version exists (3.0.3 is the latest release)."
+ignoreUntil = 2027-01-19
 
+# --- sprintf-js: via tedious -> mssql / connect-mssql-v2 (PRODUCTION dependency) ---
 [[IgnoredVulns]]
-id = "GHSA-w3rx-r6r6-pgpr"
-reason = "image-size, via less -> @nx/webpack (devDependency, build tooling). No patched image-size version exists yet (latest 2.0.2 still flagged)."
-ignoreUntil = 2026-10-05
+id = "GHSA-hp3w-g68c-fv3c"
+reason = "sprintf-js 1.1.3, via tedious -> mssql / connect-mssql-v2 (production, MSSQL driver). No patched sprintf-js version exists (1.1.3 is the latest) and tedious 20.3.8 / mssql 12.7.10 (latest) still depend on it. Denial of service via unbounded precision specifiers. The same advisory also matches a devDependency-only sprintf-js 1.0.3 (via @istanbuljs/load-nyc-config -> argparse, test tooling). Revisit if the advisory gains a fix."
+ignoreUntil = 2027-01-19

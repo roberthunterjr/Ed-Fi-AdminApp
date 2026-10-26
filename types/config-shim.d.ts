@@ -24,7 +24,12 @@ declare module 'config' {
   interface ConfigClass {
     ENABLE_OPEN_API: boolean;
     AWS_DB_SECRET?: string | undefined;
-    DB_SECRET_VALUE: never;
+    /** Locally configured DB connection settings. Undefined when the DB secret comes from AWS Secrets Manager. */
+    DB_SECRET_VALUE?: {
+      DB_PASSWORD?: string;
+      MSSQL_DB_PASSWORD?: string;
+      [key: string]: unknown;
+    };
     /**
      * Format: `postgres://username@host:port/db?password=password&sslmode=ssl`
      */
@@ -68,6 +73,12 @@ declare module 'config' {
     ADMINAPI_REFRESH_POLL_ATTEMPTS: number;
     /** Milliseconds to wait between EdOrg refresh job poll attempts (default: 5000) */
     ADMINAPI_REFRESH_POLL_INTERVAL_MS: number;
+    /** Milliseconds between polls of an Admin API datastore create/delete job (default: 5000) */
+    ADMINAPI_DATASTORE_JOB_POLL_INTERVAL_MS: number;
+    /** Max poll attempts for an Admin API datastore create/delete job (default: 720, i.e. 60 min) */
+    ADMINAPI_DATASTORE_JOB_POLL_ATTEMPTS: number;
+    /** Datastore jobs one API instance tracks at once (default: 5) */
+    ADMINAPI_DATASTORE_JOB_CONCURRENCY: number;
 
     SAMPLE_OIDC_CONFIG?: {
       issuer: string;
@@ -96,6 +107,8 @@ declare module 'config' {
     RATE_LIMIT_TTL: number;
     RATE_LIMIT_LIMIT: number;
 
+    AUDIT_LOGGING_ENABLED?: boolean | 'true' | 'false';
+
     USE_PKCE: boolean;
 
     LOG_LEVEL: LogLevel;
@@ -104,6 +117,10 @@ declare module 'config' {
     CERT_BRUNO_SRC_REF?: string;
     CERT_BRUNO_SRC_CHECKSUM?: string;
     CERT_BRUNO_ON_DOWNLOAD_ERROR?: 'error' | 'warn' | 'skip';
+    /** Kill a certification step run after this many ms (env vars arrive as strings). */
+    CERT_BRUNO_RUN_TIMEOUT_MS: number | string;
+    /** Simultaneous certification step runs per API instance (env vars arrive as strings). */
+    CERT_BRUNO_MAX_CONCURRENT_RUNS: number | string;
 
     /** Polling interval for MSSQL job queue in milliseconds (default: 1000) */
     MSSQL_JOB_POLL_MS?: number;

@@ -173,6 +173,7 @@ npm run migrations:revert
 ## Possible issues
 
 > - You can only log in if SBAA is successfully connected to some IdP. Check the `oidc` table and check your IdP.
+> - For the Ed-Fi compose setup, the seeded OIDC client secret is the value of `KEYCLOAK_EDFIADMINAPP_CLIENT_SECRET` (container client `edfiadminapp`) or `KEYCLOAK_EDFIADMINAPP_DEV_CLIENT_SECRET` (hot-reload client `edfiadminapp-dev`) from `compose/.env`. In `local.js`, `DB_SECRET_VALUE.DB_PASSWORD` must equal `POSTGRES_PASSWORD` and `SAMPLE_OIDC_CONFIG.clientSecret` must equal `KEYCLOAK_EDFIADMINAPP_DEV_CLIENT_SECRET`.
 > - You can only log in if the database has been populated with a user and that user is active and has a role.
 > - There's not much to do until the app has some data in it.
 > - CORS: You can access the app either via hostname (`localhost`) or IP (`127.0.0.1`), but your `FE_URL` config value will only match one of those. Make sure you don't wind up putting one in your config file but the other in your browser.

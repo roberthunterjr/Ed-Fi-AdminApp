@@ -13,9 +13,21 @@ export class ScenarioStepError {
   @Column()
   stepRunId: number;
 
-  @Column({ type: 'text', nullable: true })
-  description: string | null;
+  /** A CERT_STEP_ERROR_KIND value; plain text so new kinds need no migration. */
+  @Column({ type: 'varchar', length: 50 })
+  kind: string;
+
+  /** The field that didn't match, e.g. `birthCity`; null for an exception. */
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  field: string | null;
 
   @Column({ type: 'text', nullable: true })
-  validation: string | null;
+  expected: string | null;
+
+  /** For an exception, what the API returned (e.g. "The API returned HTTP 404 Not Found."). */
+  @Column({ type: 'text', nullable: true })
+  observed: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  message: string | null;
 }

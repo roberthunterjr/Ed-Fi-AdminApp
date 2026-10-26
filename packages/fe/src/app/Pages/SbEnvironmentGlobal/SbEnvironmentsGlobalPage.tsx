@@ -6,9 +6,9 @@ import {
   PageTemplate,
   TableRowActions,
   ValueAsDate,
+  SbaaCellContext,
 } from '@edanalytics/common-ui';
 import { GetSbEnvironmentDto } from '@edanalytics/models';
-import { CellContext } from '@tanstack/react-table';
 import omit from 'lodash/omit';
 import { sbEnvironmentQueries, userQueries } from '../../api';
 import { getRelationDisplayName } from '../../helpers/getRelationDisplayName';
@@ -17,7 +17,7 @@ import { useSbEnvironmentGlobalActions } from './useSbEnvironmentGlobalActions';
 import { useSbEnvironmentsGlobalActions } from './useSbEnvironmentsGlobalActions';
 import { useAuthorize } from '../../helpers';
 
-const SbEnvironmentsNameCell = (info: CellContext<GetSbEnvironmentDto, unknown>) => {
+const SbEnvironmentsNameCell = (info: SbaaCellContext<GetSbEnvironmentDto>) => {
   const actions = useSbEnvironmentGlobalActions(info.row.original);
   return (
     <HStack justify="space-between">

@@ -19,15 +19,16 @@ import {
   RoleType,
 } from '@edanalytics/models';
 import { classValidatorResolver } from '@hookform/resolvers/class-validator';
-import { noop } from '@tanstack/react-table';
+import noop from 'lodash/noop';
 import { useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router';
 import { usePopBanner } from '../../Layout/FeedbackBanner';
-import { roleQueries } from '../../api';
+import { roleQueries, useMe } from '../../api';
 import { useNavToParent } from '../../helpers';
 import { mutationErrCallback } from '../../helpers/mutationErrCallback';
 import { PrivilegesInput } from './PrivilegesInput';
+import { filterGrantablePrivileges } from './grantable-privileges';
 
 const resolver = classValidatorResolver(PostRoleDto);
 
@@ -36,6 +37,7 @@ export const CreateRoleGlobalPage = () => {
   const navigate = useNavigate();
   const parentPath = useNavToParent();
   const postRole = roleQueries.post({});
+  const me = useMe().data;
 
   const privileges = Object.values(PRIVILEGES);
   const {
@@ -49,7 +51,7 @@ export const CreateRoleGlobalPage = () => {
     defaultValues: Object.assign(new PostRoleDto(), { privileges: ['me:read'] }),
   });
   const [type, setType] = useState<RoleType | null>(null);
-  const filteredPrivileges =
+  const filteredPrivileges = filterGrantablePrivileges(
     privileges && type
       ? Object.values(privileges).filter(
           (p) =>
@@ -59,7 +61,9 @@ export const CreateRoleGlobalPage = () => {
                 p.code.startsWith('team.integration-provider'))) ||
             (type === RoleType.UserTeam && p.code.startsWith('team.'))
         )
-      : undefined;
+      : undefined,
+    me?.role?.privilegeIds
+  );
   let privilegesError: undefined | string | DependencyErrors = undefined;
   try {
     // might be fancy error object for privilege dependencies

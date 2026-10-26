@@ -31,6 +31,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { AuditDelete } from '../audit/audit-delete.decorator';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
@@ -114,6 +115,7 @@ export class EdfiTenantsGlobalController {
   @SbVersion('v2')
   @Operation('Deleting tenants')
   @Delete(':edfiTenantId')
+  @AuditDelete(EdfiTenant, 'edfiTenantId')
   @Authorize({
     privilege: 'sb-environment.edfi-tenant:delete',
     subject: {

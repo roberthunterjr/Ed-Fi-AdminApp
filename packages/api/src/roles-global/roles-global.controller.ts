@@ -19,6 +19,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { AuditDelete } from '../audit/audit-delete.decorator';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Authorize, CheckAbility, CheckAbilityType } from '../auth/authorization';
@@ -108,6 +109,7 @@ export class RolesGlobalController {
   }
 
   @Delete(':roleId')
+  @AuditDelete(Role, 'roleId')
   @Authorize({
     privilege: 'role:delete',
     subject: {

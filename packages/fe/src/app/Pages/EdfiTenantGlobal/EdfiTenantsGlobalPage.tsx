@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: Apache-2.0
+// Licensed to the Ed-Fi Alliance under one or more agreements.
+// The Ed-Fi Alliance licenses this file to you under the Apache License, Version 2.0.
+// See the LICENSE and NOTICES files in the project root for more information.
+
 import { HStack } from '@chakra-ui/react';
 import {
   PageActions,
@@ -5,10 +10,10 @@ import {
   SbaaTableAllInOne,
   TableRowActions,
   ValueAsDate,
+  SbaaCellContext,
 } from '@edanalytics/common-ui';
 import { GetEdfiTenantDto } from '@edanalytics/models';
-import { UseQueryResult, useQuery } from '@tanstack/react-query';
-import { CellContext } from '@tanstack/react-table';
+import { useQuery } from '@tanstack/react-query';
 import omit from 'lodash/omit';
 import { edfiTenantQueriesGlobal, userQueries } from '../../api';
 import { useSbEnvironmentNavContext, withLoader } from '../../helpers';
@@ -17,15 +22,17 @@ import { EdfiTenantGlobalLink, UserGlobalLink } from '../../routes';
 import { useEdfiTenantGlobalActions } from './useEdfiTenantGlobalActions';
 import { useEdfiTenantsGlobalActions } from './useEdfiTenantsGlobalActions';
 
-const EdfiTenantsNameCell = (
-  info: CellContext<GetEdfiTenantDto, unknown> & {
-    edfiTenants: Pick<UseQueryResult<Record<string | number, GetEdfiTenantDto>>, 'data'>;
-  }
-) => {
-  const actions = useEdfiTenantGlobalActions(info.row.original);
+export const EdfiTenantsNameCell = (info: SbaaCellContext<GetEdfiTenantDto>) => {
+  const tenant = info.row.original;
+  const actions = useEdfiTenantGlobalActions(tenant);
+  // Resolve the link from the row itself rather than from the tenants query
+  // map: after a refetch (e.g. sync completion) the table's rows and the
+  // query data can briefly be different snapshots, which made the link render
+  // `can't find "<id>"` for a tenant that is plainly in this row.
+  const rowQuery = { data: { [tenant.id]: tenant } };
   return (
     <HStack justify="space-between">
-      <EdfiTenantGlobalLink id={info.row.original.id} query={info.edfiTenants} />
+      <EdfiTenantGlobalLink id={tenant.id} query={rowQuery} />
       <TableRowActions actions={actions} />
     </HStack>
   );
@@ -50,7 +57,7 @@ export const EdfiTenantsGlobalTable = () => {
       columns={[
         {
           accessorKey: 'displayName',
-          cell: (info) => <EdfiTenantsNameCell {...info} edfiTenants={edfiTenants} />,
+          cell: (info) => <EdfiTenantsNameCell {...info} />,
           header: 'Name',
         },
         {

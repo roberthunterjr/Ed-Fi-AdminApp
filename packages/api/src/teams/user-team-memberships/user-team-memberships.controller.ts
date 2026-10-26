@@ -4,11 +4,16 @@ import {
   PutUserTeamMembershipDto,
   toGetUserTeamMembershipDto,
 } from '@edanalytics/models';
+import { AuditDelete } from '../../audit/audit-delete.decorator';
 import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Put } from '@nestjs/common';
 import { ReqUser } from '../../auth/helpers/user.decorator';
 import { UserTeamMembershipsService as UserTeamMembershipsService } from './user-team-memberships.service';
 import { ApiTags } from '@nestjs/swagger';
-import { addUserCreating, addUserModifying } from '@edanalytics/models-server';
+import {
+  UserTeamMembership,
+  addUserCreating,
+  addUserModifying,
+} from '@edanalytics/models-server';
 import { Authorize } from '../../auth/authorization';
 
 @ApiTags('UserTeamMembership')
@@ -93,6 +98,7 @@ export class UserTeamMembershipsController {
   }
 
   @Delete(':userTeamMembershipId')
+  @AuditDelete(UserTeamMembership, 'userTeamMembershipId')
   @Authorize({
     privilege: 'team.user-team-membership:delete',
     subject: {

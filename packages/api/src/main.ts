@@ -1,4 +1,5 @@
 import './modes/dev';
+import './utils/json-env-preflight-run';
 
 process.env['NODE_CONFIG_DIR'] = process.env['NODE_CONFIG_DIR'] || './packages/api/config';
 
@@ -28,11 +29,13 @@ import { ArtifactService } from './certification/artifact/artifact.service';
 import { CatalogService } from './certification/catalog/catalog.service';
 import { AggregateErrorHandler } from './app/aggregate-error-handler';
 import { AggregateErrorFilter } from './app/aggregate-error.filter';
+import { AuditActionMiddleware } from './audit/audit-action.middleware';
 import { createCsrfOriginGuard } from './app/csrf-origin-guard';
 import { createGlobalValidationPipe } from './app/global-validation-pipe';
 import { getSessionCookieOptions, SESSION_TRUST_PROXY_HOPS } from './app/session-cookie-options';
 import { assertValidSessionSecret } from './app/session-secret';
 import { assertValidDbEncryptionSecret } from './app/db-encryption-secret';
+import { assertProductionSecrets } from './app/production-secrets';
 import axios from 'axios';
 import https from 'https';
 
@@ -198,6 +201,18 @@ async function bootstrap() {
   // print even for an operator who set LOG_LEVEL=log or error.
   Logger.overrideLogger(getLogLevel());
 
+  // Validate production secrets before ANY database work. Creating the app runs migrations, and
+  // the seeding migration would otherwise insert a placeholder OIDC client secret into the oidc
+  // table before we got a chance to refuse -- and since seeding only runs while that table is
+  // empty, the real secret would never be seeded after the operator fixed their configuration.
+  assertProductionSecrets({
+    nodeEnv: process.env.NODE_ENV,
+    dbEngine: config.DB_ENGINE || 'pgsql',
+    // AWS-managed DB secrets are operator-controlled and not inspected here.
+    dbSecret: config.AWS_DB_SECRET ? undefined : config.DB_SECRET_VALUE,
+    sampleOidcClientSecret: config.SAMPLE_OIDC_CONFIG?.clientSecret,
+  });
+
   // Check database availability first - exit if not available.
   // This must run BEFORE NestFactory.create: creating the app initializes TypeOrmModule,
   // which opens its own connection and throws from deep inside Nest's bootstrap when the
@@ -209,6 +224,9 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     logger: getLogLevel(),
   });
+
+  // Without this, onApplicationShutdown hooks (flushing audit events) never fire on SIGTERM/SIGINT.
+  app.enableShutdownHooks();
 
   app.set('trust proxy', SESSION_TRUST_PROXY_HOPS);
 
@@ -232,6 +250,8 @@ async function bootstrap() {
   const sessionSecret = await config.SESSION_SECRET;
   assertValidSessionSecret(sessionSecret);
 
+  // Registered before the body parser and the CSRF guard so requests they reject are audited too.
+  app.use(app.get(AuditActionMiddleware).handle);
   app.use(json({ limit: '512kb' }));
   app.use(createCsrfOriginGuard(config.FE_URL));
   app.use(

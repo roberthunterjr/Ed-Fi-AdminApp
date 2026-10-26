@@ -13,6 +13,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { AuditDelete } from '../../../audit/audit-delete.decorator';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
@@ -137,6 +138,7 @@ export class EdorgsController {
   @SbVersion('v2', 'v3')
   @Operation('Deleting edorgs')
   @Delete(':edorgId')
+  @AuditDelete(Edorg, 'edorgId')
   @Authorize({
     privilege: EDORG_PRIVILEGES.DELETE,
     subject: {

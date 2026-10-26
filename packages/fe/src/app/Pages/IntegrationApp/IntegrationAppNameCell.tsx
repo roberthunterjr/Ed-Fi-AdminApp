@@ -1,12 +1,11 @@
 import { HStack } from '@chakra-ui/react';
-import { TableRowActions } from '@edanalytics/common-ui';
+import { TableRowActions, SbaaCellContext } from '@edanalytics/common-ui';
 import { GetIntegrationAppDto } from '@edanalytics/models';
-import { CellContext } from '@tanstack/react-table';
 
 import { IntegrationAppLink } from './IntegrationAppLink';
 import { useOneIntegrationAppActions } from './useOneIntegrationAppActions';
 
-export const IntegrationAppNameCell = (info: CellContext<GetIntegrationAppDto, unknown>) => {
+export const IntegrationAppNameCell = (info: SbaaCellContext<GetIntegrationAppDto>) => {
   const integrationApp = info.row.original;
 
   const actions = useOneIntegrationAppActions(integrationApp);

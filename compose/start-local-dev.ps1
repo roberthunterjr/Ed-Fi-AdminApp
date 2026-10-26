@@ -44,6 +44,8 @@ if ($MSSQL) {
 }
 
 $EnvFile = Join-Path $PSScriptRoot ".env"
+& (Join-Path $PSScriptRoot '..\eng\helpers\warn-env-placeholders.ps1') -EnvFile $EnvFile
+
 Write-Host "Starting Docker Compose services with profile $composeProfile..." -ForegroundColor Green
 docker compose $files --env-file $EnvFile --profile $composeProfile up -d
 Write-Host "Services started successfully!" -ForegroundColor Green

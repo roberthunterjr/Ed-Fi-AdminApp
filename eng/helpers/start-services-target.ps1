@@ -68,7 +68,11 @@ param(
 
     # Include Admin App API and FE services
     [Switch]
-    $IncludeAdminApp
+    $IncludeAdminApp,
+
+    # Abort pull/up after this many minutes (0 = no timeout)
+    [int]
+    $StartTimeoutMinutes = 0
 )
 
 $selectedTargets = @()
@@ -153,6 +157,7 @@ if (Test-Path $envFile) {
     }
 }
 $env:DB_ENGINE = $expectedEngine
+& (Join-Path $PSScriptRoot 'warn-env-placeholders.ps1') -EnvFile $envFile
 
 $commonServices = @(
     'nginx',
@@ -227,14 +232,63 @@ foreach ($profileName in $composeProfiles) {
 Write-Host "Starting Docker Compose services with profile $composeProfile for targets $selectedTargetsText..." -ForegroundColor Green
 Write-Host "Services: $($servicesToStart -join ', ')" -ForegroundColor Cyan
 
+# Many services share the same PostgreSQL-based images; pulling them all at once can hit
+# Docker Hub rate limits or stall. Cap Compose's concurrency unless the caller already set it.
+if (-not $env:COMPOSE_PARALLEL_LIMIT) {
+    $env:COMPOSE_PARALLEL_LIMIT = '4'
+}
+
+# Runs `docker compose <args>` with an optional timeout (minutes). Returns the exit code, or
+# -1 when the timeout elapsed and the process tree was killed. 0 minutes means no timeout.
+function Invoke-DockerCompose {
+    param(
+        [string[]]$ComposeArgs,
+        [int]$TimeoutMinutes
+    )
+
+    if ($TimeoutMinutes -le 0) {
+        docker compose @ComposeArgs
+        return $LASTEXITCODE
+    }
+
+    $quotedArgs = @('compose') + @($ComposeArgs | ForEach-Object { if ($_ -match '\s') { "`"$_`"" } else { $_ } })
+    $process = Start-Process -FilePath 'docker' -ArgumentList $quotedArgs -NoNewWindow -PassThru
+    if (-not $process.WaitForExit($TimeoutMinutes * 60 * 1000)) {
+        Write-Host "ERROR! 'docker compose $($ComposeArgs | Select-Object -Last 1)' did not finish within $TimeoutMinutes minute(s); aborting." -ForegroundColor Red
+        $process.Kill($true)
+        return -1
+    }
+    return $process.ExitCode
+}
+
+$baseArgs = @($files + @('--env-file', $envFile) + $profileArgs)
+
+# Pull registry images up front with retries so a transient failure or rate limit does not
+# fail (or hang) the whole `up`. Images built locally are skipped.
+$pullAttempts = 3
+for ($attempt = 1; $attempt -le $pullAttempts; $attempt++) {
+    Write-Host "Pulling images (attempt $attempt/$pullAttempts)..." -ForegroundColor Cyan
+    $pullExit = Invoke-DockerCompose -ComposeArgs ($baseArgs + @('pull', '--ignore-buildable') + $servicesToStart) -TimeoutMinutes $StartTimeoutMinutes
+    if ($pullExit -eq 0) { break }
+    if ($attempt -lt $pullAttempts) {
+        $delay = 15 * $attempt
+        Write-Host "Image pull failed (exit $pullExit). Retrying in $delay seconds..." -ForegroundColor Yellow
+        Start-Sleep -Seconds $delay
+    }
+}
+if ($pullExit -ne 0) {
+    Write-Host 'ERROR! Image pull failed after retries.' -ForegroundColor Red
+    exit 1
+}
+
 $buildArgs = @()
 if ($Rebuild) {
     $buildArgs += '--build'
 }
 
-docker compose $files --env-file $envFile $profileArgs up -d $buildArgs $servicesToStart
+$upExit = Invoke-DockerCompose -ComposeArgs ($baseArgs + @('up', '-d') + $buildArgs + $servicesToStart) -TimeoutMinutes $StartTimeoutMinutes
 
-if ($LASTEXITCODE -ne 0) {
+if ($upExit -ne 0) {
     Write-Host 'ERROR! Services failed to start.' -ForegroundColor Red
     exit 1
 }

@@ -17,7 +17,7 @@ import { usePopBanner } from '../../../Layout/FeedbackBanner';
 
 import { userQueries } from '../../../api';
 import { mutationErrCallback } from '../../../helpers/mutationErrCallback';
-import { noop } from '@tanstack/react-table';
+import noop from 'lodash/noop';
 
 const resolver = classValidatorResolver(PutUserDto);
 

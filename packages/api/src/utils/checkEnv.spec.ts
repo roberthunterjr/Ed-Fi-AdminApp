@@ -30,6 +30,23 @@ describe('checkEnv', () => {
     ).not.toThrow();
   });
 
+  it.each([
+    ['RATE_LIMIT_LIMIT', '100'],
+    ['RATE_LIMIT_LIMIT', true],
+    ['RATE_LIMIT_LIMIT', Infinity],
+    ['RATE_LIMIT_LIMIT', 0],
+    ['RATE_LIMIT_TTL', 1.5],
+    ['RATE_LIMIT_TTL', -1],
+  ])('throws when %s is %p, not a positive whole number', (name, value) => {
+    expect(loadCheckEnvWith({ [name]: value })).toThrow(
+      `${name} must be a positive whole number.`
+    );
+  });
+
+  it('does not throw for a large numeric RATE_LIMIT_LIMIT', () => {
+    expect(loadCheckEnvWith({ RATE_LIMIT_LIMIT: 100000 })).not.toThrow();
+  });
+
   it('throws when AWS_SESSION_SECRET is configured but AWS_REGION is not', () => {
     expect(
       loadCheckEnvWith({ AWS_SESSION_SECRET: 'my-session-secret-id', AWS_REGION: undefined })

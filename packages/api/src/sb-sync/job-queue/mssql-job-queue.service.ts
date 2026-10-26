@@ -5,7 +5,7 @@ import { randomUUID } from 'crypto';
 import { DataSource, In, Repository } from 'typeorm';
 import config from 'config';
 import { JobQueue } from '@edanalytics/models-server';
-import { IJobQueueService, Job, JobOptions, ScheduleOptions } from './job-queue.interface';
+import { IJobQueueService, Job, JobOptions, ScheduleOptions, WorkOptions } from './job-queue.interface';
 
 @Injectable()
 export class MssqlJobQueueService
@@ -13,6 +13,9 @@ export class MssqlJobQueueService
 {
   private readonly logger = new Logger(MssqlJobQueueService.name);
   private workers = new Map<string, (job: Job) => Promise<unknown>>();
+  // Per-queue handler cap from WorkOptions.localConcurrency, and the handlers running now
+  private concurrencyLimits = new Map<string, number>();
+  private activeHandlers = new Map<string, number>();
   // In-process schedule registry — no DB table (D-10)
   private scheduleRegistry = new Map<string, { cron: string; data: unknown; tz: string }>();
   private lastScheduleFire = new Map<string, Date>();
@@ -20,6 +23,9 @@ export class MssqlJobQueueService
   private scheduleTimer: NodeJS.Timeout | undefined;
   private isRunning = false;
   private lastDiagnosticLog = 0; // timestamp of last diagnostic log to avoid spam
+  // Lease on a claimed job; renewed while its handler runs (see runClaimedJob)
+  private readonly leaseMinutes = 5;
+  private readonly leaseRenewMs = 60_000;
   private readonly pollIntervalMs: number;
   private readonly scheduleIntervalMs: number;
 
@@ -48,7 +54,8 @@ export class MssqlJobQueueService
     if (this.scheduleTimer) clearTimeout(this.scheduleTimer);
 
     if (options?.graceful) {
-      const timeout = 30_000;
+      // Docker's default stop grace period is 10 s; waiting longer ends in a forced kill
+      const timeout = 8_000;
       const start = Date.now();
       while (Date.now() - start < timeout) {
         const activeCount = await this.jobRepository.count({ where: { state: 'active' } });
@@ -68,7 +75,9 @@ export class MssqlJobQueueService
     const retrybackoff = (options?.retryBackoff ?? false) ? 1 : 0;
 
     try {
-      if (options?.expireInHours != null) {
+      if (options?.expireInSeconds != null || options?.expireInHours != null) {
+        const expireUnit = options.expireInSeconds != null ? 'SECOND' : 'HOUR';
+        const expireAmount = options.expireInSeconds ?? options.expireInHours;
         // Use server-side DATEADD so expirein uses the same clock as GETUTCDATE() comparisons.
         // Node.js Date.now() and the SQL Server clock can differ; using SQL functions eliminates
         // the mismatch entirely.
@@ -76,8 +85,8 @@ export class MssqlJobQueueService
           `INSERT INTO job_queue
              (id, name, data, state, createdon, singletonKey, retrylimit, retrydelay, retrybackoff, expirein)
            VALUES
-             (@0, @1, @2, 'created', GETUTCDATE(), @3, @4, @5, @6, DATEADD(HOUR, @7, GETUTCDATE()))`,
-          [id, queueName, jobData, singletonKey, retrylimit, retrydelay, retrybackoff, options.expireInHours]
+             (@0, @1, @2, 'created', GETUTCDATE(), @3, @4, @5, @6, DATEADD(${expireUnit}, @7, GETUTCDATE()))`,
+          [id, queueName, jobData, singletonKey, retrylimit, retrydelay, retrybackoff, expireAmount]
         );
       } else {
         await this.jobRepository.query(
@@ -126,8 +135,14 @@ export class MssqlJobQueueService
 
   async work<T = object>(
     queueName: string,
-    handler: (job: Job<T>) => Promise<unknown>
+    handler: (job: Job<T>) => Promise<unknown>,
+    options?: WorkOptions
   ): Promise<void> {
+    // Without localConcurrency a queue is unbounded: processJobs() claims up to 10 jobs per tick
+    // and runs each handler fire-and-forget. With it, claims are limited to the free capacity.
+    if (options?.localConcurrency != null) {
+      this.concurrencyLimits.set(queueName, options.localConcurrency);
+    }
     this.workers.set(queueName, handler as (job: Job) => Promise<unknown>);
     this.logger.log(`Worker registered for queue: ${queueName}`);
   }
@@ -186,30 +201,32 @@ export class MssqlJobQueueService
     }
   }
 
-  // Atomically claim up to 10 eligible jobs using MSSQL locking hints (D-01)
+  // Atomically claim up to 10 eligible jobs using MSSQL locking hints (D-01).
+  // Queues with a localConcurrency cap are claimed separately, only up to their free capacity.
   private async processJobs(): Promise<void> {
     if (!this.isRunning) return;
 
-    const leaseMinutes = 5;
+    const limitedQueues = [...this.concurrencyLimits.keys()];
+    const claimed: JobQueue[] =
+      limitedQueues.length === 0
+        ? await this.claimJobs(10, '', [])
+        : await this.claimJobs(
+            10,
+            `AND name NOT IN (${limitedQueues.map((_, i) => `@${i}`).join(', ')})`,
+            limitedQueues
+          );
 
-    // Use GETUTCDATE() + server-side DATEADD for leaseUntil so it uses the same clock
-    // as the expirein/availableAt comparisons — avoids Node.js vs SQL Server clock skew.
-    const claimed: JobQueue[] = await this.jobRepository.query(
-      `UPDATE TOP (10) job_queue WITH (UPDLOCK, ROWLOCK, READPAST)
-       SET state      = 'active',
-           startedon  = GETUTCDATE(),
-           leaseUntil = DATEADD(MINUTE, ${leaseMinutes}, GETUTCDATE())
-       OUTPUT INSERTED.*
-       WHERE state IN ('created', 'retry')
-         AND (availableAt IS NULL OR availableAt <= GETUTCDATE())
-         AND (expirein    IS NULL OR expirein    >  GETUTCDATE())`,
-      []
-    );
+    for (const [queueName, limit] of this.concurrencyLimits) {
+      const capacity = limit - (this.activeHandlers.get(queueName) ?? 0);
+      if (capacity > 0) {
+        claimed.push(...(await this.claimJobs(capacity, 'AND name = @0', [queueName])));
+      }
+    }
 
     for (const job of claimed) {
       this.logger.log(`Claimed job ${job.id} (${job.name}) — running handler`);
       // fire-and-forget — each job runs independently without blocking the next poll tick
-      void this.executeJob(job);
+      void this.runClaimedJob(job);
     }
 
     if (claimed.length === 0) {
@@ -246,6 +263,50 @@ export class MssqlJobQueueService
           }
         }
       }
+    }
+  }
+
+  private async claimJobs(top: number, nameFilter: string, params: unknown[]): Promise<JobQueue[]> {
+    // Use GETUTCDATE() + server-side DATEADD for leaseUntil so it uses the same clock
+    // as the expirein/availableAt comparisons — avoids Node.js vs SQL Server clock skew.
+    return this.jobRepository.query(
+      `UPDATE TOP (${top}) job_queue WITH (UPDLOCK, ROWLOCK, READPAST)
+       SET state      = 'active',
+           startedon  = GETUTCDATE(),
+           leaseUntil = DATEADD(MINUTE, ${this.leaseMinutes}, GETUTCDATE())
+       OUTPUT INSERTED.*
+       WHERE state IN ('created', 'retry')
+         AND (availableAt IS NULL OR availableAt <= GETUTCDATE())
+         AND (expirein    IS NULL OR expirein    >  GETUTCDATE())
+         ${nameFilter}`,
+      params
+    );
+  }
+
+  // Counts the handler against its queue's capacity until it settles, and renews the job's lease
+  // meanwhile so a long handler (e.g. an hour-long ods-manage poll) is never seen as stale by
+  // another instance's startup sweeper (recoverStaleJobs).
+  private async runClaimedJob(job: JobQueue): Promise<void> {
+    this.activeHandlers.set(job.name, (this.activeHandlers.get(job.name) ?? 0) + 1);
+    const heartbeat = setInterval(() => void this.renewLease(job.id), this.leaseRenewMs);
+    try {
+      await this.executeJob(job);
+    } finally {
+      clearInterval(heartbeat);
+      this.activeHandlers.set(job.name, (this.activeHandlers.get(job.name) ?? 1) - 1);
+    }
+  }
+
+  private async renewLease(jobId: string): Promise<void> {
+    try {
+      await this.jobRepository.query(
+        `UPDATE job_queue SET leaseUntil = DATEADD(MINUTE, ${this.leaseMinutes}, GETUTCDATE())
+         WHERE id = @0 AND state = 'active'`,
+        [jobId]
+      );
+    } catch (err) {
+      // The next renewal retries; the lease only lapses after leaseMinutes without one.
+      this.logger.warn(`Could not renew lease for job ${jobId}: ${(err as Error).message}`);
     }
   }
 

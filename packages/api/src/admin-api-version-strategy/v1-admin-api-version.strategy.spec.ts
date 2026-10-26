@@ -8,6 +8,7 @@ import { V1AdminApiVersionStrategy } from './v1-admin-api-version.strategy';
 import { AdminApiServiceV1, StartingBlocksServiceV1 } from '../teams/edfi-tenants/starting-blocks';
 import { ValidationHttpException } from '../utils';
 import * as syncOds from '../sb-sync/sync-ods';
+import axios, { AxiosResponse } from 'axios';
 
 jest.mock('../sb-sync/sync-ods');
 
@@ -104,6 +105,24 @@ describe('V1AdminApiVersionStrategy', () => {
     await expect(
       strategy.provisionCredentialsForNewTenants({} as SbEnvironment, [])
     ).resolves.toBeUndefined();
+  });
+
+  it.each([
+    ['a trailing slash', 'https://localhost/odsv6-adminv1-adminapi/'],
+    ['repeated trailing slashes', 'https://localhost/odsv6-adminv1-adminapi//'],
+  ])('createClientCredentials does not produce a double slash when adminApiUrl has %s', async (_case, adminApiUrl) => {
+    const postSpy = jest.spyOn(axios, 'post').mockResolvedValue({ status: 200 } as unknown as AxiosResponse);
+
+    await (
+      strategy as unknown as { createClientCredentials: (url: string) => Promise<unknown> }
+    ).createClientCredentials(adminApiUrl);
+
+    expect(postSpy).toHaveBeenCalledWith(
+      'https://localhost/odsv6-adminv1-adminapi/connect/register',
+      expect.any(String),
+      expect.any(Object)
+    );
+    postSpy.mockRestore();
   });
 
   describe('dispatchSync', () => {

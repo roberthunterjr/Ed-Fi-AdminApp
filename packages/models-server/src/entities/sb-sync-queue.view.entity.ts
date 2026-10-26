@@ -1,4 +1,4 @@
-import { ISbSyncQueue, PgBossJobState } from '@edanalytics/models';
+import { ISbSyncQueue, OdsManageJobData, PgBossJobState } from '@edanalytics/models';
 import { Column, Entity, Index } from 'typeorm';
 
 // 'simple-json' is a TypeORM virtual type accepted by both PostgreSQL and MSSQL validators.
@@ -11,7 +11,7 @@ export class SbSyncQueue implements ISbSyncQueue {
   @Column({ primary: true })
   id: string;
   @Column()
-  type: 'SbEnvironment' | 'EdfiTenant';
+  type: 'SbEnvironment' | 'EdfiTenant' | 'OdsManage';
   @Column()
   name: string | 'resource no longer exists';
   @Column({ nullable: true })
@@ -21,7 +21,7 @@ export class SbSyncQueue implements ISbSyncQueue {
   @Column()
   dataText: string;
   @Column({ type: 'simple-json', nullable: true })
-  data: { sbEnvironmentId: number } | { edfiTenantId: number };
+  data: { sbEnvironmentId: number } | { edfiTenantId: number } | OdsManageJobData;
   @Column()
   state: PgBossJobState;
   @Column({ nullable: true })

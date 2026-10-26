@@ -119,6 +119,119 @@ When('the user clicks on Profile option', async () => {
   await environmentsPage.clickResourceOption('profiles')
 })
 
+When('the user clicks on Claimsets option', async () => {
+  await environmentsPage.clickClaimsetsOption()
+})
+
+When(/^the user copies claimset (.+) as (.+)$/, async ({}, source: string, name: string) => {
+  await environmentsPage.copyTestClaimset(source, name)
+})
+
+When('the user imports a claimset', async () => {
+  await environmentsPage.importTestClaimset()
+})
+
+Then(/^claimset (.+) can be exported as a valid JSON file$/, async ({}, name: string) => {
+  await environmentsPage.exportTestClaimset(name)
+})
+
+Then(/^the (Edit|Delete) action is unavailable for reserved claimset (.+)$/,
+  async ({}, action: 'Edit' | 'Delete', name: string) => {
+    await environmentsPage.reservedClaimsetActionShouldBeUnavailable(action, name)
+  },
+)
+
+When(/^application dependencies with claimset (.+) exist$/, async ({}, claimset: string) => {
+  await environmentsPage.prepareApplicationDependencies(claimset)
+})
+
+When(/^a test application (.+) with one credential exists$/, async ({}, name: string) => {
+  await environmentsPage.prepareTestApplication(name)
+})
+
+When(/^the user fills the application fields (.+), (.+)$/, async ({}, name: string, claimset: string) => {
+  await environmentsPage.fillApplicationFields(name, claimset)
+})
+
+When(/^the user opens test resource (.+)$/, async ({}, name: string) => {
+  await environmentsPage.openTestResource(name)
+})
+
+When(/^the user clicks the (Edit|Delete|Manage creds) action for test resource (.+)$/,
+  async ({}, action: string, name: string) => {
+    await environmentsPage.clickTestResourceAction(action, name)
+  },
+)
+
+When(/^the user clicks the (Edit|Manage creds|Reset creds) tab option$/, async ({}, action: string) => {
+  await environmentsPage.clickTestResourceAction(action)
+})
+
+When(/^the user renames the (application|credential) to (.+)$/,
+  async ({}, resource: 'application' | 'credential', name: string) => {
+    await environmentsPage.renameTestResource(name, resource)
+  },
+)
+
+Then(/^test resource (.+) details are displayed in (claimsets|applications|apiClients)$/,
+  async ({}, name: string, resource: string) => {
+    await environmentsPage.testResourceDetailsShouldBeDisplayed(name, resource)
+  },
+)
+
+Then('the user can view the key and secret generated', async ({ page }) => {
+  environmentsPage = new EnvironmentsPage(page)
+  await environmentsPage.userCanViewKeyAndSecretGenerated()
+})
+
+Then(/^test resource (.+) is absent from the table$/, async ({}, name: string) => {
+  await environmentsPage.testResourceShouldBeAbsent(name)
+})
+
+When('the user confirms test resource deletion', async () => {
+  await environmentsPage.confirmResourceDeletion()
+})
+
+Then('the credentials table is displayed with one credential', async () => {
+  await environmentsPage.credentialsShouldBeDisplayed(1)
+})
+
+Then('the credentials table is displayed with two credentials', async () => {
+  await environmentsPage.credentialsShouldBeDisplayed(2)
+})
+
+When('the user opens the first credential', async () => {
+  await environmentsPage.openFirstCredential()
+})
+
+When(/^the user clicks the (Edit|Delete|Reset creds) action for the first credential$/,
+  async ({}, action: string) => {
+    await environmentsPage.clickFirstCredentialAction(action)
+  },
+)
+
+When(/^the user fills the credential fields (.+)$/, async ({}, name: string) => {
+  await environmentsPage.fillCredentialFields(name)
+})
+
+When('the user returns to the credentials table', async () => {
+  await environmentsPage.returnToCredentials()
+})
+
+Then(/^deleting the only credential is blocked from the (tab|row) option$/,
+  async ({}, from: 'tab' | 'row') => {
+    await environmentsPage.onlyCredentialDeletionShouldBeBlocked(from)
+  },
+)
+
+When('the user confirms credential reset', async () => {
+  await environmentsPage.confirmCredentialReset()
+})
+
+Then('the newly reset credentials are displayed', async () => {
+  await environmentsPage.resetCredentialsShouldBeDisplayed()
+})
+
 When('the user clicks on Create button', async () => {
   await environmentsPage.clickCreateButton()
 })
@@ -296,6 +409,10 @@ Then(/^the ods (.+) should have the label Delete: Pending$/, async ({}, name: st
 
 Then('the Ed-Orgs table should be displayed', async () => {
   await environmentsPage.resourceTableShouldBeDisplayed()
+})
+
+Then('is possible to enter to the first edorgs in order to see the details', async () => {
+  await environmentsPage.firstEdorgDetailsShouldBeDisplayed()
 })
 
 Then('the details of vendors should be displayed', async () => {

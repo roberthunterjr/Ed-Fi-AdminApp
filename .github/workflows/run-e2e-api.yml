@@ -17,6 +17,9 @@ on:
           - ci
           - local
 
+permissions:
+  contents: read
+
 jobs:
   bruno-e2e:
     runs-on: ubuntu-latest
@@ -45,8 +48,8 @@ jobs:
       - name: Start Docker Compose services
         if: success()
         run: |
+          ./eng/helpers/initialize-env-file.ps1 -Force
           cd compose
-          cp .env.example .env
           ./start-services.ps1 -Rebuild
 
       - name: Wait for services to be ready

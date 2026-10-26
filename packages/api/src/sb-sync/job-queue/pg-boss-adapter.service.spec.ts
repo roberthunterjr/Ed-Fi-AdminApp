@@ -105,6 +105,48 @@ describe('PgBossAdapter', () => {
     });
   });
 
+  describe('send() — expireInSeconds', () => {
+    it('passes expireInSeconds through to boss.send', async () => {
+      boss.send.mockResolvedValue('aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
+
+      await adapter.send('my-queue', null, { expireInSeconds: 7200, retryLimit: 0 });
+
+      expect(boss.send).toHaveBeenCalledWith(
+        'my-queue',
+        {},
+        expect.objectContaining({ expireInSeconds: 7200, retryLimit: 0 })
+      );
+    });
+
+    it('omits expireInSeconds when not provided', async () => {
+      boss.send.mockResolvedValue('aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
+
+      await adapter.send('my-queue', null, { expireInHours: 1 });
+
+      const sendOptions = boss.send.mock.calls[0][2];
+      expect(sendOptions).toEqual({ expireInHours: 1 });
+      expect(sendOptions).not.toHaveProperty('expireInSeconds');
+    });
+  });
+
+  describe('work() — options', () => {
+    it('passes localConcurrency to boss.work', async () => {
+      await adapter.work('my-queue', jest.fn(), { localConcurrency: 5 });
+
+      expect(boss.work).toHaveBeenCalledWith(
+        'my-queue',
+        expect.objectContaining({ includeMetadata: true, localConcurrency: 5 }),
+        expect.any(Function)
+      );
+    });
+
+    it('does not set localConcurrency when no options are given', async () => {
+      await adapter.work('my-queue', jest.fn());
+
+      expect(boss.work.mock.calls[0][1]).not.toHaveProperty('localConcurrency');
+    });
+  });
+
   // -------------------------------------------------------------------------
   // send() — dedup path (boss.send returns null)
   // -------------------------------------------------------------------------

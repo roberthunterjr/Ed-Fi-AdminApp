@@ -86,8 +86,14 @@ Scenario Outline: Grant Ownership Environment Tab
     When the user click on save button
     Then the required field <highlighted> should be highlighted
 
+    # These rows rely on the v6 URLs being detected as a v1 environment (the ODS instance
+    # requirement only applies to v1), so they are skipped together with the v6 stack (-SkipV1).
+    @v1
     Examples:
       | fieldName                                              | highlighted      |
       | name, ed-fi api, ed-fi management, label               | ODS Instance     |
       | ed-fi api, ed-fi management, label                     | name             |
+
+    Examples:
+      | fieldName                                              | highlighted      |
       | name, ed-fi api, label.                                | ed-fi management |

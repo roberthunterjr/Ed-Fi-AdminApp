@@ -7,6 +7,7 @@ import 'express-session';
 declare module 'express-session' {
   interface SessionData {
     oidcId?: number;
+    oidcIssuer?: string;
     idToken?: string;
   }
 }

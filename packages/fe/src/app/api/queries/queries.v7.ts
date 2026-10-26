@@ -24,6 +24,7 @@ import {
   PostApiClientResponseDtoV2,
   PostApiClientResponseDtoV3,
   PostInstanceDtoV2,
+  PostInstanceResponseDto,
   ImportClaimsetSingleDtoV2,
   ImportClaimsetSingleDtoV3,
   PostApplicationFormDtoV2,
@@ -614,6 +615,6 @@ export const instancesV2 = new EntityQueryBuilder({
   includeEdfiTenant: true,
   includeTeam: TeamOptions.Required,
 })
-  .post('post', { ResDto: Id, ReqDto: PostInstanceDtoV2 })
+  .post('post', { ResDto: PostInstanceResponseDto, ReqDto: PostInstanceDtoV2 })
   .delete('delete')
   .build();

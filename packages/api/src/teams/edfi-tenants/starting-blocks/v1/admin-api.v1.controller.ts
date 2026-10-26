@@ -45,6 +45,9 @@ import axios from 'axios';
 import { instanceToPlain, plainToInstance } from 'class-transformer';
 import { Response } from 'express';
 import { In, Repository } from 'typeorm';
+import { adminApiDeleteSnapshots } from '../../../../audit/admin-api-delete.snapshots';
+import { AuditAdminApiDelete } from '../../../../audit/audit-admin-api-delete.decorator';
+import { AuditAdminApiDeleteInterceptor } from '../../../../audit/audit-admin-api-delete.interceptor';
 import { Authorize } from '../../../../auth/authorization';
 import { InjectFilter } from '../../../../auth/helpers/inject-filter';
 import { checkId } from '../../../../auth/helpers/where-ids';
@@ -97,7 +100,11 @@ class AdminApiV1Interceptor implements NestInterceptor {
 }
 
 @UseFilters(new AdminApiV1xExceptionFilter())
-@UseInterceptors(SbEnvironmentEdfiTenantInterceptor, AdminApiV1Interceptor)
+@UseInterceptors(
+  SbEnvironmentEdfiTenantInterceptor,
+  AdminApiV1Interceptor,
+  AuditAdminApiDeleteInterceptor,
+)
 @ApiTags('Admin API Resources - v1.x')
 @Controller()
 export class AdminApiControllerV1 {
@@ -219,6 +226,7 @@ export class AdminApiControllerV1 {
   }
 
   @Delete('vendors/:vendorId')
+  @AuditAdminApiDelete('vendorId', adminApiDeleteSnapshots.v1.vendor)
   @Authorize({
     privilege: 'team.sb-environment.edfi-tenant.vendor:delete',
     subject: {
@@ -460,6 +468,7 @@ export class AdminApiControllerV1 {
   }
 
   @Delete('applications/:applicationId')
+  @AuditAdminApiDelete('applicationId', adminApiDeleteSnapshots.v1.application)
   @Authorize({
     privilege: 'team.sb-environment.edfi-tenant.ods.edorg.application:delete',
     subject: {
@@ -734,6 +743,7 @@ export class AdminApiControllerV1 {
   }
 
   @Delete('claimsets/:claimsetId')
+  @AuditAdminApiDelete('claimsetId', adminApiDeleteSnapshots.v1.claimset)
   @Authorize({
     privilege: 'team.sb-environment.edfi-tenant.claimset:delete',
     subject: {

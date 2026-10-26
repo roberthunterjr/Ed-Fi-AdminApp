@@ -15,6 +15,10 @@ When('the user clicks the Ownerships option', async ({ page }) => {
   await ownershipsPage.clickOwnershipsOption();
 });
 
+When(/^the user creates a unique ownership team based on (.+)$/, async ({}, team: string) => {
+  await ownershipsPage.createUniqueTeam(team.trim());
+});
+
 When('the user clicks the Grant new ownership button', async () => {
   await ownershipsPage.clickGrantNewButton();
 });

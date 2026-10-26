@@ -1,6 +1,6 @@
 import { Expose, Type } from 'class-transformer';
 import { IsOptional, IsString, Matches, MaxLength, MinLength, IsIn, ValidateNested, IsArray, IsNumber } from 'class-validator';
-import { TrimWhitespace } from '../utils';
+import { TrimTrailingSlashes, TrimWhitespace } from '../utils';
 import { IsNumberOrCommaSeparatedNumbers } from '../decorators/conditional-validation.decorator';
 import type {
   ISbEnvironment,
@@ -99,7 +99,7 @@ export class GetSbEnvironmentDto
   }
 
   get odsDsVersion() {
-    return this.configPublic?.odsApiMeta?.dataModels.find((dm) => dm.name === 'Ed-Fi')?.version;
+    return this.configPublic?.odsApiMeta?.dataModels?.find((dm) => dm.name === 'Ed-Fi')?.version;
   }
 
   get adminApiUrl() {
@@ -172,6 +172,7 @@ export class PostSbEnvironmentDto
   @Expose()
   @IsOptional()
   @TrimWhitespace()
+  @TrimTrailingSlashes()
   @MinLength(3)
   @Matches(/^(https?:\/\/)[^\s$.?#].[^\s]*$/i, {
     message: 'ODS/API Discovery URL must be a valid URL starting with http:// or https://',
@@ -181,6 +182,7 @@ export class PostSbEnvironmentDto
   @Expose()
   @IsOptional()
   @TrimWhitespace()
+  @TrimTrailingSlashes()
   @MinLength(3)
   @Matches(/^(https?:\/\/)[^\s$.?#].[^\s]*$/i, {
     message: 'Admin API URL must be a valid URL starting with http:// or https://',
@@ -298,6 +300,7 @@ export class PutSbEnvironmentDto
   @Expose()
   @IsOptional()
   @TrimWhitespace()
+  @TrimTrailingSlashes()
   @MinLength(3)
   @Matches(/^(https?:\/\/)[^\s$.?#].[^\s]*$/i, {
     message: 'Ed-Fi API Discovery URL must be a valid URL starting with http:// or https://',
@@ -307,6 +310,7 @@ export class PutSbEnvironmentDto
   @Expose()
   @IsOptional()
   @TrimWhitespace()
+  @TrimTrailingSlashes()
   @MinLength(3)
   @Matches(/^(https?:\/\/)[^\s$.?#].[^\s]*$/i, {
     message: 'Management API Discovery URL must be a valid URL starting with http:// or https://',

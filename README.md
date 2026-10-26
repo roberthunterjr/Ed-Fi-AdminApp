@@ -10,6 +10,7 @@ Ed-Fi Admin App is a user interface for managing [Ed-Fi Technology Suite deploym
 - [System Architecture](./docs/system-architecture.md)
 - [Application Architecture](./docs/application-architecture.md)
 - [Deployment Notes](./docs/deployment.md)
+- [Audit Logging](./docs/audit-logging.md)
 
 ## Legal Information
 

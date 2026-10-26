@@ -1,0 +1,40 @@
+meta {
+  name: certification/run v5 Students step 03 - OK (200)
+  type: http
+  seq: 3
+  tags: Certification
+}
+
+post {
+  url: {{BASE_URL}}/sb-environments/{{process.env.CERT_SB_ENVIRONMENT_ID}}/edfi-tenants/{{process.env.CERT_EDFI_TENANT_ID}}/certification/sis/v5/steps/{{process.env.CERT_STEP_03_ID}}/run
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{ACCESS_TOKEN}}
+}
+
+body:json {
+  {}
+}
+
+script:pre-request {
+  if (!bru.getProcessEnv('CERT_SB_ENVIRONMENT_ID')) {
+    bru.runner.skipRequest();
+    return;
+  }
+  const odsId = bru.getProcessEnv('CERT_ODS_ID');
+  req.setBody({ ...(odsId ? { odsId: Number(odsId) } : {}), token: bru.getVar('certToken'), inputs: {} });
+}
+
+tests {
+  test("certification/run step 03 - status is 200 and uses step 01's captured values", function() {
+    expect(res.getStatus()).to.equal(200);
+    const errors = res.getBody().errors;
+    // Fail loudly if the error shape changes, so the check below can't pass vacuously.
+    errors.forEach((e) => expect(e).to.have.all.keys('kind', 'field', 'expected', 'observed', 'message'));
+    const messages = errors.map((e) => e.message).join(' ');
+    expect(messages).to.not.contain('first to populate it');
+  });
+}

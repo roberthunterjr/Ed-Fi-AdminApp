@@ -91,7 +91,8 @@ function Invoke-DatabaseSql {
   try {
     if ($dbEngine -eq 'mssql') {
       $dbName = if ($env:MSSQL_DB) { $env:MSSQL_DB } else { 'sbaa' }
-      $saPassword = if ($env:MSSQL_SA_PASSWORD) { $env:MSSQL_SA_PASSWORD } else { 'YourStrong!Passw0rd' }
+      if (-not $env:MSSQL_SA_PASSWORD) { throw 'MSSQL_SA_PASSWORD is not set. Set it to the value in compose/.env (eng/testing/run-e2e-ui.ps1 exports it for you).' }
+      $saPassword = $env:MSSQL_SA_PASSWORD
       $dbContainer = if ($env:MSSQL_DB_HOST) { $env:MSSQL_DB_HOST } else { 'edfiadminapp-mssql' }
       docker cp $sqlFile "${dbContainer}:/tmp/seed-machine-user.sql" | Out-Null
       docker exec $dbContainer /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P $saPassword -d $dbName -i /tmp/seed-machine-user.sql | Out-Null
@@ -123,7 +124,8 @@ function Invoke-DatabaseScalarSql {
   try {
     if ($dbEngine -eq 'mssql') {
       $dbName = if ($env:MSSQL_DB) { $env:MSSQL_DB } else { 'sbaa' }
-      $saPassword = if ($env:MSSQL_SA_PASSWORD) { $env:MSSQL_SA_PASSWORD } else { 'YourStrong!Passw0rd' }
+      if (-not $env:MSSQL_SA_PASSWORD) { throw 'MSSQL_SA_PASSWORD is not set. Set it to the value in compose/.env (eng/testing/run-e2e-ui.ps1 exports it for you).' }
+      $saPassword = $env:MSSQL_SA_PASSWORD
       $dbContainer = if ($env:MSSQL_DB_HOST) { $env:MSSQL_DB_HOST } else { 'edfiadminapp-mssql' }
       docker cp $sqlFile "${dbContainer}:/tmp/seed-machine-user.sql" | Out-Null
       $output = & docker exec $dbContainer /opt/mssql-tools18/bin/sqlcmd -C -h -1 -W -S localhost -U sa -P $saPassword -d $dbName -i /tmp/seed-machine-user.sql

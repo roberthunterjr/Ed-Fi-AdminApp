@@ -121,6 +121,19 @@ describe('OwnershipsGlobalService', () => {
     expect(Object.keys(where)).toEqual(['teamId']);
   });
 
+  it('create() still succeeds when the cache reload fails after the insert', async () => {
+    mockAuthService.reloadTeamOwnershipCache.mockRejectedValueOnce(new Error('cache boom'));
+    const dto = {
+      teamId: 2,
+      odsId: 20,
+      type: OWNERSHIP_RESOURCE_TYPE.ods,
+      createdById: 1,
+      roleId: 3,
+    } as unknown as PostOwnershipDto;
+
+    await expect(service.create(dto)).resolves.toMatchObject({ id: 1, odsId: 20 });
+  });
+
   it('findOne() returns an ownership by id', async () => {
     const result = await service.findOne(1);
     expect(result).toMatchObject({ id: 1, teamId: 2 });

@@ -1,13 +1,12 @@
 import { HStack } from '@chakra-ui/react';
-import { TableRowActions } from '@edanalytics/common-ui';
+import { TableRowActions, SbaaCellContext } from '@edanalytics/common-ui';
 import { UseQueryOptions, useQuery } from '@tanstack/react-query';
-import { CellContext } from '@tanstack/react-table';
 import { useTeamEdfiTenantNavContextLoaded } from '../../helpers';
 import { ClaimsetLinkV2 } from '../../routes';
 import { ClaimsetEntity, useClaimsetConfig } from './claimsetConfig';
 import { useClaimsetActions } from './useClaimsetActions';
 
-export const NameCell = (info: CellContext<ClaimsetEntity, unknown>) => {
+export const NameCell = (info: SbaaCellContext<ClaimsetEntity>) => {
   const { teamId, edfiTenant } = useTeamEdfiTenantNavContextLoaded();
   const { queries } = useClaimsetConfig();
   // TypeScript cannot resolve union-typed overloaded functions; cast to the

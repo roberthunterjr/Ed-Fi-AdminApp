@@ -91,6 +91,37 @@ Run a single request by name:
 .\eng\testing\run-bruno.ps1 -Env local -Request auth-me
 ```
 
+#### Run the certification step collection (AC-466)
+
+`collections/certification` calls the step-run endpoint against a real ODS/API. Every request skips itself unless `CERT_SB_ENVIRONMENT_ID` is set, so the default suite is unaffected. The ODS must contain data matching the inputs. Locally, refresh the ODS databases to Data Model 5.2 templates first (otherwise every data call returns 500), or point the environment at certification.ed-fi.org. The `ACCESS_TOKEN` user needs `sb-environment:update` on the environment.
+
+Look up the v5 Students step ids after the API has synced the catalog:
+
+```sql
+SELECT s."stepId", s."fileName"
+FROM cert.step_catalog s
+JOIN cert.scenario_catalog sc ON sc."scenarioId" = s."scenarioId"
+JOIN cert.area_catalog a ON a."areaId" = sc."areaId"
+JOIN cert.catalog_version v ON v."catalogVersionId" = a."catalogVersionId"
+WHERE v."isActive" AND v."dataStandardVersion" = 'v5' AND a.name = 'Student' AND sc.name = 'Students'
+ORDER BY s."displayOrder";
+```
+
+```powershell
+$env:CERT_SB_ENVIRONMENT_ID = '1'
+$env:CERT_EDFI_TENANT_ID = '1'
+$env:CERT_ODS_ID = '1'                 # leave unset for a tenant without ODSs
+$env:CERT_ODS_KEY = '<ODS/API key>'
+$env:CERT_ODS_SECRET = '<ODS/API secret>'
+$env:CERT_STEP_01_ID = '<stepId of 01 - 1st Student is valid.bru>'
+$env:CERT_STEP_03_ID = '<stepId of 03 - 1st Student - birthDate was Updated.bru>'
+$env:CERT_STUDENT_UNIQUE_ID = '<a studentUniqueId in that ODS>'
+$env:CERT_EXPECT_SUCCESS = 'true'      # optional: also assert step 01 passes
+.\eng\testing\run-bruno.ps1 -Env local -Collection collections/certification
+```
+
+When `CERT_ODS_SECRET` is set, the runner adds `--reporter-skip-request-body`, `--reporter-skip-response-body` and `--reporter-skip-all-headers` so the key/secret, tokens and headers stay out of `test-results/`.
+
 #### Custom OIDC Grant Type
 
 Use password grant instead of client_credentials:
@@ -347,8 +378,8 @@ By default the stack is left running after the suite finishes (pass or fail), so
 
 1. Checks prerequisites (Node dependencies, Playwright Chromium, TLS certificate).
 2. Downloads the ODS Minimal Template backup into `compose/db-backup/` (skipped if already cached).
-3. Regenerates `compose/.env` from `compose/.env.example` and, for `-DbEngine mssql`, patches `DB_ENGINE`, the `MSSQL_*` settings, and the active `DB_SECRET_VALUE` line.
-4. Starts Docker Compose services (the `v6` and `odsV7-adminV2` topologies plus the Admin App) via `eng/helpers/start-services-target.ps1`.
+3. Regenerates `compose/.env` from `compose/.env.example` and, for `-DbEngine mssql`, patches `DB_ENGINE`, the `MSSQL_*` settings, and the active `DB_SECRET_VALUE` line, and generates real values for the `change-me` placeholders (session secret, database password, encryption key, Keycloak client secrets) so `compose/.env` is never run with publicly known secrets.
+4. Starts Docker Compose services (the `v6` — unless `-SkipV1` — and `odsV7-adminV2` topologies plus the Admin App) via `eng/helpers/start-services-target.ps1`.
 5. Waits for the Admin App API, frontend, and Keycloak to be stable — and, for `-DbEngine mssql`, also waits for the Admin App's `sbaa` database to actually exist inside the SQL Server container.
 6. Creates/updates the local Keycloak test user via `eng/helpers/create-local-user-keycloak.ps1`.
 7. Runs `npm run test:e2e:bdd` (the Playwright BDD suite).
@@ -367,13 +398,30 @@ By default the stack is left running after the suite finishes (pass or fail), so
 
 -StopServices
     Stop Docker Compose services after the test run (success or failure).
+
+-SkipV1
+    Skip the Ed-Fi v6 ("v1" environment) topology: its containers are not started
+    and scenarios tagged @v1 are excluded from the Playwright run. CI uses this.
+
+-KeepEnvFile
+    Use the existing compose/.env as-is instead of regenerating it. Fails if the
+    file is missing or its DB_ENGINE does not match -DbEngine.
+
+-ServiceStartTimeoutMinutes <int>
+    Abort 'docker compose pull' / 'up' if either exceeds this many minutes
+    (each). Default: 20.
 ```
 
 ### Notes
 
-- **`compose/.env` is regenerated on every run.** The script overwrites it from `compose/.env.example` (patching it for MSSQL when needed), so any local customizations you've made to `compose/.env` (image tags, secrets, dataset choice) will be lost. A warning is printed when this happens.
+- **Retries preserve `compose/.env`.** Secrets, image tags and dataset choices remain unchanged after a timeout or failed test. For MSSQL, the existing SA password is restored into the runner's process environment and readiness checks.
+- **Unsafe configuration stops provisioning.** Existing `change-me` placeholders or a mismatched `DB_ENGINE` cause an error without overwriting the file. If the file is missing but previous stack volumes exist, restore the original configuration or deliberately provision a separate clean environment. The runner does not rotate stored credentials, replace encryption keys or delete volumes automatically.
 - **ODS/API databases are unaffected by `-DbEngine`.** The `v6`, `odsV7-adminV2`, and `odsV7-adminV3` topologies always run on PostgreSQL; only the Admin App's own database switches between PostgreSQL and SQL Server.
-- **CI runs this script against both engines.** `.github/workflows/run-e2e-ui.yml` uses a `db-engine: [pgsql, mssql]` matrix that calls `run-e2e-ui.ps1 -DbEngine <pgsql|mssql> -Rebuild -StopServices` once per engine.
+- **CI runs this script against both engines.** `.github/workflows/run-e2e-ui.yml` uses a `db-engine: [pgsql, mssql]` matrix that calls `run-e2e-ui.ps1 -DbEngine <pgsql|mssql> -Rebuild -StopServices -SkipV1` once per engine, after a Docker Hub login (`vars.DOCKER_USERNAME` / `secrets.DOCKER_HUB_TOKEN`) to avoid pull rate limits. Image pulls are capped at 4 in parallel (`COMPOSE_PARALLEL_LIMIT`) and retried 3 times.
+
+- **The suite needs a raised API rate limit.** `playwright.config.ts` runs 4 workers against one API from one IP, which exceeds the default `RATE_LIMIT_LIMIT=100` (requests per `RATE_LIMIT_TTL`, 60000 ms) and produces 429s on `/auth/me`. `run-e2e-ui.ps1` sets `RATE_LIMIT_LIMIT=100000` for its own run unless you already set it, and the API container keeps that value after the script exits unless you pass `-StopServices`. If you start the stack yourself (for example with `eng/helpers/start-services-target.ps1`) and run `npm run test:e2e:bdd` directly, set `RATE_LIMIT_LIMIT` (for example `$env:RATE_LIMIT_LIMIT = '100000'`) before starting the services. It must be a positive whole number.
+- **Timeouts.** Each test has a 120 s timeout (180 s for the environment setup project, which waits for a full sync, and 90 s for `chromium-environmentv2andApi`). A single click, fill or navigation fails after 30 s (`actionTimeout`, `navigationTimeout`) instead of waiting for the whole test timeout. Set `PW_SLOW_MO` (milliseconds) to slow the browser down when debugging.
+- **Test project order.** Projects run as independent lanes in parallel, and projects inside a lane run one after the other. A failure in one project skips the projects that depend on it. See the comments in `playwright.config.ts` before moving a spec between lanes.
 
 ### Troubleshooting
 
@@ -382,6 +430,10 @@ By default the stack is left running after the suite finishes (pass or fail), so
 **Timed out waiting for stable Admin App services** — the error message names which check(s) were still failing (`API`, `FE`, `KEYCLOAK_META`, `KEYCLOAK_LOGIN`, and for MSSQL, `MSSQL_SBAA_DB`). Check `docker ps` and `docker compose logs` for the corresponding container.
 
 **SQL Server test flakiness** — some Playwright BDD test failures against `-DbEngine mssql` are a known, pre-existing app-level UI/timing issue under SQL Server, not caused by this runner script. A PostgreSQL run failing the same way is not expected and should be investigated as a real regression.
+
+**Re-running against existing volumes** — the old passwords are still stored in the existing PostgreSQL, SQL Server, Keycloak, and ODS/Admin volumes, so freshly generated secrets will not match them. When the runner detects existing volumes it prints a warning with the exact reset command. To reset, first stop and remove the stack with `docker compose ... down -v` (this permanently deletes the stack's volumes and all data in them, which is acceptable for the disposable e2e stack), then re-run the runner.
+
+**Smoke-testing the secret generator** — `eng/testing/test-env-secrets.ps1` is a no-Docker smoke test for the generator in `eng/helpers/env-secrets.ps1`. Run it with `pwsh ./eng/testing/test-env-secrets.ps1`.
 
 ### References
 

@@ -39,6 +39,14 @@ export class ArtifactService {
     return this.isRuntimeReady;
   }
 
+  /**
+   * The Bruno CLI installed by `npm ci` from the artifact's own lockfile.
+   * Admin App never pins its own copy: the certification repo owns that version.
+   */
+  get brunoCliPath(): string {
+    return path.join(this.runtimeRoot, 'node_modules', '@usebruno', 'cli', 'bin', 'bru.js');
+  }
+
   constructor() {
     this.runtimeRoot = path.resolve(process.cwd(), 'packages', 'api', 'certification', 'bruno');
     this.targetDownloadRef = config.CERT_BRUNO_SRC_REF
@@ -143,40 +151,35 @@ export class ArtifactService {
       return;
     }
 
-    const hasLockFile = fs.existsSync(path.join(this.runtimeRoot, 'package-lock.json'));
-    const npmCmd = process.platform === 'win32' ? 'cmd.exe' : 'npm';
-
-    const buildInstallArgs = (verb: 'ci' | 'install') =>
-      process.platform === 'win32'
-        ? ['/d', '/s', '/c', `npm ${verb} --no-audit --no-fund --ignore-scripts`]
-        : [verb, '--no-audit', '--no-fund', '--ignore-scripts'];
-
-    const runInstall = (verb: 'ci' | 'install') =>
-      spawnSync(npmCmd, buildInstallArgs(verb), {
-        cwd: this.runtimeRoot,
-        encoding: 'utf8',
-        stdio: 'pipe',
-        timeout: 10 * 60 * 1000,
-      });
-
-    this.logger.log('Installing Bruno runtime dependencies...');
-    let result = runInstall(hasLockFile ? 'ci' : 'install');
-
-    if (hasLockFile && result && result.status !== 0) {
-      this.logger.warn('Bruno runtime npm ci failed; retrying with npm install');
-      result = runInstall('install');
+    // Fail closed: only `npm ci` honors the artifact's lockfile. `npm install`
+    // could resolve newer, untested versions of the Bruno CLI.
+    if (!fs.existsSync(path.join(this.runtimeRoot, 'package-lock.json'))) {
+      throw new Error(
+        'Bruno runtime has no package-lock.json; refusing to install unpinned dependencies'
+      );
     }
 
+    const npmCmd = process.platform === 'win32' ? 'cmd.exe' : 'npm';
+    const npmArgs =
+      process.platform === 'win32'
+        ? ['/d', '/s', '/c', 'npm ci --no-audit --no-fund --ignore-scripts']
+        : ['ci', '--no-audit', '--no-fund', '--ignore-scripts'];
+
+    this.logger.log('Installing Bruno runtime dependencies (npm ci)...');
+    const result = spawnSync(npmCmd, npmArgs, {
+      cwd: this.runtimeRoot,
+      encoding: 'utf8',
+      stdio: 'pipe',
+      timeout: 10 * 60 * 1000,
+    });
+
     if (result?.error) {
-      this.logger.warn(`Bruno runtime npm install process error: ${result.error.message}`);
+      this.logger.warn(`Bruno runtime npm ci process error: ${result.error.message}`);
       throw new Error('Bruno runtime dependencies could not be installed');
     }
 
     if (!result || result.status !== 0) {
-      this.logger.warn(`Bruno runtime npm install failed: ${result && result.stderr}`);
-      if (result && result.stdout) {
-        this.logger.debug(`Bruno runtime npm install stdout: ${result.stdout}`);
-      }
+      this.logger.warn(`Bruno runtime npm ci failed: ${result && result.stderr}`);
       throw new Error('Bruno runtime dependencies could not be installed');
     }
 

@@ -26,8 +26,10 @@ import {
   toApplicationYopassResponseDto,
   toPostApiClientResponseDtoV3,
   toPostApplicationResponseDtoV3,
+  OdsManageJobData,
+  toSbSyncQueueDto,
 } from '@edanalytics/models';
-import { EdfiTenant, Edorg, Ods, SbEnvironment } from '@edanalytics/models-server';
+import { EdfiTenant, Edorg, Ods, SbEnvironment, SbSyncQueue } from '@edanalytics/models-server';
 import {
   BadRequestException,
   Body,
@@ -65,6 +67,9 @@ import {
   ReqSbEnvironment,
   SbEnvironmentEdfiTenantInterceptor,
 } from '../../../../app/sb-environment-edfi-tenant.interceptor';
+import { adminApiDeleteSnapshots } from '../../../../audit/admin-api-delete.snapshots';
+import { AuditAdminApiDelete } from '../../../../audit/audit-admin-api-delete.decorator';
+import { AuditAdminApiDeleteInterceptor } from '../../../../audit/audit-admin-api-delete.interceptor';
 import { Authorize } from '../../../../auth/authorization';
 import { InjectFilter } from '../../../../auth/helpers/inject-filter';
 import { checkId } from '../../../../auth/helpers/where-ids';
@@ -80,6 +85,7 @@ import { AdminApiServiceV3 } from './admin-api.v3.service';
 import { IntegrationAppsTeamService } from '../../../../integration-apps-team/integration-apps-team.service';
 import { ENV_SYNC_CHNL } from '../../../../sb-sync/sb-sync.module';
 import { IJobQueueService } from '../../../../sb-sync/job-queue/job-queue.interface';
+import { queueOdsManageJob } from '../../../../sb-sync/queue-ods-manage-job';
 import config from 'config';
 
 @Injectable()
@@ -97,7 +103,11 @@ class AdminApiV3Interceptor implements NestInterceptor {
 }
 
 @UseFilters(new AdminApiV3ExceptionFilter())
-@UseInterceptors(SbEnvironmentEdfiTenantInterceptor, AdminApiV3Interceptor)
+@UseInterceptors(
+  SbEnvironmentEdfiTenantInterceptor,
+  AdminApiV3Interceptor,
+  AuditAdminApiDeleteInterceptor,
+)
 @ApiTags('Admin API Resources - v3.x')
 @Controller()
 export class AdminApiControllerV3 {
@@ -108,7 +118,24 @@ export class AdminApiControllerV3 {
     @InjectRepository(Edorg) private readonly edorgRepository: Repository<Edorg>,
     @InjectRepository(Ods) private readonly odsRepository: Repository<Ods>,
     @Inject('IJobQueueService') private readonly jobQueue: IJobQueueService,
+    @InjectRepository(SbSyncQueue) private readonly queueRepository: Repository<SbSyncQueue>,
   ) {}
+
+  /**
+   * Queues the `ods-manage` tracking job. The Admin API operation has already succeeded by the
+   * time this runs, so a queueing failure must not fail the request; it only costs the outcome banner.
+   */
+  private async tryQueueOdsManageJob(data: OdsManageJobData) {
+    try {
+      const queueItem = await queueOdsManageJob(this.jobQueue, this.queueRepository, data);
+      return queueItem ? toSbSyncQueueDto(queueItem) : undefined;
+    } catch (err) {
+      Logger.warn(
+        `Could not queue ods-manage job for Admin API job ${data.adminApiJobId}: ${String(err)}`
+      );
+      return undefined;
+    }
+  }
 
   /** Check application edorg IDs against auth cache for _safe_ operations (GET). Requires `some` ID to be authorized. */
   private checkApplicationEdorgsForSafeOperations(
@@ -230,6 +257,7 @@ export class AdminApiControllerV3 {
   }
 
   @Delete('vendors/:vendorId')
+  @AuditAdminApiDelete('vendorId', adminApiDeleteSnapshots.v3.vendor)
   @Authorize({
     privilege: 'team.sb-environment.edfi-tenant.vendor:delete',
     subject: {
@@ -622,6 +650,7 @@ export class AdminApiControllerV3 {
   }
 
   @Delete('applications/:applicationId')
+  @AuditAdminApiDelete('applicationId', adminApiDeleteSnapshots.v3.application)
   @Authorize({
     privilege: 'team.sb-environment.edfi-tenant.ods.edorg.application:delete',
     subject: {
@@ -845,6 +874,7 @@ export class AdminApiControllerV3 {
   }
 
   @Delete('apiClients/:apiclientId')
+  @AuditAdminApiDelete('apiclientId', adminApiDeleteSnapshots.v3.apiClient)
   @Authorize({
     privilege: 'team.sb-environment.edfi-tenant.ods.edorg.application:delete',
     subject: {
@@ -1126,6 +1156,7 @@ export class AdminApiControllerV3 {
   }
 
   @Delete('claimsets/:claimsetId')
+  @AuditAdminApiDelete('claimsetId', adminApiDeleteSnapshots.v3.claimset)
   @Authorize({
     privilege: 'team.sb-environment.edfi-tenant.claimset:delete',
     subject: {
@@ -1198,7 +1229,18 @@ export class AdminApiControllerV3 {
         { expireInHours: 2 },
       );
 
-      return { id: createdOds.id };
+      const syncQueue = createdInstance.jobId
+        ? await this.tryQueueOdsManageJob({
+              sbEnvironmentId: edfiTenant.sbEnvironmentId,
+              edfiTenantId: edfiTenant.id,
+              adminApiJobId: createdInstance.jobId,
+              operation: 'create',
+              odsName: instance.name,
+              odsId: createdOds.id,
+            })
+        : undefined;
+
+      return syncQueue ? { id: createdOds.id, syncQueue } : { id: createdOds.id };
     } catch (PostError: unknown) {
       Logger.error(
         'Admin API postInstance failed: ' +
@@ -1229,6 +1271,7 @@ export class AdminApiControllerV3 {
   }
 
   @Delete('instances/:instanceManageId')
+  @AuditAdminApiDelete('instanceManageId', adminApiDeleteSnapshots.v3.instance)
   @Authorize({
     privilege: 'team.sb-environment.edfi-tenant:delete-ods',
     subject: { id: 'instanceManageId', edfiTenantId: 'edfiTenantId', teamId: 'teamId' },
@@ -1256,7 +1299,7 @@ export class AdminApiControllerV3 {
       throw new BadRequestException("ODS must be in 'Created' status to delete by instanceManageId");
     }
 
-    await this.sbService.deleteInstance(edfiTenant, instanceManageId);
+    const deleted = await this.sbService.deleteInstance(edfiTenant, instanceManageId);
 
     await this.odsRepository.save({ ...localOds, status: 'PendingDelete' });
 
@@ -1266,7 +1309,18 @@ export class AdminApiControllerV3 {
       { expireInHours: 2 },
     );
 
-    return undefined;
+    const syncQueue = deleted?.jobId
+      ? await this.tryQueueOdsManageJob({
+            sbEnvironmentId: edfiTenant.sbEnvironmentId,
+            edfiTenantId: edfiTenant.id,
+            adminApiJobId: deleted.jobId,
+            operation: 'delete',
+            odsName: localOds.odsInstanceName ?? localOds.dbName,
+            odsId: localOds.id,
+          })
+      : undefined;
+
+    return syncQueue ? { syncQueue } : {};
   }
 
   //
@@ -1400,6 +1454,7 @@ export class AdminApiControllerV3 {
   }
 
   @Delete('profiles/:profileId')
+  @AuditAdminApiDelete('profileId', adminApiDeleteSnapshots.v3.profile)
   @Authorize({
     privilege: 'team.sb-environment.edfi-tenant.profile:delete',
     subject: {

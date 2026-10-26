@@ -1,7 +1,8 @@
 
 param(
 	[string]$ClientId = "edfiadminapp",
-	[string]$ClientSecret = "big-secret-123",
+	[Parameter(Mandatory = $true)]
+	[string]$ClientSecret,
 	[string]$Issuer = "https://localhost/auth/realms/edfi"
 )
 

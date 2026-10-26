@@ -1,13 +1,12 @@
 import { HStack } from '@chakra-ui/react';
-import { TableRowActions } from '@edanalytics/common-ui';
-import { CellContext } from '@tanstack/react-table';
+import { TableRowActions, SbaaCellContext } from '@edanalytics/common-ui';
 import omit from 'lodash/omit';
 import { useSingleApiClientActions } from './useApiClientActions';
 import { ApiClientLinkV2 } from '../../routes/apiClients.routes';
 import { ApiClientEntity } from './apiClientConfig';
 import { useApplicationApiClients } from './useApplicationApiClients';
 
-export const NameCell = (info: CellContext<ApiClientEntity, unknown>) => {
+export const NameCell = (info: SbaaCellContext<ApiClientEntity>) => {
   // `throwOnError: true` keeps this cell's pre-existing behaviour: unlike the
   // hook's other consumers, a failed load here has always propagated to an
   // ErrorBoundary rather than rendering a link with no display name.

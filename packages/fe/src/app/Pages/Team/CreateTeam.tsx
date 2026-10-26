@@ -18,7 +18,7 @@ import { usePopBanner } from '../../Layout/FeedbackBanner';
 import { teamQueries } from '../../api';
 import { useNavToParent } from '../../helpers';
 import { mutationErrCallback } from '../../helpers/mutationErrCallback';
-import { noop } from '@tanstack/react-table';
+import noop from 'lodash/noop';
 
 const resolver = classValidatorResolver(PostTeamDto);
 

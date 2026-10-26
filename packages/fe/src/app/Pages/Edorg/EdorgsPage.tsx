@@ -1,7 +1,11 @@
-import { PageActions, PageTemplate, SbaaTableAllInOne } from '@edanalytics/common-ui';
+import {
+  PageActions,
+  PageTemplate,
+  SbaaTableAllInOne,
+  SbaaCellContext,
+} from '@edanalytics/common-ui';
 import { GetEdorgDto } from '@edanalytics/models';
 import { useQuery } from '@tanstack/react-query';
-import { CellContext } from '@tanstack/react-table';
 import { edorgQueries, odsQueries } from '../../api';
 import { queryClient } from '../../app';
 import {
@@ -79,7 +83,7 @@ export const EdorgsPage = () => {
             id: 'ods',
             accessorFn: (info: GetEdorgDto) => getRelationDisplayName(info.odsId, odss),
             header: 'ODS',
-            cell: (info: CellContext<GetEdorgDto, unknown>) => (
+            cell: (info: SbaaCellContext<GetEdorgDto>) => (
               <OdsLink query={odss} id={info.row.original.odsId} />
             ),
             filterFn: 'equalsString' as const,

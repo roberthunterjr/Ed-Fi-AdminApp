@@ -24,17 +24,17 @@ import {
   Text,
 } from '@chakra-ui/react';
 import { stdDuration, stdShort } from '@edanalytics/utils';
-import type { Column } from '@tanstack/react-table';
 import React, { useState } from 'react';
 import { VirtualizedSelect } from '../VirtualizedSelect';
 import { Icons } from '../Icons';
+import type { SbaaColumn } from './sbaaTableFeatures';
 
 export type WithMetaType = {
   columnDef: { meta?: { type?: 'date' | 'duration' | 'number' | 'options' } };
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const FilterValueLabel = ({ column }: { column: Column<any, unknown> & WithMetaType }) => {
+const FilterValueLabel = ({ column }: { column: SbaaColumn<any> & WithMetaType }) => {
   const value = column.getFilterValue();
 
   if (value === undefined) {
@@ -83,7 +83,7 @@ const FilterValueLabel = ({ column }: { column: Column<any, unknown> & WithMetaT
   return <>{String(value)}</>;
 };
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const ColumnLabel = ({ column }: { column: Column<any, unknown> }) => (
+const ColumnLabel = ({ column }: { column: SbaaColumn<any> }) => (
   <Text as="span" fontWeight="bold">
     {typeof column.columnDef.header === 'function'
       ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -94,7 +94,7 @@ const ColumnLabel = ({ column }: { column: Column<any, unknown> }) => (
 );
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const ColumnFilter = ({ column }: { column: Column<any, unknown> }) => {
+export const ColumnFilter = ({ column }: { column: SbaaColumn<any> }) => {
   return (
     <Popover>
       {({ isOpen, onClose }) => (
@@ -160,7 +160,7 @@ export const ColumnFilterContent = ({
   cancel,
 }: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  column: Column<any, unknown> & WithMetaType;
+  column: SbaaColumn<any> & WithMetaType;
   cancel: () => void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   apply: React.Dispatch<React.SetStateAction<any>>;
@@ -190,7 +190,7 @@ const dateTransformerInv = (value: number | undefined) => {
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const useMathFilterConstraints = (column: Column<any, unknown>) => {
+const useMathFilterConstraints = (column: SbaaColumn<any>) => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const initial: any = column.getFilterValue();
   const [filter, setFilter] = useState<[number | undefined, number | undefined] | undefined>(
@@ -260,7 +260,7 @@ export const DateFilter = ({
   apply,
 }: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  column: Column<any, unknown>;
+  column: SbaaColumn<any>;
   cancel: () => void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   apply: React.Dispatch<React.SetStateAction<any>>;
@@ -379,7 +379,7 @@ export const NumberFilter = ({
   apply,
 }: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  column: Column<any, unknown>;
+  column: SbaaColumn<any>;
   cancel: () => void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   apply: React.Dispatch<React.SetStateAction<any>>;
@@ -549,7 +549,7 @@ export const DurationFilter = ({
   apply,
 }: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  column: Column<any, unknown>;
+  column: SbaaColumn<any>;
   cancel: () => void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   apply: React.Dispatch<React.SetStateAction<any>>;
@@ -721,7 +721,7 @@ export const OptionsFilter = ({
   apply,
 }: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  column: Column<any, unknown>;
+  column: SbaaColumn<any>;
   cancel: () => void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   apply: React.Dispatch<React.SetStateAction<any>>;
@@ -773,7 +773,7 @@ const FilterContentFooter = ({
 }: {
   clear: () => void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  column: Column<any, unknown>;
+  column: SbaaColumn<any>;
   cancel: () => void;
   apply: () => void;
   isDisabled?: boolean | undefined;

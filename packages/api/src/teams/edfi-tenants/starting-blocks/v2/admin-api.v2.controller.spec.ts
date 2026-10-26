@@ -1,12 +1,12 @@
 import 'reflect-metadata';
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
-import { Edorg, EdfiTenant, Ods, SbEnvironment } from '@edanalytics/models-server';
+import { Edorg, EdfiTenant, Ods, SbEnvironment, SbSyncQueue } from '@edanalytics/models-server';
 import { Ids, PostInstanceDtoV2, PostProfileDtoV2, PutProfileDtoV2 } from '@edanalytics/models';
 import { Repository } from 'typeorm';
 import { AdminApiControllerV2 } from './admin-api.v2.controller';
 import { AdminApiServiceV2 } from './admin-api.v2.service';
 import { CustomHttpException, ValidationHttpException } from '../../../../utils';
-import { ENV_SYNC_CHNL } from '../../../../sb-sync/sb-sync.module';
+import { ENV_SYNC_CHNL, ODS_MANAGE_CHNL } from '../../../../sb-sync/sb-sync.module';
 import { IntegrationAppsTeamService } from '../../../../integration-apps-team/integration-apps-team.service';
 import { IJobQueueService } from '../../../../sb-sync/job-queue/job-queue.interface';
 
@@ -32,7 +32,8 @@ describe('AdminApiControllerV2 - exportClaimset', () => {
       mockSbService as unknown as AdminApiServiceV2,
       null as unknown as Repository<Edorg>,
       null as unknown as Repository<Ods>,
-      null as unknown as IJobQueueService
+      null as unknown as IJobQueueService,
+      null as unknown as Repository<SbSyncQueue>
     );
   });
 
@@ -154,7 +155,8 @@ describe('AdminApiControllerV2 - postProfile', () => {
       mockSbService as unknown as AdminApiServiceV2,
       null as unknown as Repository<Edorg>,
       null as unknown as Repository<Ods>,
-      null as unknown as IJobQueueService
+      null as unknown as IJobQueueService,
+      null as unknown as Repository<SbSyncQueue>
     );
   });
 
@@ -247,7 +249,8 @@ describe('AdminApiControllerV2 - claimset validation call site', () => {
       mockSbService as unknown as AdminApiServiceV2,
       null as unknown as Repository<Edorg>,
       null as unknown as Repository<Ods>,
-      null as unknown as IJobQueueService
+      null as unknown as IJobQueueService,
+      null as unknown as Repository<SbSyncQueue>
     );
   });
 
@@ -299,6 +302,7 @@ describe('AdminApiControllerV2 - postInstance', () => {
   let mockSbService: { postInstance: jest.Mock };
   let mockOdsRepository: { save: jest.Mock };
   let mockJobQueue: { send: jest.Mock };
+  let mockQueueRepository: { findOneBy: jest.Mock };
 
   const mockEdfiTenant = {
     id: 1,
@@ -326,12 +330,14 @@ describe('AdminApiControllerV2 - postInstance', () => {
     mockJobQueue = {
       send: jest.fn(),
     };
+    mockQueueRepository = { findOneBy: jest.fn() };
     controller = new AdminApiControllerV2(
       null as unknown as IntegrationAppsTeamService,
       mockSbService as unknown as AdminApiServiceV2,
       null as unknown as Repository<Edorg>,
       mockOdsRepository as unknown as Repository<Ods>,
-      mockJobQueue as unknown as IJobQueueService
+      mockJobQueue as unknown as IJobQueueService,
+      mockQueueRepository as unknown as Repository<SbSyncQueue>
     );
   });
 
@@ -359,6 +365,65 @@ describe('AdminApiControllerV2 - postInstance', () => {
       { sbEnvironmentId: mockEdfiTenant.sbEnvironmentId },
       { expireInHours: 2 }
     );
+  });
+
+  it('queues ods-manage job with operation create and returns syncQueue', async () => {
+    const edfiTenant = { id: 1, sbEnvironmentId: 2 } as unknown as EdfiTenant;
+    mockSbService.postInstance.mockResolvedValue({ id: 55, jobId: 'CreateInstanceJob-7_abc' });
+    mockOdsRepository.save.mockResolvedValue({ id: 901 });
+    mockJobQueue.send.mockResolvedValueOnce('sync-1').mockResolvedValueOnce('manage-1');
+    mockQueueRepository.findOneBy.mockResolvedValue({ id: 'manage-1', state: 'created', type: 'OdsManage' });
+
+    const result = await controller.postInstance(1, 1, edfiTenant, { ...mockInstance, name: 'my-ods' });
+
+    expect(mockJobQueue.send).toHaveBeenCalledWith(
+      ODS_MANAGE_CHNL,
+      {
+        sbEnvironmentId: 2,
+        edfiTenantId: 1,
+        adminApiJobId: 'CreateInstanceJob-7_abc',
+        operation: 'create',
+        odsName: 'my-ods',
+        odsId: 901,
+      },
+      { expireInSeconds: 7200, retryLimit: 0 }
+    );
+    expect(result.id).toBe(901);
+    expect(result.syncQueue).toMatchObject({ id: 'manage-1', state: 'created' });
+  });
+
+  it('returns { id } when queueing the ods-manage job fails', async () => {
+    mockSbService.postInstance.mockResolvedValue({ id: 55, jobId: 'CreateInstanceJob-7_abc' });
+    mockOdsRepository.save.mockResolvedValue({ id: 901 });
+    mockJobQueue.send.mockImplementation((channel: string) =>
+      channel === ODS_MANAGE_CHNL ? Promise.reject(new Error('queue down')) : Promise.resolve('sync-1')
+    );
+
+    await expect(controller.postInstance(1, 1, mockEdfiTenant, mockInstance)).resolves.toEqual({
+      id: 901,
+    });
+  });
+
+  it('without jobId returns { id } and queues no ods-manage job', async () => {
+    mockSbService.postInstance.mockResolvedValue({ id: 55, jobId: undefined });
+    mockOdsRepository.save.mockResolvedValue({ id: 901 });
+    mockJobQueue.send.mockResolvedValue('sync-1');
+
+    await expect(controller.postInstance(1, 1, mockEdfiTenant, mockInstance)).resolves.toEqual({
+      id: 901,
+    });
+    expect(mockJobQueue.send).toHaveBeenCalledTimes(1);
+    expect(mockJobQueue.send.mock.calls[0][0]).toBe(ENV_SYNC_CHNL);
+  });
+
+  it('still maps Admin API name validation error to ValidationHttpException and queues nothing', async () => {
+    mockSbService.postInstance.mockRejectedValue(
+      makeAxiosError({ title: 'Validation failed', status: 400, errors: { Name: ['name is required'] } })
+    );
+    await expect(controller.postInstance(1, 1, mockEdfiTenant, mockInstance)).rejects.toThrow(
+      new ValidationHttpException({ field: 'name', message: 'name is required' })
+    );
+    expect(mockJobQueue.send).not.toHaveBeenCalled();
   });
 
   it('throws ValidationHttpException for name validation errors', async () => {
@@ -430,6 +495,7 @@ describe('AdminApiControllerV2 - deleteInstance', () => {
   let mockSbService: { deleteInstance: jest.Mock };
   let mockOdsRepository: { findOneBy: jest.Mock; save: jest.Mock };
   let mockJobQueue: { send: jest.Mock };
+  let mockQueueRepository: { findOneBy: jest.Mock };
 
   const mockEdfiTenant = {
     id: 1,
@@ -456,19 +522,21 @@ describe('AdminApiControllerV2 - deleteInstance', () => {
     mockJobQueue = {
       send: jest.fn().mockResolvedValue('job-123'),
     };
+    mockQueueRepository = { findOneBy: jest.fn() };
     controller = new AdminApiControllerV2(
       null as unknown as IntegrationAppsTeamService,
       mockSbService as unknown as AdminApiServiceV2,
       null as unknown as Repository<Edorg>,
       mockOdsRepository as unknown as Repository<Ods>,
-      mockJobQueue as unknown as IJobQueueService
+      mockJobQueue as unknown as IJobQueueService,
+      mockQueueRepository as unknown as Repository<SbSyncQueue>
     );
   });
 
   it('finds local ODS, calls sbService delete, sets PendingDelete, and enqueues sync', async () => {
     const instanceManageId = 55;
 
-    await expect(controller.deleteInstance(1, 1, mockEdfiTenant, instanceManageId)).resolves.toBeUndefined();
+    await expect(controller.deleteInstance(1, 1, mockEdfiTenant, instanceManageId)).resolves.toEqual({});
 
     expect(mockOdsRepository.findOneBy).toHaveBeenCalledWith({
       edfiTenantId: mockEdfiTenant.id,
@@ -491,6 +559,51 @@ describe('AdminApiControllerV2 - deleteInstance', () => {
     expect(mockOdsRepository.save.mock.invocationCallOrder[0]).toBeLessThan(
       mockJobQueue.send.mock.invocationCallOrder[0]
     );
+  });
+
+  it('queues ods-manage job with operation delete and returns syncQueue', async () => {
+    mockSbService.deleteInstance.mockResolvedValue({ jobId: 'DeleteInstanceJob-8_xyz' });
+    mockOdsRepository.findOneBy.mockResolvedValue({
+      id: 901,
+      instanceManageId: 55,
+      status: 'Created',
+      odsInstanceName: 'named-ods',
+      dbName: 'db-name',
+    });
+    mockJobQueue.send.mockResolvedValueOnce('sync-1').mockResolvedValueOnce('manage-1');
+    mockQueueRepository.findOneBy.mockResolvedValue({ id: 'manage-1', state: 'created', type: 'OdsManage' });
+
+    const result = await controller.deleteInstance(1, 1, mockEdfiTenant, 55);
+
+    expect(mockJobQueue.send).toHaveBeenCalledWith(
+      ODS_MANAGE_CHNL,
+      {
+        sbEnvironmentId: 2,
+        edfiTenantId: 1,
+        adminApiJobId: 'DeleteInstanceJob-8_xyz',
+        operation: 'delete',
+        odsName: 'named-ods',
+        odsId: 901,
+      },
+      { expireInSeconds: 7200, retryLimit: 0 }
+    );
+    expect(result.syncQueue).toMatchObject({ id: 'manage-1', state: 'created' });
+  });
+
+  it('returns {} when queueing the ods-manage job fails', async () => {
+    mockSbService.deleteInstance.mockResolvedValue({ jobId: 'DeleteInstanceJob-8_xyz' });
+    mockJobQueue.send.mockImplementation((channel: string) =>
+      channel === ODS_MANAGE_CHNL ? Promise.reject(new Error('queue down')) : Promise.resolve('sync-1')
+    );
+
+    await expect(controller.deleteInstance(1, 1, mockEdfiTenant, 55)).resolves.toEqual({});
+  });
+
+  it('without jobId returns {} and queues no ods-manage job', async () => {
+    mockSbService.deleteInstance.mockResolvedValue({ jobId: undefined });
+    await expect(controller.deleteInstance(1, 1, mockEdfiTenant, 55)).resolves.toEqual({});
+    expect(mockJobQueue.send).toHaveBeenCalledTimes(1);
+    expect(mockJobQueue.send.mock.calls[0][0]).toBe(ENV_SYNC_CHNL);
   });
 
   it("throws BadRequestException when the local ODS is not in 'Created' status", async () => {
@@ -583,7 +696,8 @@ describe('AdminApiControllerV2 - deleteApiClient last-credential guard', () => {
       mockSbService as unknown as AdminApiServiceV2,
       null as unknown as Repository<Edorg>,
       null as unknown as Repository<Ods>,
-      null as unknown as IJobQueueService
+      null as unknown as IJobQueueService,
+      null as unknown as Repository<SbSyncQueue>
     );
   });
 
@@ -662,7 +776,8 @@ describe('AdminApiControllerV2 - putProfile', () => {
       mockSbService as unknown as AdminApiServiceV2,
       null as unknown as Repository<Edorg>,
       null as unknown as Repository<Ods>,
-      null as unknown as IJobQueueService
+      null as unknown as IJobQueueService,
+      null as unknown as Repository<SbSyncQueue>
     );
   });
 

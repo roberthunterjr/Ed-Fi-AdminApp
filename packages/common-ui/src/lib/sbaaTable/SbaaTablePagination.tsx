@@ -11,7 +11,7 @@ export const SbaaTablePagination: DivComponent = (props) => {
     return null as any;
   }
   return table.getPageCount() > 1 ||
-    table.getPrePaginationRowModel().rows.length > Math.min(...pageSizes) ? (
+    table.getPrePaginatedRowModel().rows.length > Math.min(...pageSizes) ? (
     <HStack justify="center" p={4} {...rest}>
       <ButtonGroup size="sm" variant="outline">
         <IconButton
@@ -32,7 +32,7 @@ export const SbaaTablePagination: DivComponent = (props) => {
         />
       </ButtonGroup>
       <Text>
-        {table.getState().pagination.pageIndex + 1}&nbsp;of&nbsp;
+        {table.state.pagination.pageIndex + 1}&nbsp;of&nbsp;
         {table.getPageCount()}
       </Text>
       <ButtonGroup size="sm" variant="outline">
@@ -57,7 +57,7 @@ export const SbaaTablePagination: DivComponent = (props) => {
         borderRadius={'8em'}
         w={'auto'}
         size="sm"
-        value={table.getState().pagination.pageSize}
+        value={table.state.pagination.pageSize}
         onChange={(e) => {
           table.setPageSize(Number(e.target.value));
         }}

@@ -5,7 +5,7 @@ import {
   PutOwnershipDto,
 } from '@edanalytics/models';
 import { Ownership } from '@edanalytics/models-server';
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectEntityManager, InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
 import _ from 'lodash';
@@ -15,6 +15,8 @@ import { ValidationHttpException } from '../utils/customExceptions';
 
 @Injectable()
 export class OwnershipsGlobalService {
+  private readonly logger = new Logger(OwnershipsGlobalService.name);
+
   constructor(
     @InjectRepository(Ownership)
     private ownershipsRepository: Repository<Ownership>,
@@ -67,7 +69,7 @@ export class OwnershipsGlobalService {
       teamId: createOwnershipDto.teamId,
       roleId: createOwnershipDto.roleId,
     });
-    this.authService.reloadTeamOwnershipCache(createOwnershipDto.teamId);
+    await this.reloadTeamCache(createOwnershipDto.teamId);
     return out;
   }
 
@@ -79,14 +81,29 @@ export class OwnershipsGlobalService {
     const old = await this.findOne(id).catch(throwNotFound);
     const updated = applyDtoUpdates(old, updateOwnershipDto, ['roleId', 'modifiedById']);
     const out = await this.ownershipsRepository.save(updated);
-    this.authService.reloadTeamOwnershipCache(old.teamId);
+    await this.reloadTeamCache(old.teamId);
     return out;
   }
 
   async remove(id: number, _user: GetUserDto) {
     const old = await this.findOne(id).catch(throwNotFound);
     await this.ownershipsRepository.remove(old);
-    this.authService.reloadTeamOwnershipCache(old.teamId);
+    await this.reloadTeamCache(old.teamId);
     return undefined;
+  }
+
+  /**
+   * The write has already committed by the time the cache is rebuilt, so a failure here is
+   * logged rather than thrown: it must neither fail the request nor crash the process.
+   */
+  private async reloadTeamCache(teamId: number) {
+    try {
+      await this.authService.reloadTeamOwnershipCache(teamId);
+    } catch (error) {
+      this.logger.error(
+        `Failed to reload ownership cache for team ${teamId}: ${(error as Error)?.message}`,
+        (error as Error)?.stack,
+      );
+    }
   }
 }

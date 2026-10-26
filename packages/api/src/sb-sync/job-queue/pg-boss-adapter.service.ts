@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, OnApplicationShutdown } from '@nestjs/common';
 import { PgBoss } from 'pg-boss';
-import { IJobQueueService, Job, JobOptions, ScheduleOptions } from './job-queue.interface';
+import { IJobQueueService, Job, JobOptions, ScheduleOptions, WorkOptions } from './job-queue.interface';
 
 type PgBossMetadataJob<T = object> = {
   id: string;
@@ -43,6 +43,7 @@ export class PgBossAdapter implements IJobQueueService, OnApplicationShutdown {
     const id = await this.boss.send(queueName, payload, {
       ...(options?.singletonKey !== undefined && { singletonKey: options.singletonKey }),
       ...(options?.expireInHours !== undefined && { expireInHours: options.expireInHours }),
+      ...(options?.expireInSeconds !== undefined && { expireInSeconds: options.expireInSeconds }),
       ...(options?.retryLimit !== undefined && { retryLimit: options.retryLimit }),
       ...(options?.retryDelay !== undefined && { retryDelay: options.retryDelay }),
       ...(options?.retryBackoff !== undefined && { retryBackoff: options.retryBackoff }),
@@ -95,11 +96,17 @@ export class PgBossAdapter implements IJobQueueService, OnApplicationShutdown {
 
   async work<T = object>(
     queueName: string,
-    handler: (job: Job<T>) => Promise<unknown>
+    handler: (job: Job<T>) => Promise<unknown>,
+    options?: WorkOptions
   ): Promise<void> {
     await this.boss.work<T>(
       queueName,
-      { includeMetadata: true },
+      {
+        includeMetadata: true,
+        ...(options?.localConcurrency !== undefined && {
+          localConcurrency: options.localConcurrency,
+        }),
+      },
       async (pgJobs) => {
         for (const pgJob of pgJobs) {
           const metadataJob = pgJob as unknown as PgBossMetadataJob<T>;

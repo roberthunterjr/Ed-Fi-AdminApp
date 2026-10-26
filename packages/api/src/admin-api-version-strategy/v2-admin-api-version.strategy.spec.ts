@@ -310,6 +310,27 @@ describe('V2AdminApiVersionStrategy', () => {
       expect(sbEnvironmentsRepository.save).not.toHaveBeenCalled();
     });
 
+    it.each([
+      ['a trailing slash', 'https://localhost/odsv7-adminv2-single-adminapi/', 'https://localhost/odsv7-adminv2-single-adminapi/connect/register'],
+      ['repeated trailing slashes', 'https://localhost/odsv7-adminv2-single-adminapi//', 'https://localhost/odsv7-adminv2-single-adminapi/connect/register'],
+      // SbEnvironment.adminApiUrl returns new URL(...).toString(), which appends "/" to a path-less URL
+      ['no path (normalized by new URL)', 'https://api.test.com/', 'https://api.test.com/connect/register'],
+    ])('does not produce a double slash in the registration URL when adminApiUrl has %s', async (_case, adminApiUrl, expectedRegisterUrl) => {
+      jest.clearAllMocks();
+      sbEnvironmentsRepository.save = jest.fn();
+      mockedAxios.post.mockResolvedValue({ status: 200 } as unknown as AxiosResponse);
+
+      const env = {
+        name: 'my-env',
+        adminApiUrl,
+        configPublic: { version: 'v2', values: { meta: { mode: 'SingleTenant' }, tenants: {} } },
+      } as unknown as SbEnvironment;
+
+      await strategy.bootstrapCredentials(env);
+
+      expect(mockedAxios.post).toHaveBeenCalledWith(expectedRegisterUrl, expect.any(String), expect.any(Object));
+    });
+
     it('continues provisioning remaining tenants and still saves when one tenant registration fails', async () => {
       jest.clearAllMocks();
       sbEnvironmentsRepository.save = jest.fn();

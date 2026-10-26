@@ -1,8 +1,7 @@
 import { HStack } from '@chakra-ui/react';
-import { TableRowActions } from '@edanalytics/common-ui';
+import { TableRowActions, SbaaCellContext } from '@edanalytics/common-ui';
 import { GetEdorgDto } from '@edanalytics/models';
 import { useQuery } from '@tanstack/react-query';
-import { CellContext } from '@tanstack/react-table';
 import { edorgQueries } from '../../api';
 
 import { useTeamEdfiTenantNavContextLoaded } from '../../helpers';
@@ -10,7 +9,7 @@ import { useReadTeamEntity } from '../../helpers/useStandardRowActionsNew';
 import { EdorgLink, edorgIndexRoute } from '../../routes';
 import { useEdorgActions } from './useEdorgActions';
 
-export const NameCell = (info: CellContext<GetEdorgDto, unknown>) => {
+export const NameCell = (info: SbaaCellContext<GetEdorgDto>) => {
   const { teamId, edfiTenant, edfiTenantId, sbEnvironmentId } = useTeamEdfiTenantNavContextLoaded();
 
   const entities = useQuery(

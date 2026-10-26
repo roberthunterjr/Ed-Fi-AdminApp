@@ -8,6 +8,7 @@ import { instancesV2, odsQueries } from '../../api';
 import { mutationErrCallback } from '../../helpers/mutationErrCallback';
 import { useQueryClient } from '@tanstack/react-query';
 import { GetOdsDto } from '@edanalytics/models';
+import { popSyncBanner } from '../../helpers/popSyncBanner';
 
 jest.mock('react-router', () => ({
   useNavigate: jest.fn(),
@@ -38,6 +39,8 @@ jest.mock('../../helpers', () => ({
 jest.mock('../../Layout/FeedbackBanner', () => ({
   usePopBanner: jest.fn(),
 }));
+
+jest.mock('../../helpers/popSyncBanner', () => ({ popSyncBanner: jest.fn() }));
 
 jest.mock('../../helpers/mutationErrCallback', () => ({
   mutationErrCallback: jest.fn(() => ({})),
@@ -179,5 +182,48 @@ describe('useOdsActions', () => {
     (result as ActionsType & { Delete: ActionProps }).Delete.onClick();
 
     expect(setQueryDataSpy).not.toHaveBeenCalled();
+  });
+
+  it('shows "ODS deletion queued" banner linking to odss/jobs/delete/<id> for a datastore delete', () => {
+    setup(false);
+
+    const result = useOdsActions({ id: 5, instanceManageId: 77, status: 'Created' });
+    (result as ActionsType & { Delete: ActionProps }).Delete.onClick();
+    const { onSuccess } = instancesMutateAsync.mock.calls[0][1] as {
+      onSuccess: (data: unknown) => void;
+    };
+    onSuccess({ syncQueue: { id: 'job-4', state: 'created' } });
+
+    expect(popSyncBanner).toHaveBeenCalledWith(
+      expect.objectContaining({
+        syncQueue: { id: 'job-4', state: 'created' },
+        linkTo: '/as/1/sb-environments/2/edfi-tenants/3/odss/jobs/delete/job-4',
+        subject: 'ODS deletion',
+      })
+    );
+  });
+
+  it('shows no banner when the delete response has no syncQueue', () => {
+    setup(false);
+
+    const result = useOdsActions({ id: 5, instanceManageId: 77, status: 'Created' });
+    (result as ActionsType & { Delete: ActionProps }).Delete.onClick();
+    const { onSuccess } = instancesMutateAsync.mock.calls[0][1] as {
+      onSuccess: (data: unknown) => void;
+    };
+    onSuccess(undefined);
+
+    expect(popSyncBanner).not.toHaveBeenCalled();
+  });
+
+  it('does not show a job banner for startingBlocks delete', () => {
+    setup(true);
+
+    const result = useOdsActions({ id: 5, instanceManageId: null, status: null });
+    (result as ActionsType & { Delete: ActionProps }).Delete.onClick();
+    const { onSuccess } = odsMutateAsync.mock.calls[0][1] as { onSuccess: (data: unknown) => void };
+    onSuccess({ syncQueue: { id: 'x', state: 'created' } });
+
+    expect(popSyncBanner).not.toHaveBeenCalled();
   });
 });

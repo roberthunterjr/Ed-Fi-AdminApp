@@ -32,6 +32,11 @@ module.exports = {
   // Admin API EdOrg refresh polling
   ADMINAPI_REFRESH_POLL_ATTEMPTS: 10,
   ADMINAPI_REFRESH_POLL_INTERVAL_MS: 5000,
+  // Admin API datastore create/delete job tracking (720 x 5s = 60 min)
+  ADMINAPI_DATASTORE_JOB_POLL_INTERVAL_MS: 5000,
+  ADMINAPI_DATASTORE_JOB_POLL_ATTEMPTS: 720,
+  // How many datastore jobs one API instance tracks at once
+  ADMINAPI_DATASTORE_JOB_CONCURRENCY: 5,
   TYPEORM_LOGGING: undefined,
   // TypeORM database resilience configuration
   TYPEORM_RETRY_ATTEMPTS: 3,
@@ -208,9 +213,14 @@ module.exports = {
   // Set the _minimum_ log level. This uses NestJs logging, so the allowed values are: verbose, debug, log, warn, error, fatal
   LOG_LEVEL: 'log',
 
+  // Audit logging
+  AUDIT_LOGGING_ENABLED: true, // Master switch for audit logging
+
   // Certification artifact configuration
   CERT_ENABLED: false, // Master switch for the certification runtime/catalog sync at API startup
   CERT_BRUNO_SRC_REF: 'v2.1.0', // Tag name or commit ref
   CERT_BRUNO_SRC_CHECKSUM: '72eaf14f4f95dc8088b04db79f46d693fb3a34356056c792100d014a374835d5', // SHA-256 checksum of the artifact zip file for integrity verification
   CERT_BRUNO_ON_DOWNLOAD_ERROR: 'error', // 'error' | 'warning' // Whether to error out or just warn if there's a problem downloading or initializing the certification artifact. Note that if set to 'warning' and there's a problem with the certification artifact, any API routes depending on it will fail at runtime when they attempt to use the artifact.
+  CERT_BRUNO_RUN_TIMEOUT_MS: 45000, // Kill a certification step run after this many milliseconds. Must stay below the reverse proxy read timeout (nginx default 60s) since discovery and workspace setup run before Bruno
+  CERT_BRUNO_MAX_CONCURRENT_RUNS: 2, // Simultaneous certification step runs per API instance
 };

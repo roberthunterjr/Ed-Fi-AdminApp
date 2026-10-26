@@ -5,10 +5,10 @@ import {
   PageTemplate,
   TableRowActions,
   ValueAsDate,
+  SbaaCellContext,
 } from '@edanalytics/common-ui';
 
 import { GetUserTeamMembershipDto } from '@edanalytics/models';
-import { CellContext } from '@tanstack/react-table';
 import { useParams } from 'react-router';
 import { roleQueries, userQueries, userTeamMembershipQueries } from '../../../api';
 import { getEntityFromQuery } from '../../../helpers';
@@ -16,7 +16,7 @@ import { getRelationDisplayName } from '../../../helpers/getRelationDisplayName'
 import { useReadTeamEntity } from '../../../helpers/useStandardRowActionsNew';
 import { UserLink, userRoute } from '../../../routes';
 
-const NameCell = (info: CellContext<GetUserTeamMembershipDto, unknown>) => {
+const NameCell = (info: SbaaCellContext<GetUserTeamMembershipDto>) => {
   const params = useParams() as { asId: string };
   const users = useQuery(
     userQueries.getAll({

@@ -5,22 +5,23 @@ Feature: Ownerships
     Scenario Outline: Create ownership
       Given the user is logged with a valid user
       And the user clicks the Ownerships option
+      And the user creates a unique ownership team based on <team>
       And the user clicks the Grant new ownership button
       When the user fills the ownership fields <resourceType>, <environment>, <tenant>, <team>, <role>
       And the user clicks the save ownership button
       Then the new ownership details should be displayed
 
       Examples:
-        | resourceType         | environment | tenant  | team        | role                      |
+        | resourceType         | environment              | tenant  | team      | role                      |
         # For the time being, the EdOrgs type will not be tested, as our template does not have EdOrgs loaded by default.
         #| Ed-Org               | FullMultiEnvironmentv2   | tenant1 | TeamMemberC | Full ownership            |
-        | Ods                  | FullMultiEnvironmentv2   | tenant1 | teamMemberC | Full ownership            |
-        | Tenant               | FullMultiEnvironmentv2   | tenant1 | teamMemberC | Full ownership            |
-        | Whole environment    | FullMultiEnvironmentv2   | tenant1 | teamMemberC | Full ownership            |
+        #| Ods                  | FullMultiEnvironmentv2   | tenant1 | teamA | Full ownership            |
+        | Tenant               | FullMultiEnvironmentv2   | tenant1 | teamA | Full ownership            |
+        | Whole environment    | FullMultiEnvironmentv2   | tenant1 | teamA | Full ownership            |
         #| Ed-Org               | FullMultiEnvironmentv2   | tenant1 | TeamMemberA | Shared-instance ownership |
-        | Ods                  | FullMultiEnvironmentv2   | tenant1 | teamMemberB | Shared-instance ownership |
-        | Tenant               | FullMultiEnvironmentv2   | tenant1 | teamMemberB | Shared-instance ownership |
-        | Whole environment    | FullMultiEnvironmentv2   | tenant1 | teamMemberB | Shared-instance ownership |
+        #| Ods                  | FullMultiEnvironmentv2   | tenant1 | teamB | Shared-instance ownership |
+        | Tenant               | FullMultiEnvironmentv2   | tenant1 | teamB | Shared-instance ownership |
+        | Whole environment    | FullMultiEnvironmentv2   | tenant1 | teamB | Shared-instance ownership |
 
     Scenario Outline: Cancel ownership creation
       Given the user is logged with a valid user
@@ -32,7 +33,7 @@ Feature: Ownerships
 
       Examples:
         | resourceType | environment              | tenant  | team        | role           |
-        | Ed-Org       | FullMultiEnvironmentv2   | tenant1 | TeamMemberC | Full ownership |
+        | Ed-Org       | FullMultiEnvironmentv2   | tenant1 | teamB | Full ownership |
 
   Rule: A team ownership already exists
 

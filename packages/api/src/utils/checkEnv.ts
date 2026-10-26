@@ -39,11 +39,12 @@ else if (asBool(config.USE_YOPASS)) {
   }
 }
 
-if (config.RATE_LIMIT_TTL === undefined) {
-  errs.push('RATE_LIMIT_TTL not defined.');
-}
-if (config.RATE_LIMIT_LIMIT === undefined) {
-  errs.push('RATE_LIMIT_LIMIT not defined.');
+for (const name of ['RATE_LIMIT_TTL', 'RATE_LIMIT_LIMIT'] as const) {
+  if (config[name] === undefined) {
+    errs.push(`${name} not defined.`);
+  } else if (!Number.isInteger(config[name]) || config[name] <= 0) {
+    errs.push(`${name} must be a positive whole number.`);
+  }
 }
 
 if (config.USE_PKCE === undefined) {

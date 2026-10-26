@@ -13,6 +13,7 @@ import {
 import { ReqUser } from '../../auth/helpers/user.decorator';
 import { RolesService } from './roles.service';
 import { ApiTags } from '@nestjs/swagger';
+import { AuditDelete } from '../../audit/audit-delete.decorator';
 import { Role, addUserCreating, addUserModifying } from '@edanalytics/models-server';
 import { Authorize } from '../../auth/authorization';
 import { insufficientPrivilegesException } from '../../auth/authorization/privilege-grant-guard.service';
@@ -139,6 +140,7 @@ export class RolesController {
   }
 
   @Delete(':roleId')
+  @AuditDelete(Role, 'roleId')
   @Authorize({
     privilege: 'team.role:delete',
     subject: {

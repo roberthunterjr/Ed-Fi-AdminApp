@@ -1,9 +1,8 @@
 import { Flex } from '@chakra-ui/react';
 import { GetClaimsetSingleDtoV2, GetResourceClaimDtoV2 } from '@edanalytics/models';
-import { CellContext, ColumnDef } from '@tanstack/react-table';
 import uniq from 'lodash/uniq';
 import { useMemo } from 'react';
-import { SbaaTableAllInOne } from '../sbaaTable';
+import { SbaaTableAllInOne, SbaaCellContext, SbaaColumnDef } from '../sbaaTable';
 import { AuthStrategyBadge, NameCell, NameHeader } from './resourceClaimCells';
 
 type ResourceClaimRow = GetResourceClaimDtoV2 & {
@@ -63,7 +62,7 @@ export const ResourceClaimsTableV2 = ({ claimset }: { claimset: GetClaimsetSingl
       (actionA, actionB) =>
         actionSortRank(actionA) - actionSortRank(actionB) || actionA.localeCompare(actionB)
     );
-    const columns: ColumnDef<ResourceClaimRow>[] = [
+    const columns: SbaaColumnDef<ResourceClaimRow>[] = [
       {
         accessorKey: 'name',
         header: NameHeader,
@@ -76,7 +75,7 @@ export const ResourceClaimsTableV2 = ({ claimset }: { claimset: GetClaimsetSingl
           const rcAction = rc.actionsMap[action];
           return rcAction?.enabled ? rcAction.override ?? rcAction.default ?? 'Unknown' : 'Denied';
         },
-        cell: (ctx: CellContext<ResourceClaimRow, unknown>) => (
+        cell: (ctx: SbaaCellContext<ResourceClaimRow>) => (
           <AuthStrategyBadge
             authOverride={ctx.row.original.actionsMap[action]?.override ?? null}
             authDefault={ctx.row.original.actionsMap[action]?.default ?? null}

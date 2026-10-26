@@ -1,41 +1,86 @@
 import 'reflect-metadata';
-import { Issuer } from 'openid-client';
+jest.mock('openid-client', () => {
+  class MockConfiguration {
+    constructor(
+      private readonly server: Record<string, string>,
+      private readonly clientId: string
+    ) {}
+
+    serverMetadata() {
+      return this.server;
+    }
+
+    clientMetadata() {
+      return { client_id: this.clientId };
+    }
+  }
+
+  return {
+    Configuration: MockConfiguration,
+    buildEndSessionUrl: jest.fn((config, parameters = {}) => {
+      const url = new URL(config.serverMetadata().end_session_endpoint);
+      url.searchParams.set('client_id', config.clientMetadata().client_id);
+      for (const [key, value] of Object.entries(parameters)) {
+        if (value !== undefined) {
+          url.searchParams.set(key, String(value));
+        }
+      }
+      return url;
+    }),
+  };
+});
+
+import * as client from 'openid-client';
 import { OidcProviderRegistry } from './oidc-provider.registry';
 
 jest.mock('config', () => ({
   MY_URL_API_PATH: 'http://adminapp/api',
 }));
 
-const keycloakIssuer = new Issuer({
-  issuer: 'http://keycloak/realms/edfi',
-  authorization_endpoint: 'http://keycloak/realms/edfi/protocol/openid-connect/auth',
-  token_endpoint: 'http://keycloak/realms/edfi/protocol/openid-connect/token',
-  jwks_uri: 'http://keycloak/realms/edfi/protocol/openid-connect/certs',
-  end_session_endpoint: 'http://keycloak/realms/edfi/protocol/openid-connect/logout',
-});
+const keycloakConfig = new client.Configuration(
+  {
+    issuer: 'http://keycloak/realms/edfi',
+    authorization_endpoint: 'http://keycloak/realms/edfi/protocol/openid-connect/auth',
+    token_endpoint: 'http://keycloak/realms/edfi/protocol/openid-connect/token',
+    jwks_uri: 'http://keycloak/realms/edfi/protocol/openid-connect/certs',
+    end_session_endpoint: 'http://keycloak/realms/edfi/protocol/openid-connect/logout',
+  },
+  'adminapp-client',
+  { client_secret: 'secret' }
+);
 
 // Google does not expose an end_session_endpoint in its discovery document
-const googleIssuer = new Issuer({
-  issuer: 'https://accounts.google.com',
-  authorization_endpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
-  token_endpoint: 'https://oauth2.googleapis.com/token',
-  jwks_uri: 'https://www.googleapis.com/oauth2/v3/certs',
-});
-
-const keycloakClient = new keycloakIssuer.Client({
-  client_id: 'adminapp-client',
-  client_secret: 'secret',
-});
-const googleClient = new googleIssuer.Client({
-  client_id: 'google-client',
-  client_secret: 'secret',
-});
+const googleConfig = new client.Configuration(
+  {
+    issuer: 'https://accounts.google.com',
+    authorization_endpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
+    token_endpoint: 'https://oauth2.googleapis.com/token',
+    jwks_uri: 'https://www.googleapis.com/oauth2/v3/certs',
+  },
+  'google-client',
+  { client_secret: 'secret' }
+);
 
 describe('OidcProviderRegistry', () => {
   let registry: OidcProviderRegistry;
 
   beforeEach(() => {
     registry = new OidcProviderRegistry();
+  });
+
+  describe('getIssuer', () => {
+    it('returns the issuer of a registered provider, given a numeric or string id', () => {
+      registry.register(1, keycloakConfig);
+
+      expect(registry.getIssuer(1)).toBe('http://keycloak/realms/edfi');
+      expect(registry.getIssuer('1')).toBe('http://keycloak/realms/edfi');
+    });
+
+    it.each([[2], [undefined], [null]])('returns null for %s', (id) => {
+      registry.register(1, keycloakConfig);
+
+      expect(registry.getIssuer(id)).toBeNull();
+    });
   });
 
   describe('getSoleOidcId', () => {
@@ -47,15 +92,15 @@ describe('OidcProviderRegistry', () => {
 
     it('returns the sole provider id when exactly one is configured and registered', () => {
       registry.setConfiguredProviderCount(1);
-      registry.register(1, keycloakClient);
+      registry.register(1, keycloakConfig);
 
       expect(registry.getSoleOidcId()).toBe(1);
     });
 
     it('returns undefined when more than one provider is registered', () => {
       registry.setConfiguredProviderCount(2);
-      registry.register(1, keycloakClient);
-      registry.register(2, googleClient);
+      registry.register(1, keycloakConfig);
+      registry.register(2, googleConfig);
 
       expect(registry.getSoleOidcId()).toBeUndefined();
     });
@@ -64,7 +109,7 @@ describe('OidcProviderRegistry', () => {
       // One provider was configured but did not register; the survivor must not
       // be assumed to be the one a legacy (untracked) session logged in with.
       registry.setConfiguredProviderCount(2);
-      registry.register(1, keycloakClient);
+      registry.register(1, keycloakConfig);
       registry.markFailed(2);
 
       expect(registry.getSoleOidcId()).toBeUndefined();
@@ -74,8 +119,8 @@ describe('OidcProviderRegistry', () => {
   describe('getEndSessionUrl', () => {
     beforeEach(() => {
       registry.setConfiguredProviderCount(2);
-      registry.register(1, keycloakClient);
-      registry.register(2, googleClient);
+      registry.register(1, keycloakConfig);
+      registry.register(2, googleConfig);
     });
 
     it('builds the logout URL from the discovered end_session_endpoint', () => {

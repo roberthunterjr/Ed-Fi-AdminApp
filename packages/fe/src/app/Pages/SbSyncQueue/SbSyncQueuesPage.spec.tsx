@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: Apache-2.0
+// Licensed to the Ed-Fi Alliance under one or more agreements.
+// The Ed-Fi Alliance licenses this file to you under the Apache License, Version 2.0.
+// See the LICENSE and NOTICES files in the project root for more information.
+
 import 'reflect-metadata';
 import '@testing-library/jest-dom';
 import React from 'react';
@@ -127,14 +132,29 @@ describe('hasPendingSyncQueueRows', () => {
 describe('SbSyncQueuesTable', () => {
   const mockUseQuery = useQuery as jest.Mock;
   let queueData: { data: unknown[]; rowCount: number } | undefined;
+  // When set, the pending-check query reports this instead of `queueData`, so a
+  // test can make the two polls disagree (the race that stranded "active" rows).
+  let pendingCheckData: { data: unknown[]; rowCount: number } | undefined;
+  const refetchQueueData = jest.fn();
+  const refetchFacetedValues = jest.fn();
 
   beforeEach(() => {
     queueData = undefined;
-    mockUseQuery.mockImplementation((options: { queryKey: unknown[] }) =>
-      options.queryKey.includes('faceted-values')
-        ? { data: undefined, isFetching: false, isError: false }
-        : { data: queueData, isFetching: false, isError: false }
-    );
+    pendingCheckData = undefined;
+    mockUseQuery.mockImplementation((options: { queryKey: unknown[] }) => {
+      if (options.queryKey.includes('faceted-values')) {
+        return { data: undefined, isFetching: false, isError: false, refetch: refetchFacetedValues };
+      }
+      if (options.queryKey.includes('pending-check')) {
+        return {
+          data: pendingCheckData ?? queueData,
+          isFetching: false,
+          isError: false,
+          refetch: jest.fn(),
+        };
+      }
+      return { data: queueData, isFetching: false, isError: false, refetch: refetchQueueData };
+    });
   });
 
   afterEach(() => {
@@ -179,6 +199,37 @@ describe('SbSyncQueuesTable', () => {
     // Re-rendering again with the same settled data must not re-fire it.
     rerender(<SbSyncQueuesTable defaultFilters={[]} onSyncSettled={onSyncSettled} />);
     expect(onSyncSettled).toHaveBeenCalledTimes(1);
+  });
+
+  it('refetches the table and facet counts once when pending settles, even if the table still holds a stale active row', () => {
+    const active = { data: [{ state: 'active', sbEnvironmentId: 1 }], rowCount: 1 };
+    queueData = active;
+    pendingCheckData = active;
+
+    const { rerender } = render(<SbSyncQueuesTable defaultFilters={[]} />);
+    expect(refetchQueueData).not.toHaveBeenCalled();
+    expect(refetchFacetedValues).not.toHaveBeenCalled();
+
+    // The pending check sees `completed` first; the table's own last fetch is
+    // still `active` and, with polling now off, would never update on its own.
+    pendingCheckData = { data: [{ state: 'completed', sbEnvironmentId: 1 }], rowCount: 1 };
+    rerender(<SbSyncQueuesTable defaultFilters={[]} />);
+
+    expect(refetchQueueData).toHaveBeenCalledTimes(1);
+    expect(refetchFacetedValues).toHaveBeenCalledTimes(1);
+
+    rerender(<SbSyncQueuesTable defaultFilters={[]} />);
+    expect(refetchQueueData).toHaveBeenCalledTimes(1);
+    expect(refetchFacetedValues).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not refetch on initial mount when nothing is pending', () => {
+    queueData = { data: [{ state: 'completed', sbEnvironmentId: 1 }], rowCount: 1 };
+
+    render(<SbSyncQueuesTable defaultFilters={[]} />);
+
+    expect(refetchQueueData).not.toHaveBeenCalled();
+    expect(refetchFacetedValues).not.toHaveBeenCalled();
   });
 
   it('does not call onSyncSettled while rows remain pending across renders', () => {

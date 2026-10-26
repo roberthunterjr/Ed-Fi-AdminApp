@@ -1,4 +1,12 @@
 // packages/api/config/local-development.js - Nginx proxy version
+// This file is copied into the Docker image as production.js (packages/api/Dockerfile).
+// It must NEVER contain secret values. Supply every secret through environment variables
+// or AWS Secrets Manager; the API refuses to start in production when one is missing or
+// still a placeholder (see packages/api/src/app/production-secrets.ts).
+//   DB_SECRET_VALUE            JSON, e.g. {"DB_PASSWORD":"..."} / {"MSSQL_DB_PASSWORD":"..."}
+//   DB_ENCRYPTION_SECRET_VALUE JSON, {"KEY":"<64 hex chars: openssl rand -hex 32>","IV":"unused"}
+//   SESSION_SECRET_VALUE       JSON array of secrets, newest first
+//   SAMPLE_OIDC_CONFIG         JSON, {"clientSecret":"..."} (optional: seeds the first IdP row)
 const FE_URL = 'https://localhost/adminapp';
 
 module.exports = {
@@ -26,19 +34,12 @@ module.exports = {
     DB_PORT: 5432,
     DB_USERNAME: 'postgres',
     DB_DATABASE: 'sbaa',
-    DB_PASSWORD: 'postgres',
 
     // MSSQL overrides
     MSSQL_DB_HOST: 'edfiadminapp-mssql',
     MSSQL_DB_PORT: 1433,
     MSSQL_DB_USERNAME: 'sa',
     MSSQL_DB_DATABASE: 'sbaa',
-    MSSQL_DB_PASSWORD: 'YourStrong!Passw0rd',
-  },
-  DB_ENCRYPTION_SECRET_VALUE: {
-    // Can replace with `openssl rand -hex 32` or `node -e "console.log('KEY: '+ require('crypto').randomBytes(32).toString('hex'))"`
-    KEY: 'bbeadc2d4d15f5c9cfc2239b682cca392b233ee6979b6b9578d256aa01a7c565',
-    IV: '<ignore - this should be refactored out. See comments elsewhere>',
   },
   // No SESSION_SECRET_VALUE default here on purpose: this template ships as the
   // real production.js inside the Docker image (packages/api/Dockerfile), so a
@@ -51,7 +52,6 @@ module.exports = {
   SAMPLE_OIDC_CONFIG: {
     issuer: 'https://localhost/auth/realms/edfi',
     clientId: 'edfiadminapp',
-    clientSecret: 'big-secret-123',
     scope: '',
   },
 
@@ -60,7 +60,6 @@ module.exports = {
   AUTH0_CONFIG_SECRET_VALUE: {
     ISSUER: 'https://localhost/auth/realms/edfi',
     CLIENT_ID: 'edfiadminapp',
-    CLIENT_SECRET: 'big-secret-123',
     MACHINE_AUDIENCE: 'edfiadminapp-api'
   },
 

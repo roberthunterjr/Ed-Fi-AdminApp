@@ -12,7 +12,7 @@ import { ChangeEvent } from 'react';
 import { PageTemplate } from '@edanalytics/common-ui';
 import { PostProfileDtoV2, PostProfileDtoV3 } from '@edanalytics/models';
 import { classValidatorResolver } from '@hookform/resolvers/class-validator';
-import { noop } from '@tanstack/react-table';
+import noop from 'lodash/noop';
 import { useMemo, useState } from 'react';
 import { DefaultValues, Path, PathValue, useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router';

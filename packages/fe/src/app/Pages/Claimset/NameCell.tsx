@@ -1,7 +1,6 @@
 import { HStack } from '@chakra-ui/react';
-import { TableRowActions } from '@edanalytics/common-ui';
+import { TableRowActions, SbaaCellContext } from '@edanalytics/common-ui';
 import { GetClaimsetDto } from '@edanalytics/models';
-import { CellContext } from '@tanstack/react-table';
 import { claimsetQueriesV1 } from '../../api';
 
 import { useQuery } from '@tanstack/react-query';
@@ -9,7 +8,7 @@ import { useTeamEdfiTenantNavContextLoaded } from '../../helpers';
 import { ClaimsetLinkV1 } from '../../routes';
 import { useClaimsetActions } from './useClaimsetActions';
 
-export const NameCell = (info: CellContext<GetClaimsetDto, unknown>) => {
+export const NameCell = (info: SbaaCellContext<GetClaimsetDto>) => {
   const { teamId, edfiTenant } = useTeamEdfiTenantNavContextLoaded();
   const entities = useQuery(
     claimsetQueriesV1.getAll({

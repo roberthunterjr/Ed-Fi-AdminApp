@@ -7,6 +7,7 @@ import {
   StepCatalog,
   StepParameterCatalog,
 } from '@edanalytics/models-server';
+import { CatalogQueryService } from './catalog-query.service';
 import { CatalogService } from './catalog.service';
 
 @Module({
@@ -19,7 +20,7 @@ import { CatalogService } from './catalog.service';
       StepParameterCatalog,
     ]),
   ],
-  providers: [CatalogService],
-  exports: [CatalogService],
+  providers: [CatalogService, CatalogQueryService],
+  exports: [CatalogService, CatalogQueryService],
 })
 export class CatalogModule {}

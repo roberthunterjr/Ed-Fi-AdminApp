@@ -25,6 +25,7 @@ module.exports = {
     DB_PORT: 5432,
     DB_USERNAME: 'postgres',
     DB_DATABASE: 'sbaa',
+    // Must match POSTGRES_PASSWORD in compose/.env (the database volume is initialized with that value).
     DB_PASSWORD: 'postgres',
 
     // MSSQL overrides
@@ -47,6 +48,7 @@ module.exports = {
     issuer: 'https://localhost/auth/realms/edfi',
     // use `-dev` for localhost development, leave off `-dev` when running the API in docker
     clientId: 'edfiadminapp-dev',
+    // Must match KEYCLOAK_EDFIADMINAPP_DEV_CLIENT_SECRET in compose/.env.
     clientSecret: 'big-secret-123',
     scope: '',
   },
@@ -60,6 +62,7 @@ module.exports = {
   AUTH0_CONFIG_SECRET_VALUE: {
     ISSUER: 'https://localhost/auth/realms/edfi',
     CLIENT_ID: 'edfiadminapp',
+    // Must match KEYCLOAK_EDFIADMINAPP_DEV_CLIENT_SECRET in compose/.env.
     CLIENT_SECRET: 'big-secret-123',
     MACHINE_AUDIENCE: 'edfiadminapp-api'
   },

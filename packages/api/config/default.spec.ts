@@ -95,3 +95,9 @@ describe('default.js DB_ENCRYPTION_SECRET', () => {
     expect(result.KEY).toBeUndefined();
   });
 });
+
+describe('default.js AUDIT_LOGGING_ENABLED', () => {
+  it('is enabled by default', () => {
+    expect(defaultConfig.AUDIT_LOGGING_ENABLED).toBe(true);
+  });
+});

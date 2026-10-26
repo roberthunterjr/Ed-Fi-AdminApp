@@ -6,3 +6,4 @@ export * from './SbaaTable';
 export * from './ValueAsDate';
 export * from './SbaaTableAllInOne';
 export * from './SbaaTableProviderServerSide';
+export * from './sbaaTableFeatures';

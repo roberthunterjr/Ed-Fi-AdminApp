@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import childProcess from 'child_process';
 import { createHash } from 'crypto';
 import { ArtifactService } from './artifact.service';
 
@@ -43,6 +44,7 @@ type ArtifactServiceInternal = {
   handleDownloadError(message: string): void;
   downloadArtifact(): Promise<Buffer | null>;
   ensureRuntime(): Promise<void>;
+  installRuntimeDependencies(): void;
 };
 
 const asInternal = (svc: ArtifactService): ArtifactServiceInternal =>
@@ -295,5 +297,66 @@ describe('ArtifactService: ensureRuntimeReady ref-check', () => {
     await svc.ensureRuntimeReady();
 
     expect(ensureRuntime).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// installRuntimeDependencies / brunoCliPath (AC-466)
+// ---------------------------------------------------------------------------
+
+describe('ArtifactService: installRuntimeDependencies', () => {
+  const savedEnv = { ...process.env };
+  let tmpRoot: string;
+  let service: ArtifactService;
+
+  beforeEach(() => {
+    Object.assign(process.env, VALID_ENV);
+    service = new ArtifactService();
+    tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'artifact-install-'));
+    asInternal(service).runtimeRoot = tmpRoot;
+    fs.writeFileSync(path.join(tmpRoot, 'package.json'), '{}');
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
+    process.env = { ...savedEnv };
+    jest.restoreAllMocks();
+  });
+
+  it('refuses to install without a lockfile (fails closed)', () => {
+    const spawn = jest.spyOn(childProcess, 'spawnSync');
+    expect(() => asInternal(service).installRuntimeDependencies()).toThrow(
+      'refusing to install unpinned dependencies'
+    );
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it('runs npm ci only and throws when it fails (no npm install fallback)', () => {
+    fs.writeFileSync(path.join(tmpRoot, 'package-lock.json'), '{}');
+    const spawn = jest
+      .spyOn(childProcess, 'spawnSync')
+      .mockReturnValue({ status: 1, stdout: '', stderr: 'boom' } as never);
+
+    expect(() => asInternal(service).installRuntimeDependencies()).toThrow(
+      'Bruno runtime dependencies could not be installed'
+    );
+    expect(spawn).toHaveBeenCalledTimes(1);
+    const args = JSON.stringify(spawn.mock.calls[0][1]);
+    expect(args).toContain('ci');
+    expect(args).not.toContain('install');
+  });
+
+  it('succeeds when npm ci succeeds', () => {
+    fs.writeFileSync(path.join(tmpRoot, 'package-lock.json'), '{}');
+    jest
+      .spyOn(childProcess, 'spawnSync')
+      .mockReturnValue({ status: 0, stdout: '', stderr: '' } as never);
+    expect(() => asInternal(service).installRuntimeDependencies()).not.toThrow();
+  });
+
+  it('points brunoCliPath at the CLI installed from the artifact lockfile', () => {
+    expect(service.brunoCliPath).toBe(
+      path.join(tmpRoot, 'node_modules', '@usebruno', 'cli', 'bin', 'bru.js')
+    );
   });
 });

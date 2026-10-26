@@ -5,6 +5,10 @@ import { V3AdminApiVersionStrategy } from './v3-admin-api-version.strategy';
 import { AdminApiServiceV3 } from '../teams/edfi-tenants/starting-blocks';
 import { SbEnvironment, SbSyncQueue } from '@edanalytics/models-server';
 import { ISbEnvironmentConfigPublicV3, PostSbEnvironmentDto } from '@edanalytics/models';
+import axios, { AxiosResponse } from 'axios';
+
+jest.mock('axios');
+const mockedAxios = axios as jest.Mocked<typeof axios>;
 
 describe('V3AdminApiVersionStrategy', () => {
   let strategy: V3AdminApiVersionStrategy;
@@ -73,5 +77,22 @@ describe('V3AdminApiVersionStrategy', () => {
       configPublic: { version: 'v3', values: { meta: { mode: 'MultiTenant' } } },
     } as unknown as SbEnvironment;
     expect(strategy.getTenantModeDefault(env)).toBe(true);
+  });
+
+  it('inherits the trailing-slash-safe registration URL from V2', async () => {
+    mockedAxios.post.mockResolvedValue({ status: 200 } as unknown as AxiosResponse);
+    const env = {
+      name: 'my-v3-env',
+      adminApiUrl: 'https://localhost/odsv7-adminv3-single-adminapi/',
+      configPublic: { version: 'v3', values: { meta: { mode: 'SingleTenant' }, tenants: {} } },
+    } as unknown as SbEnvironment;
+
+    await strategy.bootstrapCredentials(env);
+
+    expect(mockedAxios.post).toHaveBeenCalledWith(
+      'https://localhost/odsv7-adminv3-single-adminapi/connect/register',
+      expect.any(String),
+      expect.any(Object)
+    );
   });
 });

@@ -643,6 +643,8 @@ __FR-4 – Sandbox Provisioning:__ The system shall allow users to create a sand
 
 __FR-5 – Data Standard 5 Support:__ Users shall be able to select between Data Standard v4 and v5. The `certification-testing` artifact shall be updated to include DS5 Bruno collections.
 
+> **Update (2026-10, AC-677):** Certification is now offered only for environments whose Ed-Fi Data Model (data standard) is **5.0.0 or later** (ODS/API 7.x). Environments on Data Model 4.0.0 (ODS/API 6.x), or whose data model can't be determined, don't show "Request certification", and the certification API refuses them with a 400. The data model is the one recorded when the environment was connected; editing the environment doesn't refresh it.
+
 __FR-6 – Certification Status Registry:__ The system shall track process, scenario run, and step run statuses (`pending`, `inprogress`, `failed`, `completed`, `success`) per entity defined in §6.
 
 __FR-7 – Investigations: AI Remediation and DID Validation__ _(research only — implementation deferred to 2.3):_ The team shall begin feasibility investigations for AI-guided remediation and DID validation early in the timeline and produce write-ups to inform Certification 2.3 planning.

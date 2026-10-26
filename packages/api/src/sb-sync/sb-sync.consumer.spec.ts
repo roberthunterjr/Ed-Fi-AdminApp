@@ -10,7 +10,8 @@ import {
   StartingBlocksServiceV2,
 } from '../teams/edfi-tenants/starting-blocks';
 import { MetadataService } from '../teams/edfi-tenants/starting-blocks/metadata.service';
-import { ENV_SYNC_CHNL } from './sb-sync.module';
+import { OdsManageJobService } from './ods-manage-job.service';
+import { ENV_SYNC_CHNL, ODS_MANAGE_CHNL } from './sb-sync.module';
 
 jest.mock('config', () => ({
   __esModule: true,
@@ -68,6 +69,7 @@ describe('SbSyncConsumer — SYNC_SCHEDULER_CHNL', () => {
         { provide: StartingBlocksServiceV2, useValue: {} },
         { provide: MetadataService, useValue: {} },
         { provide: AdminApiSyncService, useValue: {} },
+        { provide: OdsManageJobService, useValue: {} },
       ],
     }).compile();
 
@@ -81,6 +83,12 @@ describe('SbSyncConsumer — SYNC_SCHEDULER_CHNL', () => {
       { sbEnvironmentId: adminApiEnv.id },
       { singletonKey: String(adminApiEnv.id), expireInHours: 1 },
     );
+  });
+
+  it('should register the ods-manage worker with localConcurrency 5', () => {
+    const call = jobQueue.work.mock.calls.find(([name]: [string]) => name === ODS_MANAGE_CHNL);
+    expect(call).toBeDefined();
+    expect(call[2]).toEqual({ localConcurrency: 5 });
   });
 
   it('should still enqueue SB environments onto ENV_SYNC_CHNL', () => {
@@ -140,6 +148,7 @@ describe('SbSyncConsumer — refreshSbEnvironment', () => {
         { provide: StartingBlocksServiceV2, useValue: {} },
         { provide: MetadataService, useValue: {} },
         { provide: AdminApiSyncService, useValue: adminapiSyncService },
+        { provide: OdsManageJobService, useValue: {} },
       ],
     }).compile();
 
@@ -201,6 +210,7 @@ describe('SbSyncConsumer — refreshEdfiTenant', () => {
         { provide: StartingBlocksServiceV2, useValue: {} },
         { provide: MetadataService, useValue: metadataService },
         { provide: AdminApiSyncService, useValue: adminapiSyncService },
+        { provide: OdsManageJobService, useValue: {} },
       ],
     }).compile();
 

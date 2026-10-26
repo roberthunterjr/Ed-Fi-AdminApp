@@ -9,7 +9,7 @@ import {
   Tr,
   chakra,
 } from '@chakra-ui/react';
-import { type Row, flexRender } from '@tanstack/react-table';
+import { flexRender } from '@tanstack/react-table';
 import { useSbaaTableContext } from './SbaaTableProvider';
 import { Icons } from '../Icons';
 
@@ -25,14 +25,14 @@ export const SbaaTable: TableComponent = (props) => {
 
   // If isFixedHeightForPagination is true, then we need to add empty rows to fill the page.
   // This is to prevent layout shift when a table is above other content and the pagination changes
-  const { pageIndex, pageSize } = table.getState().pagination;
+  const { pageIndex, pageSize } = table.state.pagination;
   const rows = table.getRowModel().rows;
   // If pageIndex is 0, then there are no empty rows.
   // Empty rows are only needed if on a later page.
   const emptyRowCount = pageIndex === 0 ? 0 : pageSize - rows.length;
   const emptyRows = [...Array(emptyRowCount).keys()].map((i) => ({
     id: `empty-${i}`,
-  })) as Row<unknown>[];
+  }));
   const columnCount = table.getAllColumns().length;
 
   return (
@@ -46,7 +46,7 @@ export const SbaaTable: TableComponent = (props) => {
                   borderColor="gray.300"
                   isChecked={table.getIsAllRowsSelected()}
                   onChange={() => table.toggleAllRowsSelected()}
-                  isIndeterminate={table.getIsSomeRowsSelected()}
+                  isIndeterminate={table.getIsSomeRowsSelected() && !table.getIsAllRowsSelected()}
                 />
               </Th>
             ) : null}

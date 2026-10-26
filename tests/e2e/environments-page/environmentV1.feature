@@ -1,3 +1,4 @@
+@v1
 Feature: Environments V1
 
   Scenario Outline: Create Environment Management

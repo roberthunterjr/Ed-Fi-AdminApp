@@ -8,13 +8,14 @@ name: CLA Merge Group Shim
 on:
   merge_group:
 
-permissions:
-  statuses: write
+permissions: {}
 
 jobs:
   report-cla-status:
     name: Report license/cla for merge group
     runs-on: ubuntu-latest
+    permissions:
+      statuses: write
     steps:
       - name: Post license/cla success status
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0

@@ -3,18 +3,16 @@ import { privilegeCodes } from './privileges';
 /**
  * Every privilege code that the seeded Global admin role (id 2) is guaranteed to hold.
  *
- * If this test fails, you added or removed a privilege. You MUST:
- *   1. Write pgsql + mssql migrations that add the new code to Global admin (role id 2)
- *      (see 1791158400000-AddMissingPrivilegesToGlobalAdmin for the pattern), and
- *   2. Update this snapshot.
- * Otherwise Global admins will get 403 when granting the new privilege (AC-644).
+ * If this test fails, you added or removed a privilege. You MUST decide whether Global admin
+ * should hold it:
+ *   - Yes: write pgsql + mssql migrations that add the new code to Global admin (role id 2)
+ *     (see 1791158400000-AddMissingPrivilegesToGlobalAdmin for the pattern), and add it to
+ *     GLOBAL_ADMIN_PRIVILEGE_SNAPSHOT. Otherwise Global admins will get 403 when granting the
+ *     new privilege (AC-644).
+ *   - No: add it to GLOBAL_ADMIN_WITHHELD_PRIVILEGES instead.
  */
 const GLOBAL_ADMIN_PRIVILEGE_SNAPSHOT = [
   'edorg:read',
-  'integration-provider:create',
-  'integration-provider:delete',
-  'integration-provider:read',
-  'integration-provider:update',
   'me:read',
   'ods:read',
   'ods:read-row-counts',
@@ -38,8 +36,6 @@ const GLOBAL_ADMIN_PRIVILEGE_SNAPSHOT = [
   'sb-environment:update',
   'sb-sync-queue:archive',
   'sb-sync-queue:read',
-  'team.integration-provider.application:read',
-  'team.integration-provider.application:reset-credentials',
   'team.ownership:read',
   'team.role:create',
   'team.role:delete',
@@ -92,18 +88,46 @@ const GLOBAL_ADMIN_PRIVILEGE_SNAPSHOT = [
   'user:update',
 ];
 
+/**
+ * Privilege codes deliberately withheld from Global admin. Holding integration-provider:read
+ * shows the Integration Providers menu, which must stay hidden; the codes are removed by the
+ * RemoveIntegrationProviderPrivilegesFromGlobalAdmin1791417600000 migrations. Because of the
+ * AC-644 no-escalation rule, Global admins also cannot grant these codes to anyone.
+ */
+const GLOBAL_ADMIN_WITHHELD_PRIVILEGES = [
+  'integration-provider:create',
+  'integration-provider:delete',
+  'integration-provider:read',
+  'integration-provider:update',
+  'team.integration-provider.application:read',
+  'team.integration-provider.application:reset-credentials',
+];
+
 describe('privilege snapshot (AC-644 tripwire)', () => {
-  it('matches the Global admin privilege snapshot', () => {
+  it('accounts for every privilege as either held by or withheld from Global admin', () => {
     const actual: string[] = [...privilegeCodes].sort();
-    const expected = [...GLOBAL_ADMIN_PRIVILEGE_SNAPSHOT].sort();
+    const expected = [...GLOBAL_ADMIN_PRIVILEGE_SNAPSHOT, ...GLOBAL_ADMIN_WITHHELD_PRIVILEGES].sort();
     const added = actual.filter((c) => !expected.includes(c));
     const removed = expected.filter((c) => !actual.includes(c));
     if (added.length || removed.length) {
       throw new Error(
         `Privilege list changed (added: [${added.join(', ')}], removed: [${removed.join(', ')}]). ` +
-          'New privilege added: write a migration adding it to Global admin (role 2), then update this snapshot.'
+          'New privilege added: either write a migration adding it to Global admin (role 2) and ' +
+          'add it to GLOBAL_ADMIN_PRIVILEGE_SNAPSHOT, or add it to GLOBAL_ADMIN_WITHHELD_PRIVILEGES.'
       );
     }
     expect(actual).toEqual(expected);
+  });
+
+  it('never lists a privilege as both held and withheld', () => {
+    const overlap = GLOBAL_ADMIN_PRIVILEGE_SNAPSHOT.filter((c) =>
+      GLOBAL_ADMIN_WITHHELD_PRIVILEGES.includes(c)
+    );
+    expect(overlap).toEqual([]);
+  });
+
+  it('withholds the integration-provider privileges so the Integration Providers menu stays hidden', () => {
+    expect(GLOBAL_ADMIN_PRIVILEGE_SNAPSHOT).not.toContain('integration-provider:read');
+    expect(GLOBAL_ADMIN_WITHHELD_PRIVILEGES).toContain('integration-provider:read');
   });
 });

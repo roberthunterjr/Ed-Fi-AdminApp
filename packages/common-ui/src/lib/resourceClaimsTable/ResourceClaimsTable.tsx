@@ -1,7 +1,6 @@
 import { Badge, BadgeProps, Box, Flex, IconButton, StyleProps, Text } from '@chakra-ui/react';
 import { GetClaimsetDto, ResourceClaimDto131 } from '@edanalytics/models';
-import { CellContext } from '@tanstack/react-table';
-import { SbaaTableAllInOne, useSbaaTableContext } from '../sbaaTable';
+import { SbaaTableAllInOne, useSbaaTableContext, SbaaCellContext } from '../sbaaTable';
 import { Icons } from '../Icons';
 
 const AuthStrategyBadge = (props: {
@@ -116,7 +115,7 @@ const NameHeader = () => {
     </Text>
   );
 };
-const NameCell = (props: CellContext<ResourceClaimRow, unknown>) => {
+const NameCell = (props: SbaaCellContext<ResourceClaimRow>) => {
   const table = useSbaaTableContext().table;
   const canAnyExpand = table?.getCanSomeRowsExpand();
   const canThisRowExpand = props.row.getCanExpand();

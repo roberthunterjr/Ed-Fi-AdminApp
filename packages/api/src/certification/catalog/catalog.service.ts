@@ -10,6 +10,7 @@ import {
   StepCatalog,
   StepParameterCatalog,
 } from '@edanalytics/models-server';
+import { parseInputParams, parseQueryParams } from '../runner/bru-params';
 
 interface ParsedParam {
   name: string;
@@ -19,6 +20,7 @@ interface ParsedParam {
 
 interface ParsedStep {
   stepName: string;
+  fileName: string;
   displayName: string | null;
   seq: number;
   stepType: string;
@@ -151,6 +153,7 @@ export class CatalogService {
             const stepCatalog = manager.create(StepCatalog, {
               scenarioId: scenarioCatalog.scenarioId,
               stepName: step.stepName,
+              fileName: step.fileName,
               displayName: step.displayName,
               stepType: step.stepType,
               displayOrder: step.seq,
@@ -236,6 +239,7 @@ export class CatalogService {
         return {
           stepName: metaName,
           displayName: metaName,
+          fileName: stepFile,
           seq,
           stepType,
           params: this.extractParams(content, stepType),
@@ -287,54 +291,16 @@ export class CatalogService {
     ];
   }
 
-  private extractQueryParamsBlock(bruContent: string): string | null {
-    const startMatch = /^params:query\s*\{/m.exec(bruContent);
-    if (!startMatch) return null;
-
-    const startBraceIndex = startMatch.index + startMatch[0].lastIndexOf('{');
-    let depth = 1;
-
-    for (let i = startBraceIndex + 1; i < bruContent.length; i++) {
-      const ch = bruContent[i];
-      if (ch === '{') depth++;
-      if (ch === '}') depth--;
-
-      if (depth === 0) {
-        return bruContent.slice(startBraceIndex + 1, i);
-      }
-    }
-
-    return null;
-  }
-
   /**
    * `input` params — lines in `params:query` with `[ENTER ...]` values.
    * These are filled in directly by the user.
    */
   private extractInputParams(bruContent: string): ParsedParam[] {
-    const paramsBlock = this.extractQueryParamsBlock(bruContent);
-    if (!paramsBlock) return [];
-
-    const params: ParsedParam[] = [];
-    for (const line of paramsBlock.split('\n')) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('#')) continue;
-      const colonIdx = trimmed.indexOf(':');
-      if (colonIdx === -1) continue;
-
-      const name = trimmed.slice(0, colonIdx).trim();
-      const value = trimmed.slice(colonIdx + 1).trim();
-
-      if (/^\[ENTER/i.test(value)) {
-        const description =
-          value
-            .replace(/^\[ENTER[\s_]*/i, '')
-            .replace(/]$/, '')
-            .trim() || null;
-        params.push({ name, type: 'input', description });
-      }
-    }
-    return params;
+    return parseInputParams(bruContent).map(({ name, description }) => ({
+      name,
+      type: 'input',
+      description,
+    }));
   }
 
   /**
@@ -343,29 +309,13 @@ export class CatalogService {
    * from a prior step result and injects the encoded value.
    */
   private extractContextParams(bruContent: string): ParsedParam[] {
-    const paramsBlock = this.extractQueryParamsBlock(bruContent);
-    if (!paramsBlock) return [];
-
-    const params: ParsedParam[] = [];
-    for (const line of paramsBlock.split('\n')) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('#')) continue;
-      const colonIdx = trimmed.indexOf(':');
-      if (colonIdx === -1) continue;
-
-      const name = trimmed.slice(0, colonIdx).trim();
-      const value = trimmed.slice(colonIdx + 1).trim();
-
-      if (/^\{\{/.test(value)) {
-        const varName = value.replace(/^\{\{|\}\}$/g, '').trim();
-        params.push({
-          name,
-          type: 'context',
-          description: `Resolved from Bruno context variable: ${varName}`,
-        });
-      }
-    }
-    return params;
+    return parseQueryParams(bruContent)
+      .filter(({ value }) => value.startsWith('{{'))
+      .map(({ name, value }) => ({
+        name,
+        type: 'context',
+        description: `Resolved from Bruno context variable: ${value.replace(/^\{\{|\}\}$/g, '').trim()}`,
+      }));
   }
 
   /**

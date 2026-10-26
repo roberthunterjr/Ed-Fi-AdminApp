@@ -1,0 +1,39 @@
+meta {
+  name: certification/run with an unknown input - rejected (400)
+  type: http
+  seq: 5
+  tags: Certification
+}
+
+post {
+  url: {{BASE_URL}}/sb-environments/{{process.env.CERT_SB_ENVIRONMENT_ID}}/edfi-tenants/{{process.env.CERT_EDFI_TENANT_ID}}/certification/sis/v5/steps/{{process.env.CERT_STEP_01_ID}}/run
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{ACCESS_TOKEN}}
+}
+
+body:json {
+  {}
+}
+
+script:pre-request {
+  if (!bru.getProcessEnv('CERT_SB_ENVIRONMENT_ID')) {
+    bru.runner.skipRequest();
+    return;
+  }
+  const odsId = bru.getProcessEnv('CERT_ODS_ID');
+  req.setBody({
+    ...(odsId ? { odsId: Number(odsId) } : {}),
+    token: bru.getVar('certToken') || 'x',
+    inputs: { studentUniqueId: 'S1', notAnInput: 'x' },
+  });
+}
+
+tests {
+  test("certification/run with an unknown input - status is 400", function() {
+    expect(res.getStatus()).to.equal(400);
+  });
+}

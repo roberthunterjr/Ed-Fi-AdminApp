@@ -3,8 +3,8 @@
 // The Ed-Fi Alliance licenses this file to you under the Apache License, Version 2.0.
 // See the LICENSE and NOTICES files in the project root for more information.
 
-import { Page } from '@playwright/test'
-import { selectComboboxOption } from './support'
+import { Page, expect } from '@playwright/test'
+import { API_WRITE_TIMEOUT_MS, selectComboboxOption } from './support'
 
 class GrantOwnershipPage {
   private readonly saveButton
@@ -24,6 +24,9 @@ class GrantOwnershipPage {
     await selectComboboxOption(this.page, 'Team', team)
     await selectComboboxOption(this.page, 'Role', role)
     await this.saveButton.click()
+    // Wait for the redirect to the new ownership's page. Returning right after the click lets
+    // the next step's nav click run first, and the late redirect then overrides it.
+    await expect(this.page).toHaveURL(/\/ownerships\/\d+\/?$/, { timeout: API_WRITE_TIMEOUT_MS })
   }
 }
 

@@ -19,6 +19,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { AuditDelete } from '../audit/audit-delete.decorator';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, IsNull, Not, Repository } from 'typeorm';
 import { ValidationHttpException, throwNotFound, withoutId } from '../utils';
@@ -141,6 +142,7 @@ export class IntegrationProvidersGlobalController {
   }
 
   @Delete(':id')
+  @AuditDelete(IntegrationProvider, 'id')
   @Authorize({
     privilege: 'integration-provider:delete',
     subject: { id: '__filtered__' },

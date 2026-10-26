@@ -42,4 +42,13 @@ describe('assertValidDbEncryptionSecret', () => {
       })
     ).toThrow('DB_ENCRYPTION_SECRET.KEY must be configured to a value other than the committed sample key');
   });
+
+  it('throws when KEY still equals the key that used to ship in compose/.env.example', () => {
+    expect(() =>
+      assertValidDbEncryptionSecret({
+        KEY: '4bb5c8ddaee19b8734675193868cd83511b04ee29ed7cc9aebc0dff5b3079dda',
+        IV: 'unused',
+      })
+    ).toThrow('DB_ENCRYPTION_SECRET.KEY must be configured to a value other than the committed sample key');
+  });
 });

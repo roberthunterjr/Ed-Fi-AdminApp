@@ -16,7 +16,7 @@ import {
 } from '@edanalytics/models';
 import { classValidatorResolver } from '@hookform/resolvers/class-validator';
 import { MutateOptions } from '@tanstack/react-query';
-import { noop } from '@tanstack/react-table';
+import noop from 'lodash/noop';
 import { DefaultValues, Path, useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router';
 import { SelectOds } from '../../helpers/EntitySelectors';

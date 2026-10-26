@@ -37,6 +37,7 @@ import { SbEnvironmentsGlobalService } from '../sb-environments-global/sb-enviro
 import { SbEnvironmentsEdFiService } from '../sb-environments-global/sb-environments-edfi.services';
 import { AdminApiSyncService } from '../sb-sync/edfi/adminapi-sync.service';
 import { SbSyncConsumer } from '../sb-sync/sb-sync.consumer';
+import { OdsManageJobService } from '../sb-sync/ods-manage-job.service';
 import { EdfiTenantsService } from '../teams/edfi-tenants/edfi-tenants.service';
 import { EdorgsService } from '../teams/edfi-tenants/edorgs/edorgs.service';
 import { OdssService } from '../teams/edfi-tenants/odss/odss.service';
@@ -113,6 +114,7 @@ const providers = [
   SbEnvironmentsEdFiService,
   SbEnvironmentsService,
   SbSyncConsumer,
+  OdsManageJobService,
   SessionSerializer,
   StartingBlocksServiceV1,
   StartingBlocksServiceV2,

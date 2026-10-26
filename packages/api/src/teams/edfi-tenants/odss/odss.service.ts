@@ -1,10 +1,13 @@
-import { PostOdsDto, PutOdsDto, toGetOdsDto } from '@edanalytics/models';
-import { EdfiTenant, Edorg, Ods, SbEnvironment, regarding } from '@edanalytics/models-server';
+import { PostOdsDto, PutOdsDto, safeJsonParse, toGetOdsDto } from '@edanalytics/models';
+import { EdfiTenant, Edorg, Ods, SbEnvironment, SbSyncQueue, regarding } from '@edanalytics/models-server';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { CustomHttpException, ValidationHttpException } from '../../../utils';
 import { Repository } from 'typeorm';
 import { StartingBlocksServiceV2 } from '../starting-blocks';
+
+// Job ids are UUIDs on both queue backends (pg-boss and the MSSQL job_queue).
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 @Injectable()
 export class OdssService {
@@ -13,8 +16,35 @@ export class OdssService {
     private odssRepository: Repository<Ods>,
     @InjectRepository(Edorg)
     private edorgsRepository: Repository<Edorg>,
-    private readonly startingBlocksServiceV2: StartingBlocksServiceV2
+    private readonly startingBlocksServiceV2: StartingBlocksServiceV2,
+    @InjectRepository(SbSyncQueue)
+    private syncQueueRepository: Repository<SbSyncQueue>
   ) {}
+
+  /** Finds an ods-manage job, scoped to the tenant and operation; 404 otherwise. */
+  async findOdsManageJob(
+    edfiTenantId: number,
+    jobId: string,
+    operation: 'create' | 'delete'
+  ): Promise<SbSyncQueue> {
+    // A non-UUID id can't match a job, and on PostgreSQL would fail the uuid column cast.
+    if (!UUID_PATTERN.test(jobId)) {
+      throw new NotFoundException('Job not found');
+    }
+    const job = await this.syncQueueRepository.findOneBy({ id: jobId });
+    // data may arrive as JSON text on MSSQL
+    const data: unknown = typeof job?.data === 'string' ? safeJsonParse(job.data) : job?.data;
+    const jobOperation = (data as { operation?: string } | null | undefined)?.operation;
+    if (
+      !job ||
+      job.type !== 'OdsManage' ||
+      job.edfiTenantId !== edfiTenantId ||
+      jobOperation !== operation
+    ) {
+      throw new NotFoundException('Job not found');
+    }
+    return job;
+  }
 
   async findAll(edfiTenantId: number) {
     return this.odssRepository.findBy({ edfiTenantId });

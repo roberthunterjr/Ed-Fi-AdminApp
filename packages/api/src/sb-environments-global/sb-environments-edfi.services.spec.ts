@@ -3,7 +3,15 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken, getEntityManagerToken } from '@nestjs/typeorm';
 import { SbEnvironmentsEdFiService } from './sb-environments-edfi.services';
 import { AdminApiVersionStrategyFactory } from '../admin-api-version-strategy';
-import { EdfiTenant, SbEnvironment, SbSyncQueue } from '@edanalytics/models-server';
+import {
+  CertificationProcess,
+  EdfiTenant,
+  Edorg,
+  Ods,
+  SbEnvironment,
+  SbSyncQueue,
+} from '@edanalytics/models-server';
+import { IsNull, Not } from 'typeorm';
 import { PostSbEnvironmentDto, PutSbEnvironmentDto } from '@edanalytics/models';
 import {
   StartingBlocksServiceV1,
@@ -12,6 +20,7 @@ import {
 import * as utils from '../utils';
 import { ValidationHttpException } from '../utils';
 import * as adminApiTenancy from '../utils/admin-api-tenancy';
+import axios, { AxiosResponse } from 'axios';
 
 jest.mock('../utils', () => ({
   ...jest.requireActual('../utils'),
@@ -301,6 +310,62 @@ describe('SbEnvironmentsEdFiService.updateEnvironment (v3)', () => {
     expect(v3Strategy.shouldTriggerResync).toHaveBeenCalledWith(true);
     expect(v3Strategy.dispatchSync).toHaveBeenCalled();
   });
+
+  describe('Admin API URL change detection', () => {
+    // Mirrors a real loaded entity: the `adminApiUrl` getter returns new URL(...).toString(),
+    // which appends "/" to a path-less URL, while the incoming DTO value has trailing slashes trimmed.
+    const buildPathLessEnvironment = () => ({
+      id: 5,
+      adminApiUrl: 'https://api.test.com/',
+      configPublic: {
+        version: 'v3',
+        adminApiUrl: 'https://api.test.com',
+        values: {
+          meta: { mode: 'MultiTenant', domainName: 'old.test.com' },
+          tenants: { default: { adminApiKey: 'client_existing' } },
+        },
+      },
+      configPrivate: { tenants: { default: { adminApiSecret: 'secret_existing' } } },
+    });
+
+    it('keeps tenant credentials when an unchanged path-less adminApiUrl is re-saved', async () => {
+      sbEnvironmentsRepository.findOne.mockResolvedValue(buildPathLessEnvironment());
+
+      await service.updateEnvironment(
+        5,
+        {
+          name: 'renamed-env',
+          adminApiUrl: 'https://api.test.com',
+        } as unknown as PutSbEnvironmentDto,
+        undefined,
+      );
+
+      const saved = sbEnvironmentsRepository.save.mock.calls[0][0];
+      expect(saved.configPublic.values.tenants).toEqual({
+        default: { adminApiKey: 'client_existing' },
+      });
+      expect(saved.configPrivate).toEqual({
+        tenants: { default: { adminApiSecret: 'secret_existing' } },
+      });
+    });
+
+    it('clears tenant credentials for re-bootstrap when adminApiUrl actually changes', async () => {
+      sbEnvironmentsRepository.findOne.mockResolvedValue(buildPathLessEnvironment());
+
+      await service.updateEnvironment(
+        5,
+        {
+          name: 'my-env',
+          adminApiUrl: 'https://new-api.test.com',
+        } as unknown as PutSbEnvironmentDto,
+        undefined,
+      );
+
+      const saved = sbEnvironmentsRepository.save.mock.calls[0][0];
+      expect(saved.configPublic.values.tenants).toEqual({});
+      expect(saved.configPrivate).toEqual({ tenants: {} });
+    });
+  });
 });
 
 describe('SbEnvironmentsEdFiService.updateEnvironment (v1 message wording)', () => {
@@ -311,6 +376,7 @@ describe('SbEnvironmentsEdFiService.updateEnvironment (v1 message wording)', () 
     version: string;
     supportsMultiTenant: boolean;
     getTenantModeDefault: jest.Mock;
+    getRegistrationHeaders: jest.Mock;
   };
 
   const existingV1Environment = {
@@ -328,6 +394,9 @@ describe('SbEnvironmentsEdFiService.updateEnvironment (v1 message wording)', () 
       version: 'v1',
       supportsMultiTenant: false,
       getTenantModeDefault: jest.fn().mockReturnValue(false),
+      getRegistrationHeaders: jest
+        .fn()
+        .mockReturnValue({ 'Content-Type': 'application/x-www-form-urlencoded' }),
     };
     strategyFactory = { getStrategy: jest.fn().mockReturnValue(v1Strategy) };
 
@@ -361,6 +430,29 @@ describe('SbEnvironmentsEdFiService.updateEnvironment (v1 message wording)', () 
     expect(response.data.errors.isMultitenant.message).toContain(
       '(v1 environments are always single-tenant)',
     );
+  });
+
+  it('does not produce a double slash in the registration URL when the new adminApiUrl has a trailing slash', async () => {
+    const postSpy = jest
+      .spyOn(axios, 'post')
+      .mockResolvedValue({ status: 200 } as unknown as AxiosResponse);
+
+    await (
+      service as unknown as {
+        createClientCredentials: (dto: PostSbEnvironmentDto) => Promise<unknown>;
+      }
+    ).createClientCredentials({
+      adminApiUrl: 'https://api-v1.test.com/adminapi/',
+      isMultitenant: false,
+      version: 'v1',
+    } as PostSbEnvironmentDto);
+
+    expect(postSpy).toHaveBeenCalledWith(
+      'https://api-v1.test.com/adminapi/connect/register',
+      expect.any(String),
+      expect.any(Object),
+    );
+    postSpy.mockRestore();
   });
 });
 
@@ -419,5 +511,70 @@ describe('SbEnvironmentsEdFiService.updateEnvironment (unrecognized version)', (
     // The factory should never be called for a version outside v1/v2/v3 — updateEnvironment
     // must degrade to an undefined strategy locally instead of delegating to the factory's throw.
     expect(strategyFactory.getStrategy).not.toHaveBeenCalled();
+  });
+});
+
+describe('SbEnvironmentsEdFiService tenant and ODS removal (MSSQL certification FK)', () => {
+  let service: SbEnvironmentsEdFiService;
+  let repos: Record<string, { delete: jest.Mock }>;
+
+  beforeEach(async () => {
+    repos = {
+      [Edorg.name]: { delete: jest.fn() },
+      [CertificationProcess.name]: { delete: jest.fn() },
+      [Ods.name]: { delete: jest.fn() },
+      [EdfiTenant.name]: { delete: jest.fn() },
+    };
+    const em = { getRepository: (entity: { name: string }) => repos[entity.name] };
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        SbEnvironmentsEdFiService,
+        { provide: getRepositoryToken(SbEnvironment), useValue: {} },
+        { provide: StartingBlocksServiceV1, useValue: {} },
+        { provide: StartingBlocksServiceV2, useValue: {} },
+        { provide: getRepositoryToken(EdfiTenant), useValue: {} },
+        {
+          provide: getEntityManagerToken(),
+          useValue: { transaction: jest.fn(async (work) => work(em)) },
+        },
+        { provide: 'IJobQueueService', useValue: {} },
+        { provide: getRepositoryToken(SbSyncQueue), useValue: {} },
+        { provide: AdminApiVersionStrategyFactory, useValue: {} },
+      ],
+    }).compile();
+    service = module.get(SbEnvironmentsEdFiService);
+  });
+
+  const calledBefore = (first: jest.Mock, second: jest.Mock) =>
+    first.mock.invocationCallOrder[0] < second.mock.invocationCallOrder[0];
+
+  it('removeTenant deletes the tenant ODS certification processes before its ODS rows', async () => {
+    await (service as unknown as { removeTenant: (t: EdfiTenant) => Promise<void> }).removeTenant({
+      id: 10,
+    } as EdfiTenant);
+
+    expect(repos[CertificationProcess.name].delete).toHaveBeenCalledWith({
+      edfiTenantId: 10,
+      odsId: Not(IsNull()),
+    });
+    expect(calledBefore(repos[CertificationProcess.name].delete, repos[Ods.name].delete)).toBe(
+      true,
+    );
+    expect(repos[Ods.name].delete).toHaveBeenCalledWith({ edfiTenantId: 10 });
+  });
+
+  it('removeAllOdsForTenant deletes only ODS-bound certification processes before the ODS rows', async () => {
+    await (
+      service as unknown as { removeAllOdsForTenant: (t: EdfiTenant) => Promise<void> }
+    ).removeAllOdsForTenant({ id: 10 } as EdfiTenant);
+
+    expect(repos[CertificationProcess.name].delete).toHaveBeenCalledWith({
+      edfiTenantId: 10,
+      odsId: Not(IsNull()),
+    });
+    expect(calledBefore(repos[CertificationProcess.name].delete, repos[Ods.name].delete)).toBe(
+      true,
+    );
+    expect(repos[EdfiTenant.name].delete).not.toHaveBeenCalled();
   });
 });

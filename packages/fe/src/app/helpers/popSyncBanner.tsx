@@ -5,8 +5,14 @@ import { Link } from '@chakra-ui/react';
 
 export const popSyncBanner = (args: {
   popBanner: ReturnType<typeof usePopBanner>;
-  syncQueue: SbSyncQueueDto;
+  syncQueue: Pick<SbSyncQueueDto, 'id' | 'state'>;
+  /** Defaults to the global sync queue item page. */
+  linkTo?: string;
+  /** Defaults to 'Sync'. Titles read `${subject} queued`, `${subject} completed`, etc. */
+  subject?: string;
 }) => {
+  const linkTo = args.linkTo ?? `/sb-sync-queues/${args.syncQueue.id}`;
+  const subject = args.subject ?? 'Sync';
   const failureStates: PgBossJobState[] = ['failed', 'cancelled', 'expired'];
   const pendingStates: PgBossJobState[] = ['created', 'retry', 'active'];
   args.popBanner({
@@ -16,7 +22,7 @@ export const popSyncBanner = (args: {
         : failureStates.includes(args.syncQueue.state)
         ? 'Error'
         : 'Info',
-    title: `Sync ${
+    title: `${subject} ${
       args.syncQueue.state === 'completed'
         ? 'completed'
         : failureStates.includes(args.syncQueue.state)
@@ -27,8 +33,8 @@ export const popSyncBanner = (args: {
       <>
         See the queue item for more details
         {pendingStates.includes(args.syncQueue.state) ? ' and updated status' : ''}:{' '}
-        <Link as={RouterLink} to={`/sb-sync-queues/${args.syncQueue.id}`}>
-          /sb-sync-queues/{args.syncQueue.id}
+        <Link as={RouterLink} to={linkTo}>
+          {linkTo}
         </Link>
         .
       </>

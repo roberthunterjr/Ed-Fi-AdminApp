@@ -51,6 +51,16 @@ jobs:
           node-version-file: '.nvmrc'
           cache: npm
 
+      # Authenticated pulls avoid Docker Hub anonymous rate limits. The token is passed only to
+      # this step (not job-wide) so later steps and PR-controlled code never see it. The step is
+      # non-fatal because credentials are unavailable for PRs from forks.
+      - name: Log in to Docker Hub
+        continue-on-error: true
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          username: ${{ vars.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
@@ -62,11 +72,12 @@ jobs:
         run: bash ./generate-certificate.sh
 
       - name: Run E2E UI tests
+        timeout-minutes: 40
         shell: pwsh
         env:
           CI: true
           PLAYWRIGHT_CHROMIUM_ARGS: --ignore-certificate-errors
-        run: ./eng/testing/run-e2e-ui.ps1 -DbEngine ${{ matrix.db-engine }} -Rebuild -StopServices
+        run: ./eng/testing/run-e2e-ui.ps1 -DbEngine ${{ matrix.db-engine }} -Rebuild -StopServices -SkipV1
 
       - name: Upload Allure and JUnit results
         if: always()

@@ -17,7 +17,6 @@ jest.mock('@edanalytics/common-ui', () => ({
 jest.mock('react-router', () => ({ useNavigate: jest.fn(), useParams: jest.fn() }));
 jest.mock('react-hook-form', () => ({ useForm: jest.fn() }));
 jest.mock('@tanstack/react-query', () => ({ useQueryClient: jest.fn() }));
-jest.mock('@tanstack/react-table', () => ({ noop: () => undefined }));
 jest.mock('@hookform/resolvers/class-validator', () => ({
   classValidatorResolver: jest.fn((Dto) => Dto),
 }));

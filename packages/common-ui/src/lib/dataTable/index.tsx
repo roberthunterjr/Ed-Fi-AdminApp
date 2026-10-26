@@ -7,12 +7,12 @@ import { Ranking, rankItem } from '@tanstack/match-sorter-utils';
 // Threshold is set at 1.8 which means the characters should be closer together
 // https://github.com/TanStack/table/blob/main/packages/match-sorter-utils/src/index.ts#L147
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const fuzzyFilter: FilterFn<any> = (row, columnId, value, addMeta) => {
+export const fuzzyFilter: FilterFn<any, any> = (row, columnId, value, addMeta) => {
   // Rank the item
   const itemRank = rankItem(row.getValue(columnId), value, { threshold: 1.8 as Ranking });
 
   // Store the itemRank info
-  addMeta({
+  addMeta?.({
     itemRank,
   });
 

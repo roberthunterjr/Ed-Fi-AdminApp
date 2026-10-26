@@ -6,6 +6,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useTeamEdfiTenantNavContextLoaded } from '../../helpers';
 import { odsQueries, instancesV2 } from '../../api';
 import { MAX_ODS_NAME_LENGTH } from '@edanalytics/models';
+import { popSyncBanner } from '../../helpers/popSyncBanner';
+import { mutationErrCallback } from '../../helpers/mutationErrCallback';
 
 jest.mock('@edanalytics/common-ui', () => ({
   PageTemplate: ({ children }: { children: React.ReactNode }) => children,
@@ -53,6 +55,8 @@ jest.mock('../../helpers', () => {
     },
   };
 });
+
+jest.mock('../../helpers/popSyncBanner', () => ({ popSyncBanner: jest.fn() }));
 
 jest.mock('../../helpers/mutationErrCallback', () => ({
   mutationErrCallback: jest.fn(() => ({})),
@@ -127,7 +131,12 @@ const getCounter = () =>
 const counterText = (counter: React.ReactElement | undefined) =>
   ((counter?.props as { children?: unknown[] })?.children ?? []).join('');
 
-const setup = (startingBlocks: boolean, formData: Record<string, unknown>) => {
+const setup = (
+  startingBlocks: boolean,
+  formData: Record<string, unknown>,
+  instanceResult: Record<string, unknown> = { id: 202 },
+  version?: string
+) => {
   mockUseNavigate.mockReturnValue(navSpy);
   mockUseQueryClient.mockReturnValue({ invalidateQueries: invalidateQueriesSpy });
   mockUseTeamEdfiTenantNavContextLoaded.mockReturnValue({
@@ -135,7 +144,7 @@ const setup = (startingBlocks: boolean, formData: Record<string, unknown>) => {
     sbEnvironmentId: 2,
     edfiTenantId: 3,
     edfiTenant: { id: 3 },
-    sbEnvironment: { startingBlocks },
+    sbEnvironment: { startingBlocks, version },
   });
 
   mockUseForm.mockReturnValue({
@@ -156,9 +165,9 @@ const setup = (startingBlocks: boolean, formData: Record<string, unknown>) => {
     }
   );
   instancesMutateAsync.mockImplementation(
-    (_args: unknown, callbacks: { onSuccess?: (result: { id: number }) => void }) => {
-      callbacks.onSuccess?.({ id: 202 });
-      return Promise.resolve({ id: 202 });
+    (_args: unknown, callbacks: { onSuccess?: (result: Record<string, unknown>) => void }) => {
+      callbacks.onSuccess?.(instanceResult);
+      return Promise.resolve(instanceResult);
     }
   );
   mockOdsPost.mockReturnValue({ mutateAsync: odsMutateAsync });
@@ -189,6 +198,50 @@ describe('CreateOds', () => {
       queryKey: ['edfi-tenants', '3', 'odss', 'list', 'teams', '1'],
     });
     expect(navSpy).toHaveBeenCalledWith('/parent');
+  });
+
+  it('shows "Data Store creation queued" banner linking to odss/jobs/create/<id> when response has syncQueue', async () => {
+    setup(
+      false,
+      { name: 'Instance One', databaseTemplate: 'Minimal' },
+      { id: 202, syncQueue: { id: 'job-9', state: 'created' } },
+      'v3'
+    );
+
+    await getFormElement().props.onSubmit();
+
+    expect(popSyncBanner).toHaveBeenCalledWith(
+      expect.objectContaining({
+        syncQueue: { id: 'job-9', state: 'created' },
+        linkTo: '/as/1/sb-environments/2/edfi-tenants/3/odss/jobs/create/job-9',
+        subject: 'Data Store creation',
+      })
+    );
+    expect(navSpy).toHaveBeenCalledWith('/parent');
+  });
+
+  it('shows no banner when response has no syncQueue', async () => {
+    setup(false, { name: 'Instance One', databaseTemplate: 'Minimal' }, { id: 202 });
+
+    await getFormElement().props.onSubmit();
+
+    expect(popSyncBanner).not.toHaveBeenCalled();
+    expect(navSpy).toHaveBeenCalledWith('/parent');
+  });
+
+  it('still shows Admin API name error inline', async () => {
+    setup(false, { name: 'Instance One', databaseTemplate: 'Minimal' });
+    instancesMutateAsync.mockRejectedValue({ message: 'name taken' });
+    const setError = jest.fn();
+    mockUseForm.mockReturnValue({ ...mockUseForm(), setError });
+
+    await getFormElement().props.onSubmit();
+
+    expect(mutationErrCallback).toHaveBeenCalledWith(
+      expect.objectContaining({ setFormError: setError })
+    );
+    expect(popSyncBanner).not.toHaveBeenCalled();
+    expect(navSpy).not.toHaveBeenCalled();
   });
 
   it('uses ods mutation for startingBlocks', async () => {

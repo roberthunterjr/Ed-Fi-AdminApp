@@ -25,37 +25,34 @@ import {
   getPrefixedName,
   getSortParams,
   stringifyColumnFilters,
+  SbaaCellContext,
 } from '@edanalytics/common-ui';
 import {
-  PgBossJobState,
   SbSyncQueueDto,
   SbSyncQueueFacetedValuesDto,
   SyncQueuePaginatedResults,
 } from '@edanalytics/models';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { CellContext, ColumnFiltersState, SortingState } from '@tanstack/react-table';
+import { ColumnFiltersState, SortingState } from '@tanstack/react-table';
 import { useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router';
 import { methods, queryKey } from '../../api';
 import { useIsStartingBlocksDeployment } from '../../helpers';
 import { SbSyncQueueLink } from '../../routes';
+import {
+  jobStateColorSchemes,
+  pendingSyncQueueStates,
+  syncQueuePollingIntervalMs,
+  syncQueueRefetchInterval,
+} from './syncQueueStates';
 import { useSbSyncQueueActions } from './useSbSyncQueueActions';
 
-export const jobStateColorSchemes: Record<PgBossJobState, string> = {
-  active: 'purple',
-  cancelled: 'orange',
-  completed: 'green',
-  created: 'blue',
-  expired: 'orange',
-  failed: 'red',
-  retry: 'yellow',
+export {
+  jobStateColorSchemes,
+  pendingSyncQueueStates,
+  syncQueuePollingIntervalMs,
+  syncQueueRefetchInterval,
 };
-
-/** Job states that indicate a sync queue row is still in-flight. */
-export const pendingSyncQueueStates: PgBossJobState[] = ['created', 'active', 'retry'];
-
-/** Interval (ms) to poll the sync queue at while any row is still pending. */
-export const syncQueuePollingIntervalMs = 3000;
 
 /** Whether any row in a paginated sync-queue result is still pending (not yet terminal). */
 export const hasPendingSyncQueueRows = (
@@ -70,7 +67,7 @@ export const hasPendingSyncQueueRows = (
 
 const urlStatePrefix = 'snc';
 
-const SbSyncQueueNameCell = (info: CellContext<SbSyncQueueDto, unknown>) => {
+const SbSyncQueueNameCell = (info: SbaaCellContext<SbSyncQueueDto>) => {
   const actions = useSbSyncQueueActions(info.row.original);
   return (
     <HStack justify="space-between">
@@ -168,13 +165,6 @@ export const SbSyncQueuesTable = ({
         : false,
   });
   const isAutoRefreshing = hasPendingSyncQueueRows(pendingCheckData.data);
-  const wasPendingRef = useRef(false);
-  useEffect(() => {
-    if (wasPendingRef.current && !isAutoRefreshing) {
-      onSyncSettled?.();
-    }
-    wasPendingRef.current = isAutoRefreshing;
-  }, [isAutoRefreshing, onSyncSettled]);
   const queueData = useQuery({
     queryKey: queryKey({
       resourceName: 'SbSyncQueue',
@@ -218,6 +208,21 @@ export const SbSyncQueuesTable = ({
     refetchInterval: (query) =>
       isAutoRefreshing || query.state.error ? syncQueuePollingIntervalMs : false,
   });
+  const wasPendingRef = useRef(false);
+  const { refetch: refetchQueueData } = queueData;
+  const { refetch: refetchFacetedValues } = facetedValues;
+  useEffect(() => {
+    if (wasPendingRef.current && !isAutoRefreshing) {
+      // `queueData` and `facetedValues` poll on their own timers and stop as
+      // soon as `isAutoRefreshing` goes false, so either can be left holding
+      // its last pre-completion fetch (still showing "active"). Refetch once
+      // so the table and filter counts reflect the settled state.
+      refetchQueueData();
+      refetchFacetedValues();
+      onSyncSettled?.();
+    }
+    wasPendingRef.current = isAutoRefreshing;
+  }, [isAutoRefreshing, onSyncSettled, refetchQueueData, refetchFacetedValues]);
   const hasRefreshError = queueData.isError || facetedValues.isError || pendingCheckData.isError;
 
   return (

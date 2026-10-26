@@ -3,7 +3,7 @@
 // The Ed-Fi Alliance licenses this file to you under the Apache License, Version 2.0.
 // See the LICENSE and NOTICES files in the project root for more information.
 
-import { Locator, Page } from '@playwright/test'
+import { Locator, Page, expect } from '@playwright/test'
 
 /** Local page navigation or a client-side re-render. */
 export const UI_RENDER_TIMEOUT_MS = 20000
@@ -19,6 +19,19 @@ export const SYNC_COMPLETE_TIMEOUT_MS = 120000
 
 /** How long a single attempt inside a reload-and-retry poll may block. */
 export const POLL_ATTEMPT_TIMEOUT_MS = 3000
+
+/**
+ * Clicks a left-nav link once the session has loaded and waits for the route change.
+ *
+ * The nav renders only after `/auth/me` resolves, so a bare `link.click()` races the
+ * session fetch; the explicit visibility wait gives that fetch its own budget and the URL
+ * assertion keeps the next step from running against the previous page.
+ */
+export async function clickNavLink(page: Page, link: Locator, destination: RegExp) {
+  await expect(link).toBeVisible({ timeout: API_FETCH_TIMEOUT_MS })
+  await link.click()
+  await expect(page).toHaveURL(destination, { timeout: UI_RENDER_TIMEOUT_MS })
+}
 
 /**
  * Selects an option in a `chakra-react-select` combobox by typing and confirming.

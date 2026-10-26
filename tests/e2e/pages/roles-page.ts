@@ -4,6 +4,12 @@
 // See the LICENSE and NOTICES files in the project root for more information.
 
 import { expect, Page } from '@playwright/test';
+import {
+  API_FETCH_TIMEOUT_MS,
+  API_WRITE_TIMEOUT_MS,
+  UI_RENDER_TIMEOUT_MS,
+  clickNavLink,
+} from './support';
 
 type RoleAction = 'view' | 'edit' | 'delete';
 type DeleteConfirmation = 'yes' | 'no';
@@ -61,7 +67,7 @@ class RolesPage {
   }
 
   async clickRolesOption() {
-    await this.rolesOption.click();
+    await clickNavLink(this.page, this.rolesOption, /\/adminapp\/roles\/?$/);
     await this.rolesPageShouldBeLoaded();
   }
 
@@ -85,12 +91,13 @@ class RolesPage {
 
   async clickSaveButton() {
     await this.saveButton.click();
-    await this.page.waitForLoadState('networkidle');
+    // The form (the only page with a name input) closes once the write round-trips to the API.
+    await expect(this.nameInput).toBeHidden({ timeout: API_WRITE_TIMEOUT_MS });
   }
 
   async clickCancelButton() {
     await this.cancelButton.click();
-    await this.page.waitForLoadState('networkidle');
+    await expect(this.nameInput).toBeHidden({ timeout: UI_RENDER_TIMEOUT_MS });
   }
 
   async filterRoleCreated(roleName = 'userRole') {
@@ -129,18 +136,22 @@ class RolesPage {
   }
 
   async confirmDelete(answer: DeleteConfirmation) {
-    await (answer === 'yes' ? this.yesButton : this.noButton).click();
-    await this.page.waitForLoadState('networkidle');
+    const button = answer === 'yes' ? this.yesButton : this.noButton;
+    await button.click();
+    // Yes deletes through the API; No only closes the dialog.
+    await expect(button).toBeHidden({
+      timeout: answer === 'yes' ? API_WRITE_TIMEOUT_MS : UI_RENDER_TIMEOUT_MS,
+    });
   }
 
   async newRoleDetailsShouldBeDisplayed(name: string, description: string, type: string) {
-    await expect(this.roleDetails).toContainText(name);
+    await expect(this.roleDetails).toContainText(name, { timeout: API_FETCH_TIMEOUT_MS });
     await expect(this.roleDetails).toContainText(description);
     await expect(this.roleDetails).toContainText(type);
   }
 
   async updatedRoleDetailsShouldBeDisplayed(name: string, description: string) {
-    await expect(this.roleDetails).toContainText(name);
+    await expect(this.roleDetails).toContainText(name, { timeout: API_FETCH_TIMEOUT_MS });
     await expect(this.roleDetails).toContainText('Type');
     await expect(this.roleDetails).toContainText(description);
   }
@@ -171,8 +182,8 @@ class RolesPage {
   }
 
   async rolesPageShouldBeLoaded() {
-    await expect(this.rolesHeading).toBeVisible();
-    await expect(this.rolesTable).toBeVisible();
+    await expect(this.rolesHeading).toBeVisible({ timeout: UI_RENDER_TIMEOUT_MS });
+    await expect(this.rolesTable).toBeVisible({ timeout: API_FETCH_TIMEOUT_MS });
   }
 
   private async captureSelectedRoleName() {

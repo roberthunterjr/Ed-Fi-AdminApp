@@ -660,6 +660,30 @@ describe('AdminApiServiceV2 - Extension Methods', () => {
   });
 
   describe('postInstance', () => {
+    it('postInstance returns jobId from 202 body', async () => {
+      const mockPost = jest.fn().mockResolvedValue({
+        headers: { location: '/v2/odsInstances/manage/123' },
+        data: { jobId: 'CreateInstanceJob-7_abc', message: 'queued' },
+      });
+      jest.spyOn(service as any, 'getAdminApiClient').mockReturnValue({ post: mockPost });
+
+      const result = await service.postInstance({ id: 1 } as any, { name: 'x' } as any);
+
+      expect(result).toEqual({ id: 123, jobId: 'CreateInstanceJob-7_abc' });
+    });
+
+    it('postInstance returns jobId undefined when body is empty', async () => {
+      const mockPost = jest.fn().mockResolvedValue({
+        headers: { location: '/v2/odsInstances/manage/123' },
+        data: '',
+      });
+      jest.spyOn(service as any, 'getAdminApiClient').mockReturnValue({ post: mockPost });
+
+      const result = await service.postInstance({ id: 1 } as any, { name: 'x' } as any);
+
+      expect(result).toEqual({ id: 123, jobId: undefined });
+    });
+
     it('posts instance payload and returns id from location header', async () => {
       const payload = { name: 'My DB Instance', databaseTemplate: 'Minimal' };
       const mockPost = jest.fn().mockResolvedValue({
@@ -673,7 +697,7 @@ describe('AdminApiServiceV2 - Extension Methods', () => {
 
       expect(getAdminApiClientSpy).toHaveBeenCalledWith({ id: 1 }, true);
       expect(mockPost).toHaveBeenCalledWith('odsInstances/manage', payload);
-      expect(result).toEqual({ id: 123 });
+      expect(result).toEqual({ id: 123, jobId: undefined });
     });
 
     it('rethrows error when posting instance fails', async () => {
@@ -812,14 +836,27 @@ describe('AdminApiServiceV2 - Extension Methods', () => {
     });
   });
   describe('deleteInstance', () => {
-    it('calls admin API DELETE odsInstances/manage/:id and resolves undefined', async () => {
+    it('deleteInstance returns jobId from 202 body', async () => {
+      const mockDelete = jest.fn().mockResolvedValue({
+        data: { jobId: 'DeleteInstanceJob-8_xyz', message: 'queued' },
+      });
+      jest.spyOn(service as any, 'getAdminApiClient').mockReturnValue({ delete: mockDelete });
+
+      await expect(service.deleteInstance({ id: 1 } as any, 123)).resolves.toEqual({
+        jobId: 'DeleteInstanceJob-8_xyz',
+      });
+    });
+
+    it('calls admin API DELETE odsInstances/manage/:id and resolves jobId undefined when body is empty', async () => {
       const instanceManageId = 123;
-      const mockDelete = jest.fn().mockResolvedValue(undefined);
+      const mockDelete = jest.fn().mockResolvedValue({ data: undefined });
       const getAdminApiClientSpy = jest
         .spyOn(service as any, 'getAdminApiClient')
         .mockReturnValue({ delete: mockDelete });
 
-      await expect(service.deleteInstance({ id: 1 } as any, instanceManageId)).resolves.toBeUndefined();
+      await expect(service.deleteInstance({ id: 1 } as any, instanceManageId)).resolves.toEqual({
+        jobId: undefined,
+      });
 
       expect(getAdminApiClientSpy).toHaveBeenCalledWith({ id: 1 }, true);
       expect(mockDelete).toHaveBeenCalledWith(`odsInstances/manage/${instanceManageId}`);

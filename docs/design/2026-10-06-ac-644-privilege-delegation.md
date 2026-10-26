@@ -92,7 +92,7 @@ It is pinned by `privilege-escalation.spec.ts`.
 - Existing validation (unknown privilege codes, the `me:read` floor on global roles,
   duplicate memberships) runs first and keeps its own errors.
 
-## Global admin must hold every privilege
+## Global admin must hold every privilege it delegates
 
 Because of the rule, the seeded **Global admin** role (id 2) can only grant what it holds.
 It was seeded with every privilege that existed at the time, but later migrations added new
@@ -103,14 +103,38 @@ Migration `AddMissingPrivilegesToGlobalAdmin1791158400000` (PostgreSQL and SQL S
 gives role 2 every current privilege, if role 2 is a `UserGlobal` role. It uses a frozen
 snapshot of the privilege codes, is safe to run twice, and its `down` does nothing.
 
+### Withheld: integration-provider privileges
+
+The backfill also granted the six integration-provider codes (`integration-provider:*` and
+`team.integration-provider.application:*`). No earlier migration had granted them to any
+role, and holding `integration-provider:read` makes the **Integration Providers** menu appear
+for Global admins. That menu must stay hidden, so migration
+`RemoveIntegrationProviderPrivilegesFromGlobalAdmin1791417600000` removes those six codes
+from role 2 again. The codes are listed in
+`packages/api/src/database/migrations/shared/global-admin-withheld-privileges.ts`.
+
+Under the no-escalation rule, Global admins therefore cannot grant these codes either. No
+seeded role holds them, so this restores the behaviour from before AC-644.
+
+### Role forms only offer grantable privileges
+
+The create and edit role pages (`CreateRoleGlobal`, `EditRoleGlobal`) only list privileges the
+current user may grant: their own global privileges (from `/auth/me`) plus, when editing, the
+privileges already on the role. The API only checks privileges being *added*, so a role's saved
+privileges stay visible and toggleable. Without this filter, ticking **All** or a group such as
+**team** would select privileges the user does not hold, and the save would fail with
+"Insufficient privileges". The filter is `filterGrantablePrivileges` in
+`packages/fe/src/app/Pages/RoleGlobal/grantable-privileges.ts`.
+
 ### Requirement when adding a privilege
 
-**Every new privilege needs a migration that adds it to the Global admin role (id 2).**
-Otherwise Global admins cannot grant it.
+**Every new privilege needs a decision: is the Global admin role (id 2) meant to hold it?**
+If it is, write a migration that adds it to role 2; otherwise Global admins cannot grant it.
+If it is not, list it as withheld.
 
 The tripwire test `packages/models/src/types/privilege-snapshot.spec.ts` enforces this: it
-fails whenever the privilege list changes, with a message saying to write the migration and
-then update the snapshot.
+fails whenever the privilege list changes. Each code must be in either the Global admin
+snapshot or the withheld list, and never in both.
 
 Deployments with **custom** admin-like global roles must make sure those roles hold every
 privilege they are expected to delegate.

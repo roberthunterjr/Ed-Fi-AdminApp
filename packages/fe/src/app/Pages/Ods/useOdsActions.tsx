@@ -1,5 +1,5 @@
 import { ActionsType, Icons } from '@edanalytics/common-ui';
-import { GetOdsDto } from '@edanalytics/models';
+import { DeleteInstanceResponseDto, GetOdsDto } from '@edanalytics/models';
 import { useNavigate, useParams } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { usePopBanner } from '../../Layout/FeedbackBanner';
@@ -10,6 +10,7 @@ import {
   useOdsTerminology,
   useTeamEdfiTenantNavContextLoaded,
 } from '../../helpers';
+import { popSyncBanner } from '../../helpers/popSyncBanner';
 import { mutationErrCallback } from '../../helpers/mutationErrCallback';
 
 const withPendingDeleteStatus = <T extends { status: string | null }>(value: T): T =>
@@ -70,11 +71,24 @@ export const useOdsActions = (ods: Pick<GetOdsDto, 'id' | 'instanceManageId' | '
                 { id: deleteId },
                 {
                   ...mutationErrCallback({ popGlobalBanner: popBanner }),
-                  onSuccess: () =>
-                    odsId &&
-                    navigate(
-                      `/as/${teamId}/sb-environments/${sbEnvironmentId}/edfi-tenants/${edfiTenantId}/odss`
-                    ),
+                  onSuccess: (data: unknown) => {
+                    const syncQueue = isStartingBlocks
+                      ? undefined
+                      : (data as DeleteInstanceResponseDto | undefined)?.syncQueue;
+                    if (syncQueue) {
+                      popSyncBanner({
+                        popBanner,
+                        syncQueue,
+                        linkTo: `/as/${teamId}/sb-environments/${sbEnvironmentId}/edfi-tenants/${edfiTenantId}/odss/jobs/delete/${syncQueue.id}`,
+                        subject: `${terminology.singular} deletion`,
+                      });
+                    }
+                    if (odsId) {
+                      navigate(
+                        `/as/${teamId}/sb-environments/${sbEnvironmentId}/edfi-tenants/${edfiTenantId}/odss`
+                      );
+                    }
+                  },
                 }
               );
             },

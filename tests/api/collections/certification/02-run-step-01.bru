@@ -1,0 +1,48 @@
+meta {
+  name: certification/run v5 Students step 01 - OK (200)
+  type: http
+  seq: 2
+  tags: Certification
+}
+
+post {
+  url: {{BASE_URL}}/sb-environments/{{process.env.CERT_SB_ENVIRONMENT_ID}}/edfi-tenants/{{process.env.CERT_EDFI_TENANT_ID}}/certification/sis/v5/steps/{{process.env.CERT_STEP_01_ID}}/run
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{ACCESS_TOKEN}}
+}
+
+body:json {
+  {}
+}
+
+script:pre-request {
+  if (!bru.getProcessEnv('CERT_SB_ENVIRONMENT_ID')) {
+    bru.runner.skipRequest();
+    return;
+  }
+  const odsId = bru.getProcessEnv('CERT_ODS_ID');
+  req.setBody({
+    ...(odsId ? { odsId: Number(odsId) } : {}),
+    token: bru.getVar('certToken'),
+    inputs: { studentUniqueId: bru.getProcessEnv('CERT_STUDENT_UNIQUE_ID') },
+  });
+}
+
+tests {
+  test("certification/run step 01 - status is 200 with a saved result", function() {
+    expect(res.getStatus()).to.equal(200);
+    const body = res.getBody();
+    expect(['success', 'failed']).to.include(body.status);
+    expect(body.errors).to.be.an('array');
+    expect(body.responseStatus === null || typeof body.responseStatus === 'number').to.equal(true);
+  });
+
+  test("certification/run step 01 - passes when the ODS has the student", function() {
+    if (bru.getProcessEnv('CERT_EXPECT_SUCCESS') !== 'true') return;
+    expect(res.getBody().status).to.equal('success');
+  });
+}

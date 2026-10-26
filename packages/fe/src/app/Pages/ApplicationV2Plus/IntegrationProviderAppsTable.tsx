@@ -1,5 +1,4 @@
-import { ColumnDef } from '@tanstack/react-table';
-import { SbaaTableAllInOne } from '@edanalytics/common-ui';
+import { SbaaTableAllInOne, SbaaColumnDef } from '@edanalytics/common-ui';
 import { GetApplicationDtoV2, GetIntegrationAppDto } from '@edanalytics/models';
 import { useTeamEdfiTenantNavContextLoaded } from '../../helpers';
 import { useGetManyApplications } from '../../api-v2';
@@ -21,7 +20,7 @@ export function IntegrationProviderAppsTable() {
         {
           header: 'Name',
           accessorKey: 'applicationName',
-          cell: NameCell as ColumnDef<GetApplicationDtoV2 & GetIntegrationAppDto>['cell'],
+          cell: NameCell as SbaaColumnDef<GetApplicationDtoV2 & GetIntegrationAppDto>['cell'],
         },
         {
           header: 'Integration Provider',
@@ -36,7 +35,7 @@ export function IntegrationProviderAppsTable() {
           header: 'ODS',
           accessorKey: 'odsName',
         },
-      ] as ColumnDef<GetApplicationDtoV2 & GetIntegrationAppDto>[]}
+      ] as SbaaColumnDef<GetApplicationDtoV2 & GetIntegrationAppDto>[]}
     />
   );
 }

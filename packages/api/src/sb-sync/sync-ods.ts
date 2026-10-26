@@ -1,14 +1,24 @@
 import { SbV1MetaEdorg } from '@edanalytics/models';
-import { EdfiTenant, Edorg, Ods } from '@edanalytics/models-server';
+import { CertificationProcess, EdfiTenant, Edorg, Ods } from '@edanalytics/models-server';
 import { Logger } from '@nestjs/common';
 import _ from 'lodash';
-import { DeepPartial, EntityManager } from 'typeorm';
+import { DeepPartial, EntityManager, FindOptionsWhere, In } from 'typeorm';
 
 export type DeltaCounts = {
   inserted: number;
   updated: number;
   deleted: number;
 };
+
+/**
+ * Call before deleting ODS rows, in the same transaction. certification_process.odsId has no
+ * cascade on MSSQL (a second cascade path from edfi_tenant isn't allowed there), so a
+ * remaining process would make the ODS delete fail. Its child rows cascade from the process.
+ */
+export const deleteOdsCertificationProcesses = (
+  em: EntityManager,
+  where: FindOptionsWhere<CertificationProcess>,
+) => em.getRepository(CertificationProcess).delete(where);
 
 export type SyncableOds = {
   id: number | null;
@@ -407,6 +417,7 @@ export const persistSyncTenant = async ({
   }
 
   if (odsDeltas.delete.length) {
+    await deleteOdsCertificationProcesses(em, { odsId: In(odsDeltas.delete) });
     await em.getRepository(Ods).delete(odsDeltas.delete);
   }
 
@@ -616,6 +627,7 @@ export const persistSyncDeleteOds = async ({
   edfiTenant: EdfiTenant;
   em: EntityManager;
 }) => {
+  await deleteOdsCertificationProcesses(em, { odsId: In([ods.id]) });
   await em.getRepository(Ods).delete(ods.id);
   const edorgDeletResult = await em.getRepository(Edorg).delete({ odsId: ods.id });
   return {

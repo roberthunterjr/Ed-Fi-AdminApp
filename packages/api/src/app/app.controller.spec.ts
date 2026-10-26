@@ -3,7 +3,9 @@ import { INestApplication, Logger } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { IS_PUBLIC_KEY } from '../auth/authorization/public.decorator';
+import axios from 'axios';
 import { AppController } from './app.controller';
+import { createGlobalValidationPipe } from './global-validation-pipe';
 import { HealthService, HealthStatus } from './health.service';
 
 describe('AppController healthcheck', () => {
@@ -189,5 +191,45 @@ describe('AppController healthcheck', () => {
     expect(response.status).toBe(503);
     expect(response.body.checks.database.message).toBe('Health check failed: Unknown error');
     expect(getter).not.toHaveBeenCalled();
+  });
+});
+
+describe('AppController secret', () => {
+  let app: INestApplication;
+
+  beforeEach(async () => {
+    const module = await Test.createTestingModule({
+      controllers: [AppController],
+      providers: [{ provide: HealthService, useValue: { getHealth: jest.fn() } }],
+    }).compile();
+    app = module.createNestApplication();
+    app.setGlobalPrefix('api');
+    app.useGlobalPipes(createGlobalValidationPipe());
+    await app.init();
+  });
+
+  afterEach(async () => {
+    await app.close();
+    jest.restoreAllMocks();
+  });
+
+  it('accepts a v4 UUID through the global validation pipe and proxies it to Yopass', async () => {
+    const secretId = '6137b1dc-00f2-461f-890f-51953d382f86';
+    const get = jest.spyOn(axios, 'get').mockResolvedValueOnce({ data: { message: 'encrypted' } });
+
+    const response = await request(app.getHttpServer()).get(`/api/secret/${secretId}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ message: 'encrypted' });
+    expect(get).toHaveBeenCalledWith(`http://localhost:8082/secret/${secretId}`);
+  });
+
+  it('still rejects a value that is not a v4 UUID', async () => {
+    const get = jest.spyOn(axios, 'get');
+
+    const response = await request(app.getHttpServer()).get('/api/secret/not-a-uuid');
+
+    expect(response.status).toBe(400);
+    expect(get).not.toHaveBeenCalled();
   });
 });

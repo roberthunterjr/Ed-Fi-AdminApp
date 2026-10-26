@@ -5,6 +5,7 @@ import {
   AttributesGrid,
   ContentSection,
 } from '@edanalytics/common-ui';
+import { OdsManageJobData } from '@edanalytics/models';
 import { useQuery } from '@tanstack/react-query';
 import { useParams } from 'react-router';
 import {
@@ -13,18 +14,24 @@ import {
   sbSyncQueueQueries,
 } from '../../api';
 import { EdfiTenantGlobalLink, SbEnvironmentGlobalLink } from '../../routes';
-import { jobStateColorSchemes } from './SbSyncQueuesPage';
+import { jobStateColorSchemes, syncQueueRefetchInterval } from './syncQueueStates';
 import { stdDuration } from '@edanalytics/utils';
 
 export const ViewSbSyncQueue = () => {
   const params = useParams() as { sbSyncQueueId: string };
   const sbSyncQueue = useQuery(
-    sbSyncQueueQueries.getOne({
-      id: params.sbSyncQueueId,
-    })
+    {
+      ...sbSyncQueueQueries.getOne({
+        id: params.sbSyncQueueId,
+      }),
+      refetchInterval: syncQueueRefetchInterval,
+    }
   ).data;
   const entity = useQuery(
-    sbSyncQueue && sbSyncQueue.edfiTenantId !== null && sbSyncQueue.sbEnvironmentId !== null
+    sbSyncQueue &&
+      sbSyncQueue.type !== 'OdsManage' &&
+      sbSyncQueue.edfiTenantId !== null &&
+      sbSyncQueue.sbEnvironmentId !== null
       ? (edfiTenantQueriesGlobal.getOne({
           id: sbSyncQueue.edfiTenantId,
           sbEnvironmentId: sbSyncQueue.sbEnvironmentId,
@@ -54,13 +61,19 @@ export const ViewSbSyncQueue = () => {
             <AttributeContainer label="Tenant">
               <EdfiTenantGlobalLink query={syntheticQuery} id={sbSyncQueue.data?.edfiTenantId} />
             </AttributeContainer>
-          ) : sbSyncQueue.type === 'SbEnvironment' ? (
+          ) : sbSyncQueue.type === 'SbEnvironment' || sbSyncQueue.type === 'OdsManage' ? (
             <AttributeContainer label="Environment">
               <SbEnvironmentGlobalLink
                 query={syntheticQuery}
                 id={sbSyncQueue.data?.sbEnvironmentId}
               />
             </AttributeContainer>
+          ) : null}
+          {sbSyncQueue.type === 'OdsManage' ? (
+            <>
+              <Attribute label="Data store" value={(sbSyncQueue.data as OdsManageJobData).odsName} />
+              <Attribute label="Operation" value={(sbSyncQueue.data as OdsManageJobData).operation} />
+            </>
           ) : null}
           <Attribute label="Created" isDate value={sbSyncQueue.createdon} />
           <Attribute label="Completed" isDate value={sbSyncQueue.completedon} />

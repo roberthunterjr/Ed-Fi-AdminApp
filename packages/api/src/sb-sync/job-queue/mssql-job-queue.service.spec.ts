@@ -158,6 +158,112 @@ describe('MssqlJobQueueService', () => {
     });
   });
 
+  describe('processJobs (localConcurrency)', () => {
+    // Answers each capped-queue claim with as many jobs as its TOP asks for; everything else empty.
+    const claimFromCappedQueue = () => {
+      let next = 0;
+      mockJobRepository.query.mockImplementation(async (sql: string, params?: unknown[]) => {
+        if (sql.includes('UPDLOCK') && sql.includes('name = @0')) {
+          const top = Number(/TOP \((\d+)\)/.exec(sql)![1]);
+          return Array.from({ length: top }, () =>
+            buildMockJob({ id: `job-${next++}`, name: params![0] as string })
+          );
+        }
+        return [];
+      });
+    };
+
+    it('never runs more handlers than the cap across ticks while handlers are pending', async () => {
+      claimFromCappedQueue();
+      (service as any).isRunning = true;
+      const handler = jest.fn(() => new Promise<void>(() => undefined)); // never settles
+      await service.work('capped-queue', handler, { localConcurrency: 5 });
+
+      await (service as any).processJobs();
+      await (service as any).processJobs();
+      await (service as any).processJobs();
+
+      expect(handler).toHaveBeenCalledTimes(5);
+      const cappedClaims = mockJobRepository.query.mock.calls.filter(
+        ([sql]: [string]) => sql.includes('UPDLOCK') && sql.includes('name = @0')
+      );
+      expect(cappedClaims).toHaveLength(1);
+      expect(cappedClaims[0][0]).toContain('TOP (5)');
+    });
+
+    it('frees capacity when a handler settles', async () => {
+      claimFromCappedQueue();
+      (service as any).isRunning = true;
+      const resolvers: Array<() => void> = [];
+      const handler = jest.fn(() => new Promise<void>((resolve) => resolvers.push(resolve)));
+      await service.work('capped-queue', handler, { localConcurrency: 2 });
+
+      await (service as any).processJobs();
+      expect(handler).toHaveBeenCalledTimes(2);
+
+      resolvers[0]();
+      await new Promise((resolve) => setImmediate(resolve));
+      await (service as any).processJobs();
+
+      expect(handler).toHaveBeenCalledTimes(3);
+    });
+
+    it('renews the lease while a handler runs, and stops once it settles', async () => {
+      jest.useFakeTimers();
+      try {
+        let finish!: () => void;
+        await service.work('test-queue', () => new Promise<void>((resolve) => (finish = resolve)));
+        const run = (service as any).runClaimedJob(buildMockJob());
+        const renewals = () =>
+          mockJobRepository.query.mock.calls.filter(([sql]: [string]) =>
+            sql.includes('SET leaseUntil')
+          );
+
+        await jest.advanceTimersByTimeAsync(60_000 * 3);
+        expect(renewals()).toHaveLength(3);
+        expect(renewals()[0][1]).toEqual(['job-001']);
+
+        finish();
+        await run;
+        await jest.advanceTimersByTimeAsync(60_000 * 3);
+        expect(renewals()).toHaveLength(3);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('excludes capped queues from the general claim', async () => {
+      (service as any).isRunning = true;
+      await service.work('capped-queue', jest.fn(), { localConcurrency: 5 });
+
+      await (service as any).processJobs();
+
+      const generalClaim = mockJobRepository.query.mock.calls.find(
+        ([sql]: [string]) => sql.includes('UPDLOCK') && sql.includes('TOP (10)')
+      );
+      expect(generalClaim![0]).toContain('name NOT IN (@0)');
+      expect(generalClaim![1]).toEqual(['capped-queue']);
+    });
+  });
+
+  describe('send() — expiry', () => {
+    it('applies expireInSeconds with DATEADD(SECOND, ...)', async () => {
+      await service.send('q', { a: 1 }, { expireInSeconds: 7200, retryLimit: 0 });
+
+      const [sql, params] = mockJobRepository.query.mock.calls[0] as [string, unknown[]];
+      expect(sql).toContain('DATEADD(SECOND, @7, GETUTCDATE())');
+      expect(params[7]).toBe(7200);
+    });
+
+    it('keeps mapping expireInHours with DATEADD(HOUR, ...)', async () => {
+      await service.send('q', { a: 1 }, { expireInHours: 2 });
+
+      const [sql, params] = mockJobRepository.query.mock.calls[0] as [string, unknown[]];
+      expect(sql).toContain('DATEADD(HOUR, @7, GETUTCDATE())');
+      expect(params[7]).toBe(2);
+    });
+  });
+
   // --------------------------------------------------------------------------
   // Retry delay enforcement (availableAt)
   // --------------------------------------------------------------------------

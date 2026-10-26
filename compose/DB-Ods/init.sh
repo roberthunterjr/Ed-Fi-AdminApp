@@ -94,8 +94,12 @@ if [ ! -s "$PGDATA/PG_VERSION" ]; then
         populated)
             SOURCE_TEMPLATE="Ods_Populated_Template"
             ;;
-        minimal|*)
+        minimal)
             SOURCE_TEMPLATE="Ods_Minimal_Template"
+            ;;
+        *)
+            echo "ERROR: EDFI_ODS_DATASET must be 'minimal' or 'populated', got '$EDFI_ODS_DATASET'."
+            exit 1
             ;;
     esac
 

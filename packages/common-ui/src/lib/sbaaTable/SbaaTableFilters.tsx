@@ -17,7 +17,7 @@ import {
 } from '@chakra-ui/react';
 import { ColumnFilter, ColumnFilterContent, type WithMetaType } from './ColumnFilter';
 import { DivComponent, useSbaaTableContext } from './SbaaTableProvider';
-import { Column } from '@tanstack/react-table';
+import { SbaaColumn } from './sbaaTableFeatures';
 import { Icons } from '../Icons';
 
 export const SbaaTableFilters: DivComponent = (props) => {
@@ -61,7 +61,7 @@ export const Sorting = () => {
     .getAllFlatColumns()
     .filter((column) => column.getCanSort() && !column.getIsSorted());
 
-  const sortingState = table.getState().sorting;
+  const sortingState = table.state.sorting;
 
   return (
     <HStack gap={0}>
@@ -123,7 +123,7 @@ export const Sorting = () => {
               aria-label="clear column filter"
               icon={<Icons.X fontSize="md" />}
               size="xs"
-              onClick={column.clearSorting}
+              onClick={() => column.clearSorting()}
             />
           </HStack>
         );
@@ -149,11 +149,11 @@ const Filters = () => {
   }
   const filterableColumns = table.getAllFlatColumns().filter(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (column: Column<any, unknown> & WithMetaType) =>
+    (column: SbaaColumn<any> & WithMetaType) =>
       column.getCanFilter() && !column.getIsFiltered() && column.columnDef.meta?.type
   );
 
-  const { columnFilters } = table.getState();
+  const { columnFilters } = table.state;
   const pendingFilterColumnDef =
     typeof pendingFilterColumn === 'string' ? table.getColumn(pendingFilterColumn) : undefined;
 

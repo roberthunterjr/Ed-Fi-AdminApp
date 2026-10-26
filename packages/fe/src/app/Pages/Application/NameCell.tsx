@@ -1,7 +1,6 @@
 import { HStack } from '@chakra-ui/react';
-import { TableRowActions } from '@edanalytics/common-ui';
+import { TableRowActions, SbaaCellContext } from '@edanalytics/common-ui';
 import { GetApplicationDto } from '@edanalytics/models';
-import { CellContext } from '@tanstack/react-table';
 
 import { useQuery } from '@tanstack/react-query';
 import { applicationQueriesV1 } from '../../api';
@@ -9,7 +8,7 @@ import { useTeamEdfiTenantNavContextLoaded } from '../../helpers';
 import { ApplicationLinkV1 } from '../../routes';
 import { useSingleApplicationActions } from './useApplicationActions';
 
-export const NameCell = (info: CellContext<GetApplicationDto, unknown>) => {
+export const NameCell = (info: SbaaCellContext<GetApplicationDto>) => {
   const { teamId, edfiTenant } = useTeamEdfiTenantNavContextLoaded();
   const entities = useQuery(
     applicationQueriesV1.getAll({

@@ -13,7 +13,7 @@ import {
 import { Icons, PageTemplate } from '@edanalytics/common-ui';
 import { Id, PostVendorDtoV2, PostVendorDtoV3 } from '@edanalytics/models';
 import { classValidatorResolver } from '@hookform/resolvers/class-validator';
-import { noop } from '@tanstack/react-table';
+import noop from 'lodash/noop';
 import { useMemo } from 'react';
 import { DefaultValues, Path, useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router';

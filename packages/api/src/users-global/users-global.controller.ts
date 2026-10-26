@@ -1,5 +1,6 @@
 import { GetSessionDataDto, PostUserDto, PutUserDto, toGetUserDto } from '@edanalytics/models';
 import { User, addUserCreating, addUserModifying } from '@edanalytics/models-server';
+import { AuditDelete } from '../audit/audit-delete.decorator';
 import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Put } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -122,6 +123,7 @@ export class UsersGlobalController {
   }
 
   @Delete(':userId')
+  @AuditDelete(User, 'userId')
   @Authorize({
     privilege: 'user:delete',
     subject: {

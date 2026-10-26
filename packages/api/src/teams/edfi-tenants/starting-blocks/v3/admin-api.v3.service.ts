@@ -695,8 +695,14 @@ export class AdminApiServiceV3 {
     );
   }
 
+  /** Admin API answers datastore create/delete with `202 { jobId, message }`; absent for older Admin API builds. */
+  private readJobId(body: unknown): string | undefined {
+    const jobId = (body as { jobId?: unknown } | null | undefined)?.jobId;
+    return typeof jobId === 'string' && jobId.length > 0 ? jobId : undefined;
+  }
+
   async postInstance(edfiTenant: EdfiTenant, instance: PostInstanceDtoV3) {
-    const { headers } = await this.getAdminApiClient(edfiTenant, true)
+    const { headers, data } = await this.getAdminApiClient(edfiTenant, true)
       .post('dataStores/manage', instance)
       .catch((err) => {
         this.logger.error(`Error creating instance for tenant ${edfiTenant.id}: ${err}`);
@@ -710,11 +716,11 @@ export class AdminApiServiceV3 {
       );
       throw new Error('Admin API did not return a Location header containing the created instance id.');
     }
-    return { id: Number(match[0]) };
+    return { id: Number(match[0]), jobId: this.readJobId(data) };
   }
 
   async deleteInstance(edfiTenant: EdfiTenant, instanceManageId: number) {
-    await this.getAdminApiClient(edfiTenant, true)
+    const { data } = await this.getAdminApiClient(edfiTenant, true)
       .delete(`dataStores/manage/${instanceManageId}`)
       .catch((err) => {
         this.logger.error(
@@ -722,7 +728,7 @@ export class AdminApiServiceV3 {
         );
         throw err;
       });
-    return undefined;
+    return { jobId: this.readJobId(data) };
   }
 
   //

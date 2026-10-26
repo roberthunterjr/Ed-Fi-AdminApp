@@ -29,6 +29,7 @@ Once you have the services running, the Keycloak client `edfiadminapp-dev` will 
 In `packages/api/config`, copy `local.js-edfi` to create `local.js`.
 
 - If you changed anything in your `.env` or `realm-config.json`, then be sure to update those values in this file as well.
+- In `local.js`, `DB_SECRET_VALUE.DB_PASSWORD` must equal `POSTGRES_PASSWORD` and `SAMPLE_OIDC_CONFIG.clientSecret` must equal `KEYCLOAK_EDFIADMINAPP_DEV_CLIENT_SECRET` from `compose/.env`. The sample values in `local.js-edfi` only work with compose files that still use those values.
 - Ensure that `ADMIN_USERNAME` matches the email address you used when creating a new user in Keycloak (above).
 
 > [!NOTE]
@@ -159,7 +160,7 @@ missing or incorrect, authentication will fail.
     ```shell
      id |               issuer               |     clientId     |  clientSecret  | scope
     ----+------------------------------------+------------------+----------------+-------
-      1 | https://localhost/auth/realms/edfi | edfiadminapp-dev | big-secret-123 |
+      1 | https://localhost/auth/realms/edfi | edfiadminapp-dev | <dev client secret> |
     ```
 
    - For main services (`edfiadminapp` client):
@@ -168,19 +169,21 @@ missing or incorrect, authentication will fail.
 
      id |               issuer               |     clientId     |  clientSecret  | scope
     ----+------------------------------------+------------------+----------------+-------
-      1 | https://localhost/auth/realms/edfi | edfiadminapp     | big-secret-123 |
+      1 | https://localhost/auth/realms/edfi | edfiadminapp     | <client secret>     |
     ```
+
+   The `clientSecret` column must equal the value of `KEYCLOAK_EDFIADMINAPP_CLIENT_SECRET` (container client `edfiadminapp`) or `KEYCLOAK_EDFIADMINAPP_DEV_CLIENT_SECRET` (hot-reload client `edfiadminapp-dev`) from `compose/.env`.
 
 2. If the required OIDC record is missing, you can manually insert it, or run the helper script:  
 
    - Run `./settings/populate-oidc.ps1` with parameters to add a oidc:
 
      ```powershell
-     ./settings/populate-oidc.ps1 -ClientId "edfiadminapp" -ClientSecret "big-secret-123" -Issuer "https://localhost/auth/realms/edfi"
+     ./settings/populate-oidc.ps1 -ClientId "edfiadminapp" -ClientSecret "<value from compose/.env>" -Issuer "https://localhost/auth/realms/edfi"
 
      OR
 
-     ./settings/populate-oidc.ps1 -ClientId "edfiadminapp-dev" -ClientSecret "big-secret-123" -Issuer "https://localhost/auth/realms/edfi"
+     ./settings/populate-oidc.ps1 -ClientId "edfiadminapp-dev" -ClientSecret "<value from compose/.env>" -Issuer "https://localhost/auth/realms/edfi"
      
       ```
 

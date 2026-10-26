@@ -16,8 +16,7 @@ export const SbaaTableSearch: DivComponent = (props) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return null as any;
   }
-  const { globalFilter } = table.getState();
-  const { setGlobalFilter } = table;
+  const { globalFilter } = table.state;
 
   return (
     <InputGroup
@@ -40,12 +39,12 @@ export const SbaaTableSearch: DivComponent = (props) => {
         paddingEnd={10}
         placeholder="Search"
         value={globalFilter ?? ''}
-        onChange={(v) => setGlobalFilter(v)}
+        onChange={(v) => table.setGlobalFilter(v)}
       />
       {globalFilter ? (
         <InputRightElement>
           <IconButton
-            onClick={() => setGlobalFilter(undefined)}
+            onClick={() => table.setGlobalFilter(undefined)}
             className="clear-filter"
             fontSize="xl"
             color="gray.300"

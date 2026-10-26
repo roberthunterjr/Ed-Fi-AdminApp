@@ -1,0 +1,124 @@
+###
+### Certification Catalog endpoints (AC-463)
+### Read-only access to the catalog synced from the certification artifact.
+### Requires the sb-environment:read privilege on the environment.
+###
+
+### Variables (update these with your values)
+@baseUrl = http://localhost:3333
+@keycloakUrl = https://localhost/auth
+@realm = edfi
+@sbEnvironmentId = 1
+
+# Machine Client (for M2M authentication)
+@machineClientId = edfiadminapp-machine
+@machineClientSecret = edfi-machine-secret-456
+
+### 1. Get Machine Token (Client Credentials Flow)
+# @name keycloakMachineLogin
+POST {{keycloakUrl}}/realms/{{realm}}/protocol/openid-connect/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=client_credentials
+&client_id={{machineClientId}}
+&client_secret={{machineClientSecret}}
+
+###
+### Extract machine token from Keycloak response
+@machineToken = {{keycloakMachineLogin.response.body.access_token}}
+
+###
+### === CATALOG VERSIONS ===
+###
+
+### 2. List catalog versions (newest first, no importedAt)
+# @name getCatalogVersions
+GET {{baseUrl}}/api/sb-environments/{{sbEnvironmentId}}/certification/catalog-versions
+Authorization: Bearer {{machineToken}}
+Content-Type: application/json
+
+###
+### Capture the first catalog version id for the next requests
+@catalogVersionId = {{getCatalogVersions.response.body.$[0].catalogVersionId}}
+
+###
+### === AREAS + SCENARIOS ===
+###
+
+### 3. Areas with scenarios for one catalog version
+# @name getScenarios
+GET {{baseUrl}}/api/sb-environments/{{sbEnvironmentId}}/certification/scenarios?catalogVersionId={{catalogVersionId}}
+Authorization: Bearer {{machineToken}}
+Content-Type: application/json
+
+###
+### Capture the first scenario id for the steps requests
+@scenarioId = {{getScenarios.response.body.$[0].scenarios[0].scenarioId}}
+
+###
+### 4. Areas with scenarios across every catalog version (no filter)
+# @name getScenariosUnfiltered
+GET {{baseUrl}}/api/sb-environments/{{sbEnvironmentId}}/certification/scenarios
+Authorization: Bearer {{machineToken}}
+Content-Type: application/json
+
+###
+### 5. Unknown catalog version - Should return []
+# @name getScenariosUnknownVersion
+GET {{baseUrl}}/api/sb-environments/{{sbEnvironmentId}}/certification/scenarios?catalogVersionId=999999
+Authorization: Bearer {{machineToken}}
+Content-Type: application/json
+
+###
+### === STEPS + PARAMETERS ===
+###
+
+### 6. Steps with parameters for one scenario
+# @name getSteps
+GET {{baseUrl}}/api/sb-environments/{{sbEnvironmentId}}/certification/steps?scenarioId={{scenarioId}}
+Authorization: Bearer {{machineToken}}
+Content-Type: application/json
+
+###
+### 7. Steps with parameters for every scenario (no filter)
+# @name getStepsUnfiltered
+GET {{baseUrl}}/api/sb-environments/{{sbEnvironmentId}}/certification/steps
+Authorization: Bearer {{machineToken}}
+Content-Type: application/json
+
+###
+### 8. Unknown scenario - Should return []
+# @name getStepsUnknownScenario
+GET {{baseUrl}}/api/sb-environments/{{sbEnvironmentId}}/certification/steps?scenarioId=999999
+Authorization: Bearer {{machineToken}}
+Content-Type: application/json
+
+###
+### === NEGATIVE TESTING SCENARIOS ===
+###
+
+### 9. Non-integer catalogVersionId - Should return 400
+# @name getScenariosInvalidFilter
+GET {{baseUrl}}/api/sb-environments/{{sbEnvironmentId}}/certification/scenarios?catalogVersionId=abc
+Authorization: Bearer {{machineToken}}
+Content-Type: application/json
+
+###
+### 10. Non-integer scenarioId - Should return 400
+# @name getStepsInvalidFilter
+GET {{baseUrl}}/api/sb-environments/{{sbEnvironmentId}}/certification/steps?scenarioId=abc
+Authorization: Bearer {{machineToken}}
+Content-Type: application/json
+
+###
+### 11. No token - Should return 401
+# @name getCatalogVersionsNoToken
+GET {{baseUrl}}/api/sb-environments/{{sbEnvironmentId}}/certification/catalog-versions
+Content-Type: application/json
+
+###
+### 12. Invalid token - Should return 401
+# @name getCatalogVersionsInvalidToken
+GET {{baseUrl}}/api/sb-environments/{{sbEnvironmentId}}/certification/catalog-versions
+Authorization: Bearer invalid.jwt.token
+Content-Type: application/json

@@ -6,9 +6,9 @@ import {
   PageTemplate,
   TableRowActions,
   ValueAsDate,
+  SbaaCellContext,
 } from '@edanalytics/common-ui';
 import { GetTeamDto } from '@edanalytics/models';
-import { CellContext } from '@tanstack/react-table';
 
 import omit from 'lodash/omit';
 import { teamQueries, userQueries } from '../../api';
@@ -17,7 +17,7 @@ import { TeamLink, UserGlobalLink } from '../../routes';
 import { useTeamActions } from './useTeamActions';
 import { useTeamsActions } from './useTeamsActions';
 
-const TeamNameCell = (info: CellContext<GetTeamDto, unknown>) => {
+const TeamNameCell = (info: SbaaCellContext<GetTeamDto>) => {
   const teams = useQuery(teamQueries.getAll({}));
   const actions = useTeamActions(info.row.original);
   return (

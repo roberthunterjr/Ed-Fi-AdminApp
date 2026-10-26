@@ -11,6 +11,7 @@ import {
   POLL_ATTEMPT_TIMEOUT_MS,
   SYNC_COMPLETE_TIMEOUT_MS,
   UI_RENDER_TIMEOUT_MS,
+  clickNavLink,
   selectComboboxOptionIn,
 } from './support'
 
@@ -74,8 +75,23 @@ class EnvironmentsPage {
   private readonly teamNameInput
   private readonly teamMembershipsOption
   private readonly createTeamMembershipButton
+  private readonly claimsetImportPageLink
+  private readonly claimsetFileInput
+  private readonly claimsetImportButton
+  private readonly importedClaimsetViewLink
+  /**
+   * The vendor and claimset that "a test application ... exists" scenarios build on.
+   * Every scenario used to copy a claimset and create a vendor through the UI (about
+   * 10s each); now the first one does and the rest reuse them. Per worker process, so a
+   * worker restart after a failure simply recreates them. Scenarios that delete a vendor
+   * or claimset must not use this: they go through `prepareApplicationDependencies`.
+   */
+  private static sharedApplicationDependencies?: { vendor: string; claimset: string }
   private readonly runSuffix = Date.now().toString(36)
   private rowCountBeforeDelete = 0
+  private lastHoveredResource: string | undefined
+  private readonly testResourceNames = new Map<string, string>()
+  private resetCredentials: { key?: string; secret?: string; link?: string } | undefined
 
   constructor(private readonly page: Page) {
     this.environmentOption = this.page.locator('a[title="Environments"]')
@@ -134,6 +150,10 @@ class EnvironmentsPage {
     this.vendorContactNameInput = this.page.getByRole('textbox', { name: 'Contact name', exact: true })
     this.vendorContactEmailInput = this.page.getByRole('textbox', { name: 'Contact email address', exact: true })
     this.profileFileInput = this.page.getByRole('button', { name: 'Choose File' })
+    this.claimsetImportPageLink = this.page.getByRole('link', { name: 'Import', exact: true })
+    this.claimsetFileInput = this.page.locator('#claimset-import-file')
+    this.claimsetImportButton = this.page.getByRole('button', { name: 'Import', exact: true })
+    this.importedClaimsetViewLink = this.page.getByRole('link', { name: /View/ })
     this.profileDetails = this.page.getByText('NameTest-Profile42Definition<')
     this.resourceTable = this.page.locator('.page-content-card')
     this.teamsOption = this.page.locator('a[title="Teams"]')
@@ -144,7 +164,7 @@ class EnvironmentsPage {
   }
 
   async clickEnvironmentOption() {
-    await this.environmentOption.click()
+    await clickNavLink(this.page, this.environmentOption, /\/adminapp\/sb-environments\/?$/)
   }
 
   async selectGlobalTeam(teamName: string) {
@@ -164,10 +184,10 @@ class EnvironmentsPage {
     dbName: string,
     eduOrgIdentifier: string
   ) {
-    await this.nameInput.fill(`${names}-${this.runSuffix}`, {timeout: 700})
-    await this.edfiApiInput.fill(edfiApi, {timeout: 1000})
-    await this.edfiManagementInput.fill(edfiManagement, {timeout: 1000})
-    await this.labelInput.fill(label, {timeout: 700})
+    await this.nameInput.fill(`${names}-${this.runSuffix}`)
+    await this.edfiApiInput.fill(edfiApi)
+    await this.edfiManagementInput.fill(edfiManagement)
+    await this.labelInput.fill(label)
     await this.addOdsInstances.click()
     await this.odsName.fill(odsName)
     await this.dbName.fill(dbName)
@@ -175,10 +195,10 @@ class EnvironmentsPage {
   }
 
   async fillAllRequiredFieldsV2(name: string, edfiApi: string, edfiManagement: string, label: string) {
-    await this.nameInput.fill(`${name}-${this.runSuffix}`, {timeout: 700})
-    await this.edfiApiInput.fill(edfiApi, {timeout: 1000})
-    await this.edfiManagementInput.fill(edfiManagement, {timeout: 1000})
-    await this.labelInput.fill(label, {timeout: 700})
+    await this.nameInput.fill(`${name}-${this.runSuffix}`)
+    await this.edfiApiInput.fill(edfiApi)
+    await this.edfiManagementInput.fill(edfiManagement)
+    await this.labelInput.fill(label)
   }
 
   async fillAllRequiredFields(type: string) {
@@ -265,15 +285,18 @@ class EnvironmentsPage {
   }
 
   async createTeam(name: string) {
-    await this.teamsOption.click()
+    await clickNavLink(this.page, this.teamsOption, /\/adminapp\/teams\/?$/)
     await this.createTeamButton.click()
     await this.teamNameInput.fill(name)
     await this.saveButton.click()
-    await this.page.waitForLoadState('networkidle')
+    // Wait for the redirect to the team's detail page, not just for the form to close: the
+    // form unmounts before the app navigates, and the next step's nav click would be
+    // overridden by the late redirect.
+    await expect(this.page).toHaveURL(/\/teams\/\d+\/?$/, { timeout: API_WRITE_TIMEOUT_MS })
   }
 
   async createTeamMembership(team: string, user: string, role: string) {
-    await this.teamMembershipsOption.click()
+    await clickNavLink(this.page, this.teamMembershipsOption, /\/adminapp\/user-team-memberships\/?$/)
     await this.createTeamMembershipButton.click()
     await selectComboboxOptionIn(
       this.page,
@@ -291,7 +314,7 @@ class EnvironmentsPage {
       role,
     )
     await this.saveButton.click()
-    await this.page.waitForLoadState('networkidle')
+    await expect(this.page).not.toHaveURL(/\/create/, { timeout: API_WRITE_TIMEOUT_MS })
   }
 
   async clickResourceOption(resource: 'ods' | 'edorgs' | 'vendors' | 'applications' | 'profiles') {
@@ -302,7 +325,329 @@ class EnvironmentsPage {
       applications: this.applicationsOption,
       profiles: this.profilesOption,
     }[resource]
-    await option.click()
+    await option.first().click()
+  }
+
+  async clickClaimsetsOption() {
+    await this.page.getByRole('link', { name: 'Claimsets', exact: true }).nth(0).click()
+  }
+
+  async clickClaimsetImportButton() {
+    const importButton = this.page.getByRole('button', { name: 'Import', exact: true })
+    await expect(importButton).toHaveCount(1)
+    await importButton.click()
+  }
+
+  private testResourceName(name: string) {
+    if (!this.testResourceNames.has(name)) {
+      this.testResourceNames.set(name, `${name}-${this.runSuffix}`)
+    }
+    return this.testResourceNames.get(name)!
+  }
+
+  private namedTestResourceRow(name: string) {
+    return this.page.locator('tbody tr').filter({
+      has: this.page.getByRole('link', {
+        name: this.testResourceNames.get(name) ?? name,
+        exact: true,
+      }),
+    })
+  }
+
+  async openTestResource(name: string) {
+    const row = this.namedTestResourceRow(name)
+    await expect(row).toHaveCount(1, { timeout: API_FETCH_TIMEOUT_MS })
+    await row.getByRole('link', {
+      name: this.testResourceNames.get(name) ?? name,
+      exact: true,
+    }).click()
+  }
+
+  async clickTestResourceAction(action: string, name?: string) {
+    const scope = name ? this.namedTestResourceRow(name) : this.page
+    if (name) {
+      await expect(this.namedTestResourceRow(name)).toBeVisible({ timeout: API_FETCH_TIMEOUT_MS })
+      await this.namedTestResourceRow(name).hover()
+    }
+    const control = scope.getByRole('link', { name: action, exact: true })
+      .or(scope.getByRole('button', { name: action, exact: true }))
+    await control.click()
+  }
+
+  async copyTestClaimset(source: string, name: string) {
+    await this.openTestResource(source)
+    await this.clickTestResourceAction('Copy')
+    await this.page.locator('input[name="name"]').fill(this.testResourceName(name))
+    await this.clickSaveButton()
+    await this.testResourceDetailsShouldBeDisplayed(name, 'claimsets')
+  }
+
+  async exportTestClaimset(name: string) {
+    await this.openTestResource(name)
+    await this.clickTestResourceAction('Export')
+    return this.readClaimsetExportPayload(name)
+  }
+
+  private async readClaimsetExportPayload(name: string) {
+    const downloadLink = this.page.getByRole('link', { name: 'here', exact: true }).last()
+    await expect(downloadLink).toBeVisible({ timeout: API_WRITE_TIMEOUT_MS })
+    const href = await downloadLink.getAttribute('href')
+    expect(href).toBeTruthy()
+    const response = await this.page.context().request.get(new URL(href!, this.page.url()).href)
+    expect(response.ok()).toBeTruthy()
+    const payload = await response.json()
+    expect(Array.isArray(payload.template?.claimSets)).toBeTruthy()
+    expect(payload.template.claimSets).toHaveLength(1)
+    const exportedName = payload.template.claimSets[0].name ?? payload.template.claimSets[0].Name
+    expect(exportedName).toBe(this.testResourceNames.get(name) ?? name)
+    return payload
+  }
+
+  async importTestClaimset() {
+    await this.claimsetImportPageLink.click()
+    await this.claimsetFileInput.setInputFiles('tests/e2e/environments-page/fixtures/claimsets.json')
+    await expect(this.claimsetImportButton).toBeVisible()
+    await this.claimsetImportButton.click()
+    await expect(this.importedClaimsetViewLink).toBeVisible()
+    await this.importedClaimsetViewLink.click()
+  }
+
+  async reservedClaimsetActionShouldBeUnavailable(action: 'Edit' | 'Delete', source: string) {
+    await this.openTestResource(source)
+    const reservedAttribute = this.page.getByText('Is system-reserved', { exact: true }).locator('..')
+    await expect(reservedAttribute.getByText('true', { exact: true })).toBeVisible({
+      timeout: API_FETCH_TIMEOUT_MS,
+    })
+    await expect(this.page.getByRole('link', { name: action, exact: true })).toHaveCount(0)
+    await expect(this.page.getByRole('button', { name: action, exact: true })).toHaveCount(0)
+  }
+
+  async prepareApplicationDependencies(claimset: string) {
+    await this.clickClaimsetsOption()
+    await this.copyTestClaimset('Ed-Fi Sandbox', claimset)
+    await this.clickResourceOption('vendors')
+    await this.clickNewButton()
+    await this.fillVendorFields(
+      this.testResourceName('E2EVendor'),
+      'uri://ed-fi.org',
+      'E2E Contact',
+      'e2e@example.org',
+    )
+    await this.clickSaveButton()
+    await expect(this.page.getByRole('heading', {
+      name: this.testResourceName('E2EVendor'), exact: true,
+    })).toBeVisible({ timeout: API_WRITE_TIMEOUT_MS })
+    await this.clickResourceOption('applications')
+  }
+
+  private async selectFirstFormOption(label: string) {
+    const field = this.page.locator('form').getByText(label, { exact: true }).locator('..')
+    const combobox = field.getByRole('combobox')
+    const openMenu = this.page.locator('[id^="react-select-"][id$="-option-0"]')
+    // The keystrokes can fire before the async options render and select nothing, so the
+    // dependent field (Ed-org after ODS) never appears. Retry until the menu has closed.
+    await expect(async () => {
+      if (await openMenu.count()) {
+        await this.page.keyboard.press('Escape')
+      }
+      await combobox.click({ timeout: POLL_ATTEMPT_TIMEOUT_MS })
+      await this.page.keyboard.press('ArrowDown')
+      // Enter without an open menu and a focused option submits the form, so only press it once
+      // the options are on screen.
+      await expect(openMenu).toBeVisible({ timeout: POLL_ATTEMPT_TIMEOUT_MS })
+      await this.page.keyboard.press('Enter')
+      await expect(openMenu).toBeHidden({ timeout: POLL_ATTEMPT_TIMEOUT_MS })
+    }).toPass({ timeout: API_FETCH_TIMEOUT_MS })
+  }
+
+  private async selectNamedFormOption(label: string, name: string) {
+    const field = this.page.locator('form').getByText(label, { exact: true }).locator('..')
+    await selectComboboxOptionIn(this.page, field.getByRole('combobox'), this.testResourceName(name))
+  }
+
+  async fillApplicationFields(name: string, claimset: string) {
+    await this.page.locator('input[name="applicationName"]').fill(this.testResourceName(name))
+    await this.selectFirstFormOption('ODS')
+    await this.selectFirstFormOption('Ed-org')
+    await this.selectNamedFormOption('Vendor', 'E2EVendor')
+    await this.selectNamedFormOption('Claimset', claimset)
+  }
+
+  async prepareTestApplication(name: string) {
+    const shared = EnvironmentsPage.sharedApplicationDependencies
+    if (shared) {
+      this.testResourceNames.set('E2EVendor', shared.vendor)
+      this.testResourceNames.set('E2EClaimset', shared.claimset)
+      await this.clickResourceOption('applications')
+    } else {
+      await this.prepareApplicationDependencies('E2EClaimset')
+      // Only remembered once the whole setup succeeded.
+      EnvironmentsPage.sharedApplicationDependencies = {
+        vendor: this.testResourceName('E2EVendor'),
+        claimset: this.testResourceName('E2EClaimset'),
+      }
+    }
+    await this.clickNewButton()
+    await this.fillApplicationFields(name, 'E2EClaimset')
+    await this.clickSaveButton()
+    await this.testResourceDetailsShouldBeDisplayed(name, 'applications')
+    await this.clickResourceOption('applications')
+  }
+
+  async renameTestResource(name: string, resource: 'application' | 'credential') {
+    const inputName = resource === 'application' ? 'applicationName' : 'name'
+    await this.page.locator(`input[name="${inputName}"]`).fill(this.testResourceName(name))
+  }
+
+  async testResourceDetailsShouldBeDisplayed(name: string, resource: string) {
+    await expect(this.page).toHaveURL(new RegExp(`/${resource}/\\d+(?:\\?.*)?$`), {
+      timeout: API_WRITE_TIMEOUT_MS,
+    })
+    await expect(this.page.getByRole('heading', {
+      name: this.testResourceNames.get(name) ?? name, exact: true,
+    })).toBeVisible({ timeout: API_WRITE_TIMEOUT_MS })
+
+    if (resource === 'applications') {
+      await expect(this.page.getByRole('link', { name: 'Manage creds', exact: true })).toBeVisible()
+      await expect(this.page.getByRole('link', { name: 'Edit', exact: true })).toBeVisible()
+      await expect(this.page.getByRole('button', { name: 'Delete', exact: true })).toBeVisible()
+      await expect(this.page.getByText(this.testResourceNames.get(name) ?? name, { exact: true }).first())
+        .toBeVisible()
+      await expect(this.page.getByRole('link', {
+        name: this.testResourceNames.get('E2EVendor') ?? 'E2EVendor', exact: true,
+      })).toBeVisible()
+      await expect(this.page.getByRole('link', {
+        name: this.testResourceNames.get('E2EClaimset') ?? 'E2EClaimset', exact: true,
+      })).toBeVisible()
+      await expect(this.page.getByRole('listitem').filter({ hasText: 'Grand Bend High School' }))
+        .toBeVisible()
+      await expect(this.page.getByRole('link', { name: /^https:\/\/localhost\/odsv7-/ }))
+        .toBeVisible()
+
+      const credentialsCreated = this.page.getByRole('heading', {
+        name: 'Credentials Created', exact: true,
+      })
+      if (await credentialsCreated.count() > 0) {
+        await expect(credentialsCreated).toBeVisible()
+        await expect(this.page.getByText(/The link below will take you to a page/)).toBeVisible()
+        await expect(this.page.getByRole('link', {
+          name: /^https:\/\/localhost\/adminapp\//,
+        })).toBeVisible()
+      }
+    }
+  }
+
+  async userCanViewKeyAndSecretGenerated() {
+    const credentialsLink = this.page.getByRole('link', {
+      name: /^https:\/\/localhost\/adminapp\/secret\/#\//,
+    })
+    await expect(credentialsLink).toBeVisible({ timeout: API_WRITE_TIMEOUT_MS })
+
+    const popupPromise = this.page.waitForEvent('popup')
+    await credentialsLink.click()
+    const credentialsPage = await popupPromise
+
+    await expect(credentialsPage.getByRole('heading', {
+      name: 'Retrieve credentials', exact: true,
+    })).toBeVisible({ timeout: API_FETCH_TIMEOUT_MS })
+    await credentialsPage.getByText('KEY: 123abc123abc SECRET:').click()
+    await credentialsPage.getByRole('button', { name: 'Yes, retrieve them.', exact: true }).click()
+
+    for (const label of ['Key', 'Secret', 'URL']) {
+      await expect(credentialsPage.getByText(label, { exact: true }))
+        .toBeVisible({ timeout: API_FETCH_TIMEOUT_MS })
+    }
+  }
+
+  async testResourceShouldBeAbsent(name: string) {
+    if (/\/claimsets\/?$/.test(new URL(this.page.url()).pathname)) {
+      await this.searchInputEnvironment.click()
+      await this.searchInputEnvironment.fill(this.testResourceNames.get(name) ?? name)
+      await expect(this.page.locator('tbody tr')).toHaveCount(0, { timeout: API_WRITE_TIMEOUT_MS })
+      return
+    }
+    await expect(this.namedTestResourceRow(name)).toHaveCount(0, { timeout: API_WRITE_TIMEOUT_MS })
+  }
+
+  async credentialsShouldBeDisplayed(count?: number) {
+    await expect(this.page).toHaveURL(/\/applications\/\d+\/apiClients$/, {
+      timeout: API_FETCH_TIMEOUT_MS,
+    })
+    await expect(this.page.getByRole('heading', { name: 'Credentials', exact: true })).toBeVisible()
+    if (count !== undefined) {
+      await expect(this.page.locator('tbody tr')).toHaveCount(count, { timeout: API_WRITE_TIMEOUT_MS })
+    } else {
+      await expect(this.page.locator('tbody tr').first()).toBeVisible({ timeout: API_FETCH_TIMEOUT_MS })
+    }
+  }
+
+  async openFirstCredential() {
+    await this.clickFirstResourceRow()
+  }
+
+  async clickFirstCredentialAction(action: string) {
+    const row = this.page.locator('tbody tr').first()
+    await expect(row).toBeVisible({ timeout: API_FETCH_TIMEOUT_MS })
+    await row.hover()
+    await row.getByRole('link', { name: action, exact: true })
+      .or(row.getByRole('button', { name: action, exact: true })).click()
+  }
+
+  async fillCredentialFields(name: string) {
+    await this.page.locator('input[name="name"]').fill(this.testResourceName(name))
+    await this.selectFirstFormOption('ODS')
+  }
+
+  async returnToCredentials() {
+    const url = new URL(this.page.url())
+    url.pathname = url.pathname.replace(/(\/apiClients)(\/.*)?$/, '$1')
+    url.search = ''
+    await this.page.goto(url.href)
+    await this.credentialsShouldBeDisplayed()
+  }
+
+  async onlyCredentialDeletionShouldBeBlocked(from: 'tab' | 'row') {
+    await this.credentialsShouldBeDisplayed(1)
+    if (from === 'tab') {
+      await this.openFirstCredential()
+    } else {
+      await this.page.locator('tbody tr').first().hover()
+    }
+    const scope = from === 'tab' ? this.page : this.page.locator('tbody tr').first()
+    await expect(scope.getByRole('button', {
+      name: "This is the Application's only credential and can't be deleted. Create another credential first.",
+      exact: true,
+    })).toBeDisabled({ timeout: API_FETCH_TIMEOUT_MS })
+  }
+
+  async confirmCredentialReset() {
+    const responsePromise = this.page.waitForResponse((response) =>
+      response.request().method() === 'PUT' &&
+      /\/apiClients\/\d+\/reset-credential(?:\?.*)?$/.test(new URL(response.url()).pathname),
+    )
+    await this.page.getByRole('button', { name: 'Yes', exact: true }).click()
+    const response = await responsePromise
+    expect(response.ok()).toBeTruthy()
+    this.resetCredentials = await response.json()
+  }
+
+  async resetCredentialsShouldBeDisplayed() {
+    if (this.resetCredentials?.link) {
+      await expect(this.page.getByRole('heading', { name: 'Credentials Created', exact: true }))
+        .toBeVisible({ timeout: API_WRITE_TIMEOUT_MS })
+      await expect(this.page.getByRole('link', {
+        name: this.resetCredentials.link, exact: true,
+      })).toBeVisible({ timeout: API_WRITE_TIMEOUT_MS })
+      return
+    }
+    const credentials = this.resetCredentials
+    if (!credentials?.key || !credentials.secret) {
+      throw new Error('Reset response did not contain direct credentials or a sharing link')
+    }
+    await expect(this.page.getByRole('heading', { name: 'Key and secret created', exact: true }))
+      .toBeVisible({ timeout: API_WRITE_TIMEOUT_MS })
+    await expect(this.page.getByText(credentials.key, { exact: true }).first())
+      .toBeVisible({ timeout: API_WRITE_TIMEOUT_MS })
   }
 
   async clickCreateButton() {
@@ -319,8 +664,15 @@ class EnvironmentsPage {
   }
 
   async fillVendorFields(company: string, prefixes: string, contactName: string, contactEmail: string) {
+    const editLink = this.page.getByRole('link', { name: 'Edit', exact: true })
+    // `isVisible()` does not wait, so settle on whichever of the form (create flow) or the
+    // details page's Edit link (edit flow) actually rendered before deciding what to click.
+    await expect(
+      this.vendorCompanyInput.or(editLink).first(),
+      'Neither the vendor form nor the vendor Edit link rendered'
+    ).toBeVisible({ timeout: UI_RENDER_TIMEOUT_MS })
     if (!(await this.vendorCompanyInput.isVisible())) {
-      await this.page.getByRole('link', { name: 'Edit', exact: true }).click()
+      await editLink.click()
     }
     await this.vendorCompanyInput.fill(company)
     await this.vendorPrefixesInput.fill(prefixes)
@@ -342,12 +694,9 @@ class EnvironmentsPage {
     await expect(this.profileDetails).toBeVisible({ timeout: API_WRITE_TIMEOUT_MS })
   }
 
-  async profileValidationWarningShouldBeDisplayed() {
-    await expect(this.profileValidationWarning).toBeVisible({ timeout: UI_RENDER_TIMEOUT_MS })
-  }
-
   async resourceTableShouldBeDisplayed() {
     await expect(this.resourceTable.first()).toBeVisible({ timeout: API_FETCH_TIMEOUT_MS })
+    await expect(this.resourceTable.locator('tbody tr').first()).toBeVisible({ timeout: API_FETCH_TIMEOUT_MS })
   }
 
   async odsShouldBeDisplayedWithPendingStatus(name: string) {
@@ -384,11 +733,28 @@ class EnvironmentsPage {
     const row = this.resourceTable.locator('tbody tr').filter({ hasText: name }).first()
     await expect(row).toBeVisible({ timeout: API_FETCH_TIMEOUT_MS })
     await row.hover()
+    this.lastHoveredResource = name
   }
 
   async clickFirstResourceRow() {
     await expect(this.resourceTable.locator('tbody tr').first()).toBeVisible({ timeout: API_FETCH_TIMEOUT_MS })
     await this.resourceTable.locator('tbody tr').first().getByRole('link').first().click()
+  }
+
+  async firstEdorgDetailsShouldBeDisplayed() {
+    await this.clickFirstResourceRow()
+
+    const expectedAttributes: Array<[string, string | RegExp]> = [
+      ['Ed-Org ID', '255901107'],
+      ['Type', 'edfi.School'],
+      ['Environment', /^FullSingleEnvironmentv2-/],
+      ['Tenant', 'default'],
+    ]
+
+    for (const [label, value] of expectedAttributes) {
+      const attribute = this.page.getByText(label, { exact: true }).locator('..')
+      await expect(attribute.getByText(value, { exact: true })).toBeVisible({ timeout: API_FETCH_TIMEOUT_MS })
+    }
   }
 
   async clickResourceAction(
@@ -397,18 +763,35 @@ class EnvironmentsPage {
     resourceName?: string,
   ) {
 
-    const hoveredRow = this.resourceTable.locator('tbody tr:hover').first()
-    const row = resourceName
-      ? this.resourceTable.locator('tbody tr').filter({ hasText: resourceName }).first()
-      : (await hoveredRow.count()) > 0
-        ? hoveredRow
-        : this.resourceTable.locator('tbody tr').first()
+    // Use the row hoverResourceRow() last targeted rather than asking the browser which row
+    // is under the mouse: `:hover` is instant and silently falls back to the first row,
+    // which can be a different resource (e.g. the wrong ODS getting deleted).
+    const targetName = resourceName ?? this.lastHoveredResource
+    const row = targetName
+      ? this.resourceTable.locator('tbody tr').filter({ hasText: targetName }).first()
+      : this.resourceTable.locator('tbody tr').first()
     await expect(row).toBeVisible({ timeout: API_FETCH_TIMEOUT_MS })
-    await row.hover()
+    if (resource === 'ods' && action === 'Delete') {
+      // A row whose create job has not finished ("Create: Pending" / "Create: In Progress") only
+      // offers View, and the list does not refresh itself, so reload until the row is Available.
+      await expect(async () => {
+        await this.page.reload()
+        await expect(row).toBeVisible({ timeout: API_FETCH_TIMEOUT_MS })
+        await expect(row.getByRole('cell', { name: 'Available', exact: true })).toBeVisible({
+          timeout: POLL_ATTEMPT_TIMEOUT_MS,
+        })
+      }).toPass({ timeout: SYNC_COMPLETE_TIMEOUT_MS })
+    }
     const actionControl =
       action === 'Edit' && resource === 'vendor'
         ? row.getByRole('link', { name: action, exact: true })
         : row.getByRole('button', { name: action, exact: true })
+    // The row actions appear on hover. If the table re-renders after the hover (a list refetch)
+    // they vanish, so hover again until they show instead of waiting out the whole click timeout.
+    await expect(async () => {
+      await row.hover()
+      await expect(actionControl).toBeVisible({ timeout: POLL_ATTEMPT_TIMEOUT_MS })
+    }).toPass({ timeout: API_FETCH_TIMEOUT_MS })
     await actionControl.click()
   }
 
@@ -417,8 +800,9 @@ class EnvironmentsPage {
   }
 
   async confirmResourceDeletion() {
-    await this.page.getByRole('button', { name: 'Yes', exact: true }).click()
-    await this.page.waitForLoadState('networkidle')
+    const yesButton = this.page.getByRole('button', { name: 'Yes', exact: true })
+    await yesButton.click()
+    await expect(yesButton).toBeHidden({ timeout: API_WRITE_TIMEOUT_MS })
   }
 
   async resourceShouldBeRemoved(name: string) {
@@ -612,6 +996,8 @@ class EnvironmentsPage {
 
   async clickOnFirstEnvironment() {
     await this.firstEnvironmentRowSpan.click();
+    // click() returns before the route changes.
+    await expect(this.page).toHaveURL(/\/sb-environments\/\d+\/?$/, { timeout: UI_RENDER_TIMEOUT_MS })
   }
 
   async searchAndSelectEnvironment(environmentName: string, withinEnvironment = false) {
@@ -624,6 +1010,10 @@ class EnvironmentsPage {
   async clickOnTabOption(optionName: string) {
     switch (optionName.trim().toLowerCase()) {
       case 'edit':
+        // The URL changes before the detail page renders, and every list row has an "Edit
+        // environment details" link. A strict mode violation is not retried, so wait until only
+        // the detail page's link is left.
+        await expect(this.editEnvDetails).toHaveCount(1, { timeout: UI_RENDER_TIMEOUT_MS })
         await this.editEnvDetails.click()
         break
       case 'delete':
@@ -643,13 +1033,17 @@ class EnvironmentsPage {
 
   async environmentNameIsUpdated() {
     await this.clickEnvironmentOption()
-    await this.page.reload({ waitUntil: 'networkidle' });
-    await expect(this.environmentsMainContainer).toBeVisible()
-    await expect(this.environmentsMainContainer).toContainText('UpdateName');
+    await this.page.reload()
+    await expect(this.environmentsMainContainer).toBeVisible({ timeout: UI_RENDER_TIMEOUT_MS })
+    await expect(this.environmentsMainContainer).toContainText('UpdateName', {
+      timeout: API_FETCH_TIMEOUT_MS,
+    })
   }
 
   async clickOnTheFirstOptionFromThreeDots(optionName: string) {
     const firstRow = this.tableRows.first()
+    // count() below does not wait: without a loaded table it records 0 rows.
+    await expect(firstRow).toBeVisible({ timeout: API_FETCH_TIMEOUT_MS })
     await firstRow.hover()
 
     switch (optionName.trim().toLowerCase()) {
@@ -667,6 +1061,7 @@ class EnvironmentsPage {
 
   async clickOnTheOptionFromMoreThreeDots(optionName: string) {
     const firstRow = this.tableRows.first()
+    await expect(firstRow).toBeVisible({ timeout: API_FETCH_TIMEOUT_MS })
     await firstRow.hover()
     switch (optionName.trim().toLowerCase()) {
       case 'delete':
@@ -683,12 +1078,12 @@ class EnvironmentsPage {
   }
 
   async clickOnDeletePopup(optionName: boolean) {
-    if(!optionName){
-      await this.noDeletePopup.click()
-    } else {
-      await this.yesDeletePopup.click()
-    }
-    await this.page.waitForLoadState('networkidle')
+    const popupButton = optionName ? this.yesDeletePopup : this.noDeletePopup
+    await popupButton.click()
+    // Yes deletes through the API; No only closes the dialog.
+    await expect(popupButton).toBeHidden({
+      timeout: optionName ? API_WRITE_TIMEOUT_MS : UI_RENDER_TIMEOUT_MS,
+    })
   }
 
   async environmentShouldBeRemoved(environmentName: string) {

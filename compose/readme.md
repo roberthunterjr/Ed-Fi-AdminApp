@@ -294,7 +294,7 @@ To use SQL Server instead of PostgreSQL:
    ```bash
    MSSQL_PORT_EXPOSED=1433
    MSSQL_ACCEPT_EULA=Y
-   MSSQL_SA_PASSWORD=YourStrong!Passw0rd
+   MSSQL_SA_PASSWORD=<your-strong-password>
    MSSQL_IMAGE_TAG=2022-latest
    DB_ENGINE=mssql
    ```
@@ -302,8 +302,10 @@ To use SQL Server instead of PostgreSQL:
    Also switch `DB_SECRET_VALUE` from the PostgreSQL default to the SQL Server variant so the API connects to the SQL Server container:
 
    ```bash
-   DB_SECRET_VALUE={"MSSQL_DB_HOST":"edfiadminapp-mssql","MSSQL_DB_PORT":1433,"MSSQL_DB_USERNAME":"sa","MSSQL_DB_PASSWORD":"YourStrong!Passw0rd","MSSQL_DB_DATABASE":"sbaa"}
+   DB_SECRET_VALUE={"MSSQL_DB_HOST":"edfiadminapp-mssql","MSSQL_DB_PORT":1433,"MSSQL_DB_USERNAME":"sa","MSSQL_DB_PASSWORD":"<your-strong-password>","MSSQL_DB_DATABASE":"sbaa"}
    ```
+
+   Use the same generated password for `MSSQL_SA_PASSWORD` and `MSSQL_DB_PASSWORD`.
 
 2. **Password Requirements**: The `MSSQL_SA_PASSWORD` must meet SQL Server requirements:
 
@@ -339,6 +341,42 @@ To use SQL Server instead of PostgreSQL:
 
 > [!WARNING]
 > For local usage, best to rely on Docker Desktop. Podman might work, but there are sufficient differences between the two that it is difficult to test and verify.
+
+### Secrets
+
+`compose/.env.example` ships `change-me-...` placeholders for `POSTGRES_PASSWORD`,
+`KEYCLOAK_EDFIADMINAPP_CLIENT_SECRET`, `KEYCLOAK_EDFIADMINAPP_DEV_CLIENT_SECRET`,
+`DB_ENCRYPTION_SECRET_VALUE` and the password inside `DB_SECRET_VALUE`, and an empty
+`SESSION_SECRET_VALUE`. In production the API validates the database password inside
+`DB_SECRET_VALUE`, the encryption key (`DB_ENCRYPTION_SECRET_VALUE`), the session secret and the
+seeded OIDC client secret, and refuses to start if any of them is missing or still a placeholder.
+It does not check `POSTGRES_PASSWORD` or the `KEYCLOAK_EDFIADMINAPP_*_CLIENT_SECRET` values
+directly, but they must be changed too because they have to match the validated ones:
+`POSTGRES_PASSWORD` must equal the database password in `DB_SECRET_VALUE`, and the Keycloak client
+secret feeds the seeded OIDC client secret.
+Run `eng/helpers/initialize-env-file.ps1` to create compose/.env with generated secrets (PostgreSQL), instead of copying the example by hand.
+Replace them before running `docker compose up` (`openssl rand -hex 32` works for the
+encryption key and for PostgreSQL passwords; SQL Server passwords need mixed case, see
+[Password Requirements](#sql-server-mssql)), or run `eng/testing/run-e2e-ui.ps1`,
+which generates them. PostgreSQL only reads the password on first initialization, so changing
+`POSTGRES_PASSWORD` after the database volume was first created has no effect on the existing
+database.
+
+For PostgreSQL passwords use `openssl rand -hex 32` or any other alphanumeric string. For SQL Server
+use a mixed-case alphanumeric password containing uppercase letters, lowercase letters and digits
+(`openssl rand -hex 32` is not enough: it has no uppercase letters; `eng/testing/run-e2e-ui.ps1`
+generates a valid one). Avoid characters
+that are special in URLs and connection strings (`; & # + / = % @ ' "`): the database password is
+placed in connection strings unescaped for PostgreSQL.
+
+> [!WARNING]
+> `docker compose down -v` permanently deletes the PostgreSQL data and every other named volume in
+> the compose project. Use it only for a fresh or disposable database. To keep an existing
+> database, instead change the password inside PostgreSQL
+> (`ALTER USER postgres WITH PASSWORD '...'`) and set the same value in `.env`.
+
+Deployments that ever ran an image built before AC-639 should follow
+[secret rotation](../docs/secret-rotation.md).
 
 ### Start Containers
 
@@ -584,7 +622,7 @@ authentication flow:
    AUTH0_CONFIG_SECRET_VALUE: {
      ISSUER: 'https://localhost/auth/realms/edfi',
      CLIENT_ID: 'edfiadminapp',
-     CLIENT_SECRET: 'big-secret-123',
+     CLIENT_SECRET: '<KEYCLOAK_EDFIADMINAPP_DEV_CLIENT_SECRET from compose/.env>',
      MACHINE_AUDIENCE: 'edfiadminapp-api',
    }
    ```
@@ -840,7 +878,7 @@ missing or incorrect, authentication will fail.
    ```shell
     id |               issuer               |     clientId     |  clientSecret  | scope
    ----+------------------------------------+------------------+----------------+-------
-     1 | https://localhost/auth/realms/edfi | edfiadminapp-dev | big-secret-123 |
+     1 | https://localhost/auth/realms/edfi | edfiadminapp-dev | <dev client secret> |
    ```
 
    - For main services (`edfiadminapp` client):
@@ -849,19 +887,21 @@ missing or incorrect, authentication will fail.
 
     id |               issuer               |     clientId     |  clientSecret  | scope
    ----+------------------------------------+------------------+----------------+-------
-     1 | https://localhost/auth/realms/edfi | edfiadminapp     | big-secret-123 |
+     1 | https://localhost/auth/realms/edfi | edfiadminapp     | <client secret>     |
    ```
+
+   The `clientSecret` column must equal the value of `KEYCLOAK_EDFIADMINAPP_CLIENT_SECRET` (container client `edfiadminapp`) or `KEYCLOAK_EDFIADMINAPP_DEV_CLIENT_SECRET` (hot-reload client `edfiadminapp-dev`) from `compose/.env`.
 
 2. If the required OIDC record is missing, you can manually insert it, or run the helper script:
 
-   - Run `./settings/populate-oidc.ps1` with parameters to add a oidc:
+   - Run `./settings/populate-oidc.ps1` (`-ClientSecret` is required) with parameters to add an OIDC connection:
 
      ```powershell
-     ./settings/populate-oidc.ps1 -ClientId "edfiadminapp" -ClientSecret "big-secret-123" -Issuer "https://localhost/auth/realms/edfi"
+     ./settings/populate-oidc.ps1 -ClientId "edfiadminapp" -ClientSecret "<value from compose/.env>" -Issuer "https://localhost/auth/realms/edfi"
 
      OR
 
-     ./settings/populate-oidc.ps1 -ClientId "edfiadminapp-dev" -ClientSecret "big-secret-123" -Issuer "https://localhost/auth/realms/edfi"
+     ./settings/populate-oidc.ps1 -ClientId "edfiadminapp-dev" -ClientSecret "<value from compose/.env>" -Issuer "https://localhost/auth/realms/edfi"
 
      ```
 

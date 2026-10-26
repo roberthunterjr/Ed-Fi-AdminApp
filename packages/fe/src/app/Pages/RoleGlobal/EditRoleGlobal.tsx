@@ -18,15 +18,16 @@ import {
   RoleType,
 } from '@edanalytics/models';
 import { classValidatorResolver } from '@hookform/resolvers/class-validator';
-import { noop } from '@tanstack/react-table';
+import noop from 'lodash/noop';
 import uniq from 'lodash/uniq';
 import { useRef } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { useNavigate, useParams } from 'react-router';
 import { usePopBanner } from '../../Layout/FeedbackBanner';
-import { roleQueries } from '../../api';
+import { roleQueries, useMe } from '../../api';
 import { mutationErrCallback } from '../../helpers/mutationErrCallback';
 import { PrivilegesInput } from './PrivilegesInput';
+import { filterGrantablePrivileges } from './grantable-privileges';
 
 const resolver = classValidatorResolver(PutRoleDto);
 export const hasTeamImpersonation = (privileges: PutRoleDto['privilegeIds']) =>
@@ -60,8 +61,9 @@ export const EditRoleGlobal = (props: { role: GetRoleDto }) => {
       id: params.roleId,
     })
   ).data;
+  const me = useMe().data;
   const privileges = Object.values(PRIVILEGES);
-  const filteredPrivileges =
+  const filteredPrivileges = filterGrantablePrivileges(
     privileges && role
       ? Object.values(privileges).filter(
           (p) =>
@@ -71,7 +73,10 @@ export const EditRoleGlobal = (props: { role: GetRoleDto }) => {
                 p.code.startsWith('team.integration-provider'))) ||
             (role.type === RoleType.UserTeam && p.code.startsWith('team.'))
         )
-      : undefined;
+      : undefined,
+    me?.role?.privilegeIds,
+    role?.privilegeIds
+  );
   const {
     register,
     handleSubmit,

@@ -165,6 +165,15 @@ jobs:
           dockerfile: packages/${{ matrix.package }}/Dockerfile
           failure-threshold: error
 
+      # Authenticated pulls avoid Docker Hub anonymous rate limits (429 on base images).
+      # Non-fatal because credentials are unavailable for PRs from forks.
+      - name: Log in to Docker Hub
+        continue-on-error: true
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          username: ${{ vars.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+
       - name: Docker Build
         run: docker build -t adminapp-${{ matrix.package }}-ci -f packages/${{ matrix.package }}/Dockerfile .
 

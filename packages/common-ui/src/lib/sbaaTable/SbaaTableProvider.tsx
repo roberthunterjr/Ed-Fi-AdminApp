@@ -1,20 +1,11 @@
 import { ChakraComponent, useBoolean } from '@chakra-ui/react';
 import {
-  ColumnDef,
   ColumnFiltersState,
   RowSelectionState,
-  Table as TrtTable,
   OnChangeFn,
-  getCoreRowModel,
-  getFacetedMinMaxValues,
-  getFacetedRowModel,
-  getFacetedUniqueValues,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  useReactTable,
+  useTable,
   ExpandedState,
-  getExpandedRowModel,
+  ReactTable,
   TableState,
 } from '@tanstack/react-table';
 import React, { createContext, useEffect, useMemo } from 'react';
@@ -30,10 +21,11 @@ import {
   setPaginationParams,
   setSortParams,
 } from '../dataTable';
+import { SbaaColumnDef, SbaaTableFeatures, sbaaTableFeatures } from './sbaaTableFeatures';
 
 export const SbaaTableContext = createContext<{
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  table: TrtTable<any> | null;
+  table: ReactTable<SbaaTableFeatures, any> | null;
   pageSizes: number[];
   pendingFilterColumn: string | boolean;
   setPendingFilterColumn: (colId: string | boolean) => void;
@@ -85,13 +77,13 @@ export function SbaaTableProvider<
   useSubRows?: UseSubRows;
   children?: React.ReactNode;
   data: T[] | IterableIterator<T>;
-  columns: ColumnDef<T>[];
+  columns: SbaaColumnDef<T>[];
   enableRowSelection?: boolean;
   rowSelectionState?: RowSelectionState;
   onRowSelectionChange?: OnChangeFn<RowSelectionState> | undefined;
   pageSizes?: number[];
   queryKeyPrefix?: string | undefined;
-  state?: Partial<TableState>;
+  state?: Partial<TableState<SbaaTableFeatures>>;
   isFixedHeightForPagination?: boolean;
 }) {
   const data = useMemo(() => [...props.data], [props.data]);
@@ -135,12 +127,10 @@ export function SbaaTableProvider<
 
   const [expanded, setExpanded] = React.useState<ExpandedState>({});
 
-  const table = useReactTable({
+  const table = useTable({
+    features: sbaaTableFeatures,
     data,
     columns,
-    filterFns: {
-      fuzzy: fuzzyFilter,
-    },
     state: {
       sorting: sortParams.length > 0 ? sortParams : props.state?.sorting ?? [],
       globalFilter,
@@ -149,7 +139,9 @@ export function SbaaTableProvider<
       expanded,
       pagination: paginationParams,
     },
-    getSubRows: props.useSubRows ? (row) => row.subRows : undefined,
+    getSubRows: props.useSubRows
+      ? (row) => ('subRows' in row ? row.subRows : undefined)
+      : undefined,
     filterFromLeafRows: true,
     onExpandedChange: setExpanded,
     onSortingChange: (updater) =>
@@ -173,14 +165,7 @@ export function SbaaTableProvider<
     ...(props.onRowSelectionChange ? { onRowSelectionChange: props.onRowSelectionChange } : {}),
     onGlobalFilterChange: setGlobalFilter,
     onColumnFiltersChange: setColumnFilters,
-    getFilteredRowModel: getFilteredRowModel(),
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    getFacetedRowModel: getFacetedRowModel(),
-    getFacetedUniqueValues: getFacetedUniqueValues(),
-    getFacetedMinMaxValues: getFacetedMinMaxValues(),
-    getExpandedRowModel: props.useSubRows ? getExpandedRowModel() : undefined,
+    manualExpanding: !props.useSubRows,
     // Expanded sub-rows shouldn't count against the current page's row
     // budget — otherwise expanding a parent can push its own children (or
     // later siblings) onto a page the user isn't looking at, which reads as
@@ -194,13 +179,14 @@ export function SbaaTableProvider<
     autoResetPageIndex: false,
     initialState: {
       pagination: {
+        pageIndex: 0,
         pageSize: pageSizes[0],
       },
     },
   });
 
   useEffect(() => {
-    if (table.getState().pagination.pageIndex > table.getPageCount() - 1) {
+    if (table.state.pagination.pageIndex > table.getPageCount() - 1) {
       table.setPageIndex(table.getPageCount() - 1);
     }
   });
@@ -208,7 +194,10 @@ export function SbaaTableProvider<
   return (
     <SbaaTableContext.Provider
       value={{
-        table,
+        // The context is shared by tables of every row type; v9's invariant `TData`
+        // generic means the concrete table has to be widened explicitly here.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        table: table as unknown as ReactTable<SbaaTableFeatures, any>,
         pageSizes,
         pendingFilterColumn,
         setPendingFilterColumn,

@@ -1,3 +1,6 @@
+export * from './certification-catalog.dto';
+export * from './certification-token.dto';
+export * from './certification-step-run.dto';
 export * from './edfi-admin-api.dto';
 export * from './edfi-admin-api.v2.dto';
 export * from './edfi-admin-api.v3.dto';
@@ -6,6 +9,7 @@ export * from './edorg.dto';
 export * from './env-nav.dto';
 export * from './integration-app.dto';
 export * from './integration-provider.dto';
+export * from './ods-manage-job.dto';
 export * from './ods.dto';
 export * from './operations.dto';
 export * from './ownership.dto';
@@ -16,7 +20,14 @@ export * from './sb-sync-queue.dto';
 export * from './session-data.dto';
 export * from './starting-blocks.v1.dto';
 export * from './starting-blocks.v2.dto';
-export type { SbV3MetaEnv, SbV3MetaEdorg, SbV3MetaOds, SbV3MetaTenant, SbV3TenantResourceTree, SbV3MetaSaved } from './starting-blocks.v3.dto';
+export type {
+  SbV3MetaEnv,
+  SbV3MetaEdorg,
+  SbV3MetaOds,
+  SbV3MetaTenant,
+  SbV3TenantResourceTree,
+  SbV3MetaSaved,
+} from './starting-blocks.v3.dto';
 export * from './team.dto';
 export * from './user-tenant-membership.dto';
 export * from './user.dto';

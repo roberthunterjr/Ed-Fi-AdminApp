@@ -1,6 +1,6 @@
 import { Box, HStack } from '@chakra-ui/react';
 import { Meta } from '@storybook/react-vite';
-import { ColumnFiltersState, RowData, SortingState, Table } from '@tanstack/react-table';
+import { ColumnFiltersState, SortingState } from '@tanstack/react-table';
 import React from 'react';
 import { useSearchParams } from 'react-router';
 import {
@@ -8,6 +8,7 @@ import {
   SbaaTableAdvancedButton,
   SbaaTableFilters,
   SbaaTablePagination,
+  SbaaTableFeatures,
   SbaaTableProviderServerSide,
   SbaaTableSearch,
 } from '.';
@@ -65,10 +66,7 @@ export const Standard = ({ enableRowSelection }: { enableRowSelection: boolean }
   };
 
   const data = prepData(columnFilters, sortParams);
-  function getFacetedMinMaxValues<TData extends RowData = Person>(): (
-    table: Table<TData>,
-    columnId: string
-  ) => () => undefined | [number, number] {
+  function getFacetedMinMaxValues(): NonNullable<SbaaTableFeatures['facetedMinMaxValues']> {
     return (table, columnId) => {
       if (['firstName', 'lastName'].includes(columnId)) {
         return () => undefined;
@@ -84,11 +82,7 @@ export const Standard = ({ enableRowSelection }: { enableRowSelection: boolean }
       }
     };
   }
-  function getFacetedUniqueValues<TData extends RowData = Person>(): (
-    table: Table<TData>,
-    columnId: string
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ) => () => Map<any, number> {
+  function getFacetedUniqueValues(): NonNullable<SbaaTableFeatures['facetedUniqueValues']> {
     return (table, columnId) => {
       if (['firstName', 'lastName'].includes(columnId)) {
         const facetedData = prepData(

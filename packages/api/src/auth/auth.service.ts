@@ -14,7 +14,7 @@ import { InjectEntityManager, InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, In, IsNull, Not, Repository, TreeRepository } from 'typeorm';
 import * as jose from 'jose';
 import { type ProtectedHeaderParameters, type JWTPayload } from 'jose';
-import { Issuer } from 'openid-client';
+import * as oidcClient from 'openid-client';
 import { CacheService } from '../app/cache.module';
 import {
   cacheAccordingToPrivileges,
@@ -25,6 +25,28 @@ import {
   initializeSbEnvironmentPrivilegeCache,
 } from './authorization/helpers';
 import config from 'config';
+
+/**
+ * MSSQL query-builder `IN (:...x)` needs real array parameters (a comma-joined string is bound
+ * as one nvarchar and fails to convert to int). SQL Server also caps a statement at 2,100
+ * parameters and the queries below expand the same list twice, so ids are sent in batches of
+ * this size (at most ~1,000 parameters per statement) and the results merged.
+ */
+const MSSQL_ID_BATCH_SIZE = 500;
+
+/**
+ * Ids are identity values, so -1 never matches a row; it stands in for an empty list because
+ * an empty array would render invalid `IN ()`.
+ */
+const NO_MATCH_IDS = [-1];
+
+const chunkIds = (ids: number[], size = MSSQL_ID_BATCH_SIZE) => {
+  const chunks: number[][] = [];
+  for (let i = 0; i < ids.length; i += size) {
+    chunks.push(ids.slice(i, i + size));
+  }
+  return chunks;
+};
 
 @Injectable()
 export class AuthService {
@@ -307,34 +329,48 @@ export class AuthService {
     const allEdfiTenantIds = [...allEdfiTenants.keys()];
 
     const dbSpecificEdOrgQuery = {
-      mssql: () => {
-        return this.edorgsRepository
-          .createQueryBuilder('edorg')
-          .leftJoin(
-            'edorg_closure',
-            'descendants',
-            'descendants.id_ancestor IN (:edorgs) AND descendants.id_descendant = edorg.id',
-            {
-              edorgs: [...edorgPrivileges.keys()].join(','),
-            }
-          )
-          .leftJoin(
-            'edorg_closure',
-            'ancestors',
-            'ancestors.id_descendant IN (:edorgs) AND ancestors.id_ancestor = edorg.id',
-            {
-              edorgs: [...edorgPrivileges.keys()].join(','),
-            }
-          )
-          .where(
-            `descendants.id_ancestor IS NOT NULL OR
+      mssql: async () => {
+        const queryBatch = (edorgs: number[], odss: number[]) =>
+          this.edorgsRepository
+            .createQueryBuilder('edorg')
+            .leftJoin(
+              'edorg_closure',
+              'descendants',
+              'descendants.id_ancestor IN (:...edorgs) AND descendants.id_descendant = edorg.id',
+              { edorgs }
+            )
+            .leftJoin(
+              'edorg_closure',
+              'ancestors',
+              'ancestors.id_descendant IN (:...edorgs) AND ancestors.id_ancestor = edorg.id',
+              { edorgs }
+            )
+            .where(
+              `descendants.id_ancestor IS NOT NULL OR
               ancestors.id_descendant IS NOT NULL OR
-              edorg.odsId IN (:odss)`,
-            {
-              odss: ownedOdss.map((o) => o.ods.id).join(','),
-            }
-          )
-          .getMany();
+              edorg.odsId IN (:...odss)`,
+              { odss }
+            )
+            .getMany();
+
+        // The conditions are OR-ed, so the union of per-batch results equals the full query.
+        const batches = [
+          ...chunkIds([...edorgPrivileges.keys()]).map((edorgs) => ({
+            edorgs,
+            odss: NO_MATCH_IDS,
+          })),
+          ...chunkIds(ownedOdss.map((o) => o.ods.id)).map((odss) => ({
+            edorgs: NO_MATCH_IDS,
+            odss,
+          })),
+        ];
+        if (!batches.length) batches.push({ edorgs: NO_MATCH_IDS, odss: NO_MATCH_IDS });
+
+        const edorgsById = new Map<number, Edorg>();
+        for (const { edorgs, odss } of batches) {
+          (await queryBatch(edorgs, odss)).forEach((edorg) => edorgsById.set(edorg.id, edorg));
+        }
+        return [...edorgsById.values()];
       },
       pgsql: () => {
         return this.edorgsRepository
@@ -487,16 +523,23 @@ export class AuthService {
     const edorgIds = new Set(edorgPrivilegesEntries.map(([edorgId]) => edorgId));
 
     const dbSpecificEdOrgClosureQuery = {
-      mssql: () => {
-        const edOrgIdList = [[...edorgIds.values()]].join(',');
-        return this.edorgClosureRepository
-          .createQueryBuilder('edorg_closure')
-          .where('"id_ancestor" <> "id_descendant"')
-          .andWhere('("id_ancestor" IN (:ancestors) OR "id_descendant" IN (:descendants))', {
-            ancestors: edOrgIdList,
-            descendants: edOrgIdList,
-          })
-          .getMany();
+      mssql: async () => {
+        const batches = chunkIds([...edorgIds.values()]);
+        if (!batches.length) batches.push(NO_MATCH_IDS);
+
+        const rowsByEdge = new Map<string, EdOrgClosure>();
+        for (const edOrgIdList of batches) {
+          const rows = await this.edorgClosureRepository
+            .createQueryBuilder('edorg_closure')
+            .where('"id_ancestor" <> "id_descendant"')
+            .andWhere(
+              '("id_ancestor" IN (:...ancestors) OR "id_descendant" IN (:...descendants))',
+              { ancestors: edOrgIdList, descendants: edOrgIdList }
+            )
+            .getMany();
+          rows.forEach((row) => rowsByEdge.set(`${row.id_ancestor}:${row.id_descendant}`, row));
+        }
+        return [...rowsByEdge.values()];
       },
       pgsql: () => {
         return this.entityManager.query(
@@ -744,9 +787,20 @@ export class AuthService {
       }
 
       this._jwks = new Promise((resolve) => {
-        Issuer.discover(AUTH0_CONFIG_SECRET.ISSUER)
-          .then((issuer) =>
-            fetch(issuer.metadata.jwks_uri).then((response) =>
+        oidcClient
+          .discovery(
+            new URL(AUTH0_CONFIG_SECRET.ISSUER),
+            AUTH0_CONFIG_SECRET.CLIENT_ID || 'adminapp',
+            AUTH0_CONFIG_SECRET.CLIENT_SECRET
+              ? { client_secret: AUTH0_CONFIG_SECRET.CLIENT_SECRET }
+              : undefined
+          )
+          .then((issuer) => {
+            const jwksUri = issuer.serverMetadata().jwks_uri;
+            if (!jwksUri) {
+              throw new Error('OIDC issuer metadata does not define jwks_uri');
+            }
+            return fetch(jwksUri).then((response) =>
               response.json().then(async (jwks) => {
                 const out: Record<string, CryptoKey | Uint8Array> = {};
                 for (let i = 0; i < jwks.keys.length; i++) {
@@ -755,8 +809,8 @@ export class AuthService {
                 }
                 resolve(out);
               })
-            )
-          )
+            );
+          })
           .catch((error) => {
             Logger.error(
               `Error fetching JWKS from ${AUTH0_CONFIG_SECRET.ISSUER}. Check the ISSUER configuration.`,

@@ -4,6 +4,7 @@
 // See the LICENSE and NOTICES files in the project root for more information.
 
 import { Page, expect } from '@playwright/test'
+import { API_FETCH_TIMEOUT_MS, API_WRITE_TIMEOUT_MS, UI_RENDER_TIMEOUT_MS, clickNavLink } from './support'
 
 class TeamsPage {
   private readonly teamsOption
@@ -42,7 +43,11 @@ class TeamsPage {
   }
 
   async clickTeamsOption() {
-    await this.teamsOption.click()
+    await clickNavLink(this.page, this.teamsOption, /\/adminapp\/teams\/?$/)
+    // The URL changes before the list renders, and the team detail page it replaces has two
+    // tbody elements. A strict mode violation is not retried, so assert on something only the
+    // list has before any step touches the table.
+    await expect(this.createNewButton).toBeVisible({ timeout: UI_RENDER_TIMEOUT_MS })
   }
 
   async clickCreateNewButton() {
@@ -51,17 +56,20 @@ class TeamsPage {
 
   async fillRequiredFields() {
     this.createdTeamName = this.generateTeamName('Sample Team')
-    await this.teamNameInput.fill(this.createdTeamName, {timeout: 500})
+    await this.teamNameInput.fill(this.createdTeamName)
   }
 
   async fillTeamName(name: string) {
     this.createdTeamName = name
-    await this.teamNameInput.fill(name, {timeout: 500})
+    await this.teamNameInput.fill(name)
   }
 
   async clickSaveButton() {
     await this.saveButton.click()
-    await this.page.waitForLoadState('networkidle')
+    // Wait for the redirect to the team's detail page, not just for the form to close: the
+    // form unmounts before the app navigates, and a nav click in that gap gets overridden by
+    // the late redirect (leaving the next step on the detail page's two tbody elements).
+    await expect(this.page).toHaveURL(/\/teams\/\d+\/?$/, { timeout: API_WRITE_TIMEOUT_MS })
   }
 
   async clickCancelButton() {
@@ -71,7 +79,8 @@ class TeamsPage {
   async clickOptionFromThreeDots(optionName: string) {
     const firstRow = this.page.locator('tbody td span').first()
     const firstRowName = this.page.locator('tbody tr').first().locator('a[title="Go to team"]').first()
-    if (await firstRowName.isVisible().catch(() => false)) {
+    await expect(firstRow).toBeVisible({ timeout: API_FETCH_TIMEOUT_MS })
+    if (await firstRowName.isVisible()) {
       this.originalTeamName = (await firstRowName.textContent())?.trim() ?? null
     }
     await firstRow.hover()
@@ -105,7 +114,7 @@ class TeamsPage {
 
   async setNewTeamName() {
     this.updatedTeamName = this.generateTeamName('TeamUpdated')
-    await this.teamNameInput.fill(this.updatedTeamName, {timeout: 500})
+    await this.teamNameInput.fill(this.updatedTeamName)
   }
 
   async clickPopupButton(optionName: string) {
@@ -146,7 +155,7 @@ class TeamsPage {
   }
 
   async teamNameShouldBeUpdated() {
-    await this.teamsOption.click()
+    await this.clickTeamsOption()
     await expect(this.teamsTable).toBeVisible()
     if (this.originalTeamName) {
       await expect(this.teamsTable).not.toContainText(this.originalTeamName)
@@ -157,7 +166,7 @@ class TeamsPage {
   }
 
   async teamNameShouldNotBeChanged() {
-    await this.teamsOption.click()
+    await this.clickTeamsOption()
     await expect(this.teamsTable).toBeVisible()
     if (this.originalTeamName) {
       await expect(this.teamsTable).toContainText(this.originalTeamName)

@@ -4,12 +4,12 @@ import {
   PageActions,
   PageTemplate,
   SbaaTableAllInOne,
+  SbaaColumnDef,
 } from '@edanalytics/common-ui';
 import { GetEdorgDto, GetOdsDto, edorgKeyV2 } from '@edanalytics/models';
 import { edorgQueries, odsQueries, profileQueriesV2, vendorQueriesV2 } from '../../api';
 
 import { UseQueryOptions, useQuery } from '@tanstack/react-query';
-import { ColumnDef } from '@tanstack/react-table';
 import { useOdsTerminology, useTeamEdfiTenantNavContextLoaded } from '../../helpers';
 import { getRelationDisplayName } from '../../helpers/getRelationDisplayName';
 import { ClaimsetLinkV2 } from '../../routes/claimset.routes';
@@ -247,7 +247,7 @@ export const AllApplicationsTable = () => {
           header: 'Integration Provider',
           accessorFn: (application) => application.integrationProviderName,
         },
-      ] as ColumnDef<ApplicationEntity>[]}
+      ] as SbaaColumnDef<ApplicationEntity>[]}
     />
   );
 };

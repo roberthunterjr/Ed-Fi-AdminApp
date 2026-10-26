@@ -5,9 +5,9 @@ import {
   PageTemplate,
   TableRowActions,
   ValueAsDate,
+  SbaaCellContext,
 } from '@edanalytics/common-ui';
 import { GetRoleDto, RoleType } from '@edanalytics/models';
-import { CellContext } from '@tanstack/react-table';
 import { useParams } from 'react-router';
 import { roleQueries, useMyTeams, userQueries } from '../../api';
 import { getRelationDisplayName } from '../../helpers/getRelationDisplayName';
@@ -15,7 +15,7 @@ import { RoleLink, UserLink } from '../../routes';
 import { useRoleActions } from './useRoleActions';
 import { useAuthorize } from '../../helpers';
 
-const NameCell = (info: CellContext<GetRoleDto, unknown>) => {
+const NameCell = (info: SbaaCellContext<GetRoleDto>) => {
   const params = useParams() as { asId: string };
   const entities = useQuery(
     roleQueries.getAll({

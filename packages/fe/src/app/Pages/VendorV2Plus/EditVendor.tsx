@@ -10,7 +10,7 @@ import {
   chakra,
 } from '@chakra-ui/react';
 import { classValidatorResolver } from '@hookform/resolvers/class-validator';
-import { noop } from '@tanstack/react-table';
+import noop from 'lodash/noop';
 import { useMemo } from 'react';
 import { DefaultValues, Path, useForm } from 'react-hook-form';
 import { useNavigate, useParams } from 'react-router';
