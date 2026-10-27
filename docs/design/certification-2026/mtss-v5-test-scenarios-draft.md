@@ -204,7 +204,11 @@ organization, and the staff who deliver it.
   using Path 1 (see the Staff scenarios). Path 2 providers may omit it.
 - `deliveryMethodDescriptor` and `beginDate` are checked for presence only. A
   catalog-level default is acceptable where the product records these per
-  student.
+  student. Data Standard 5 requires both on Intervention, so the API rejects a
+  record without them.
+- Recording `beginDate`, `endDate`, `deliveryMethodDescriptor`, meeting times,
+  and staff per student assignment is a future consideration (Data Standard 7),
+  outside v1.
 - `minDosage` and `maxDosage` are "the minimum/maximum duration of time in
   minutes that may be assigned for the intervention." They use the same scale
   as StudentInterventionAssociation `dosage`, which certification defines as
@@ -353,7 +357,11 @@ Scenario 2. No body.
   participate in the intervention": the total for the assignment, not minutes
   per session. 600 minutes is, for example, 20 sessions of 30 minutes.
 - `diagnosticStatement` is optional (max 1,024 characters). Scenario 2 omits it
-  to show that it isn't required.
+  to show that it isn't required. With it optional, Intervention `diagnoses` is
+  the only required element describing an intervention's purpose.
+- The 21-Oct workgroup is asking agencies what extensions, if any, they add to
+  StudentInterventionAssociation. One agency extended it to meet its dosage
+  reporting needs.
 - `cohortReference` is used only by providers on Staff Path 2. The Staff
   Association Scenarios exercise it.
 - `interventionEffectivenesses` is optional and not exercised. If published,
@@ -413,8 +421,9 @@ session date, and attendance category, with the minutes actually delivered.
 5. Update the 2026-09-09 event: only 25 minutes were delivered.
 6. Delete the 2026-09-11 unexcused absence, which was recorded in error.
 7. Record the 2026-09-11 session again, as an excused absence.
-8. Optional, if the product supports it: record that the 2026-09-14 session
-   was not held, using a provider-namespaced descriptor.
+8. Required when the product records sessions that don't fit the DS 5.2
+   default categories: record that the 2026-09-14 session was not held, using
+   a provider-namespaced descriptor.
 
 | Resource | Property Name | Is Collection | Data Type | Required | Scenario 1: POST | Scenario 2: POST | Scenario 3: POST | Scenario 4: POST | Scenario 5: PUT | Scenario 6: DELETE | Scenario 7: POST | Scenario 8: POST |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -541,7 +550,7 @@ Scenario 4. No body.
 }
 ```
 
-### Scenario 8 (optional): POST `/ed-fi/studentInterventionAttendanceEvents`
+### Scenario 8 (required when needed): POST `/ed-fi/studentInterventionAttendanceEvents`
 
 ```json
 {
@@ -583,11 +592,17 @@ Scenario 4. No body.
   does not enforce the link. Certification requires every event to match a
   StudentInterventionAssociation for the same student and intervention. The
   association must already exist, or be created earlier in the same scenario.
-- Events in a "session not held" category (Scenario 8) record that a session
-  did not take place. They are excluded from delivered minutes and session
-  counts in the Assigned vs. Delivered Dosage Scenarios. Distinguishing
-  scheduled from held sessions is a future consideration, so certification
-  does not yet require these events.
+- Scenario 8 is required when the product records sessions that don't fit
+  the DS 5.2 default categories, such as a session not held because of a
+  school closure or an absent interventionist. Certification checks that these
+  sessions use a descriptor in the provider's own namespace, not a default
+  category such as `Excused Absence` or `Unexcused Absence`. Providers whose
+  sessions all fit the defaults skip Scenario 8. This check replaces adding a
+  new required field (21-Oct workgroup agreement).
+- Events in a "session not held" category record that a session did not take
+  place. They are excluded from delivered minutes and session counts in the
+  Assigned vs. Delivered Dosage Scenarios. Comparing scheduled with held
+  sessions is a future consideration.
 - `attendanceEventReason` is optional (max 255 characters).
 - `educationalEnvironmentDescriptor` is optional and not exercised.
 - DS 5.2 AttendanceEventCategory default values are `Early departure`,
@@ -612,10 +627,13 @@ Scenario 4. No body.
     on the same date in the same category overwrites the first. Products that
     deliver more than one session a day publish one event with the total
     minutes.
-12. **Session not held.** Events in a provider-namespaced "session not held"
-    category are excluded from delivered minutes and session counts, and are
-    reported separately. Scheduled vs. held sessions stays a future
-    consideration.
+12. **Namespaced category check.** Add to Scenario 3's test activities a
+    check that the provider uses its own namespaced AttendanceEventCategory
+    descriptors where the defaults don't fit (for example, a session not
+    held), per the 21-Oct workgroup agreement. Required only for products that
+    record such sessions. These events are excluded from delivered minutes
+    and session counts, and are reported separately. Scheduled vs. held
+    sessions stays a future consideration.
 13. **Absences.** Publish `interventionDuration` 0 on absence events, so every
     event has the certification-required duration.
 
@@ -630,8 +648,8 @@ read back what the provider published and calculate the comparison.
 ### Prerequisites
 
 - StudentInterventionAssociation Scenarios 1 to 4 completed.
-- StudentInterventionAttendanceEvent Scenarios 1 to 7 completed. Scenario 8 is
-  optional.
+- StudentInterventionAttendanceEvent Scenarios 1 to 7 completed, plus
+  Scenario 8 where the product records sessions not held.
 
 ### Scenarios
 
@@ -677,7 +695,7 @@ Expected events:
 | 2026-09-09 | In Attendance | 25 | Yes | Attendance Scenarios 2 and 5 |
 | 2026-09-10 | Partial | 15 | Yes | Attendance Scenario 3 |
 | 2026-09-11 | Excused Absence | 0 | Yes | Attendance Scenario 7 |
-| 2026-09-14 | Session Not Held (provider namespace) | 0 | No | Attendance Scenario 8, if completed |
+| 2026-09-14 | Session Not Held (provider namespace) | 0 | No | Attendance Scenario 8, where required |
 
 No event is returned for 2026-09-11 with `Unexcused Absence`. Attendance
 Scenario 6 deleted it.
@@ -695,7 +713,7 @@ Scenarios 1 and 2.
 | Minutes remaining | Assigned minutes − delivered minutes | 830 |
 | Sessions attended | Events with `In Attendance`, `Present`, `Partial`, `Tardy`, or `Early departure` | 3 |
 | Sessions missed | Events with `Excused Absence` or `Unexcused Absence` | 1 |
-| Sessions not held | Events in a provider "session not held" category; reported separately, not counted above | 1 if Attendance Scenario 8 was completed, otherwise 0 |
+| Sessions not held | Events in a provider "session not held" category; reported separately, not counted above | 1 where Attendance Scenario 8 applies, otherwise 0 |
 
 ### Comments
 
@@ -726,6 +744,12 @@ Scenarios 1 and 2.
     assigned and delivered minutes match the measures calculated from the
     ODS. This also checks that the published data agrees with what the
     product shows users.
+- **Open question: sessions attended vs. sessions scheduled.** One state
+  agency measures fidelity as sessions attended compared with sessions
+  scheduled, including sessions scheduled but not held. This draft compares
+  delivered minutes with assigned minutes. The 21-Oct workgroup moved
+  scheduled vs. held sessions to future consideration and is asking agencies
+  whether they need it.
 
 #### Proposed changes to the Confluence draft
 
@@ -755,7 +779,16 @@ its product uses, not both.
 
 Cohort and StudentCohortAssociation remain optional in v1. They are needed
 only for Path 2. Assigning staff to an individual student's plan is not
-supported in Data Standard 5 and is a future consideration.
+supported in Data Standard 5. It is a Data Standard 7 item and not part of v1.
+
+Per the 21-Oct workgroup agreement, elements that move in Data Standard 7 and
+are not required by the model must be sent, but certification is flexible on
+the path they take. For staff, that means either path above.
+
+**Open question: staff requirement.** Agencies are split on whether staff
+should be required for certification. Some track staff by student, cohort, or
+role rather than by name. The workgroup is asking agencies to confirm, so treat
+the staff requirement as provisional.
 
 ### Prerequisites
 
@@ -1048,7 +1081,7 @@ Records removed by Ed-Fi and the state expected after synchronization:
 | 2 | StudentInterventionAttendanceEvent | 604863 / READ-T2-001 / 2026-09-08 / In Attendance | Restored: `interventionDuration` 30 |
 | 2 | StudentInterventionAttendanceEvent | 604863 / READ-T2-001 / 2026-09-09 / In Attendance | Restored: `interventionDuration` 25 (the Attendance Scenario 5 value, not the original 30) |
 | 2 | StudentInterventionAttendanceEvent | 604863 / READ-T2-001 / 2026-09-11 / Excused Absence | Restored: `interventionDuration` 0, `attendanceEventReason` "Family emergency" |
-| 2 | StudentInterventionAttendanceEvent | 604863 / READ-T2-001 / 2026-09-14 / Session Not Held | Restored, if Attendance Scenario 8 was completed |
+| 2 | StudentInterventionAttendanceEvent | 604863 / READ-T2-001 / 2026-09-14 / Session Not Held | Restored, where Attendance Scenario 8 applies |
 | 3 | Intervention | 255901 / READ-T2-001 | Restored with the Intervention Scenario 3 values; Path 1: `staffs` contains only `207288` |
 | 4 | StaffCohortAssociation (Path 2) | 207288 / READ-T2-001-GRP-A / 255901 / 2026-08-24 | Restored: `endDate` 2026-12-18, `studentRecordAccess` true |
 
