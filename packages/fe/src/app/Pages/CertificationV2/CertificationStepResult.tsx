@@ -1,5 +1,6 @@
 import { Box, HStack, Table, Tbody, Td, Text, Th, Thead, Tr } from '@chakra-ui/react';
 import { CERT_STEP_ERROR_KIND, CertificationSavedStepRunDto } from '@edanalytics/models';
+import { CertificationStatusIndicator } from './CertificationStatusIndicator';
 import { STEP_STATUS_DISPLAY, toDisplayStatus } from './certificationStepResults';
 
 const formatRanAt = (ranAt: string) => {
@@ -29,12 +30,12 @@ export const CertificationStepResult = ({
     <>
       <HStack mb={3} justify="space-between" alignItems="center">
         <Text fontWeight="semibold">Execution result</Text>
-        <HStack spacing={2}>
-          <Box w="10px" h="10px" borderRadius="full" bg={display.dotColor} />
-          <Text fontSize="sm" fontWeight="medium" color={display.textColor}>
-            {display.label}
-          </Text>
-        </HStack>
+        <CertificationStatusIndicator
+          display={display}
+          dotSize="10px"
+          fontSize="sm"
+          fontWeight="medium"
+        />
       </HStack>
 
       {isRunning && <Text color="gray.600">Running this step. This can take up to a minute.</Text>}

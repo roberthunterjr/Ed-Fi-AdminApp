@@ -6,7 +6,9 @@ import {
   ButtonGroup,
   FormControl,
   FormLabel,
+  HStack,
   Select,
+  Spinner,
   Table,
   Tbody,
   Td,
@@ -26,10 +28,13 @@ import { edfiTenantQueriesGlobal, odsQueries, sbEnvironmentQueriesGlobal } from 
 import { getOdsTerminology, useNavToParent } from '../../helpers';
 import { config } from '../../../config/config';
 import { CertificationAuthenticateForm } from './CertificationAuthenticateForm';
+import { CertificationStatusIndicator } from './CertificationStatusIndicator';
 import { isAuthValidFor, useCertificationAuth } from './CertificationAuthContext';
 import { useCertificationSelection } from './useCertificationSelection';
 import { displayNameOf, formatArtifactVersion } from './certificationCatalog';
 import { useCertificationCatalog } from './useCertificationCatalog';
+import { useCertificationScenarioStatuses } from './useCertificationScenarioStatuses';
+import { SCENARIO_STATUS_DISPLAY, toScenarioDisplayStatus } from './certificationStepResults';
 
 const TENANT_TOOLTIP =
   'A tenant is a separate set of data inside this environment, usually one per organization (for example, a school district). Choose the tenant your API key and secret were created for.';
@@ -85,12 +90,23 @@ export const RequestCertificationPage = () => {
   );
   const odss = Object.values(odsQuery.data ?? {});
   const odsRequired = showOds && odss.length > 0;
+
   // Fail closed: don't let the form run before we know whether an ODS must be chosen.
   // Query errors go to the route error page (the query builder sets throwOnError: true), so only loading needs a guard here.
   const isLoadingSelection =
     sbEnvironmentQuery.isPending ||
     tenantsQuery.isPending ||
     (showOds && !!edfiTenant && odsQuery.isPending);
+
+  const scenarioStatuses = useCertificationScenarioStatuses({
+    sbEnvironmentId,
+    edfiTenantId,
+    odsId,
+    // The same source as the execution page, so both resolve the same catalog.
+    sisVersion: catalog.dataStandardVersion,
+    enabled:
+      hasCatalog && !isLoadingSelection && !!edfiTenant && !(odsRequired && odsId === undefined),
+  });
 
   // A tenant ID from the URL that isn't in the list (stale link) counts as unset.
   useEffect(() => {
@@ -285,40 +301,80 @@ export const RequestCertificationPage = () => {
             Scenarios
           </Text>
 
+          {scenarioStatuses.isLoading && (
+            <HStack role="status" spacing={2} mb={3}>
+              <Spinner size="xs" label="" />
+              <Text fontSize="sm" color="gray.600">
+                Loading scenario statuses...
+              </Text>
+            </HStack>
+          )}
+          {scenarioStatuses.isError && (
+            <Alert status="warning" mb={3} role="alert">
+              <AlertIcon />
+              <Text flex="1">
+                {scenarioStatuses.isStale
+                  ? "We couldn't refresh the scenario statuses. The statuses shown may be out of date."
+                  : "We couldn't load the scenario statuses."}
+              </Text>
+              <Button size="sm" type="button" onClick={() => scenarioStatuses.refetch()}>
+                Retry
+              </Button>
+            </Alert>
+          )}
+
           <Table size="sm" mt={0}>
             <Thead>
               <Tr>
                 <Th>Area or Group</Th>
                 <Th>Scenario</Th>
+                <Th>Status</Th>
                 <Th textAlign="right">Action</Th>
               </Tr>
             </Thead>
             <Tbody>
-              {tableScenarios.map(({ area, scenario }) => (
-                <Tr key={scenario.scenarioId}>
-                  <Td>{displayNameOf(area)}</Td>
-                  <Td>{displayNameOf(scenario)}</Td>
-                  <Td textAlign="right">
-                    <Button
-                      size="sm"
-                      colorScheme="primary"
-                      type="button"
-                      isDisabled={!isAuthenticated}
-                      onClick={() =>
-                        navigate({
-                          pathname: 'execution',
-                          search: toSearch({ scenarioId: scenario.scenarioId }),
-                        })
-                      }
-                    >
-                      Validate Scenario
-                    </Button>
-                  </Td>
-                </Tr>
-              ))}
+              {tableScenarios.map(({ area, scenario }) => {
+                const display =
+                  SCENARIO_STATUS_DISPLAY[
+                    toScenarioDisplayStatus(
+                      scenarioStatuses.statusByScenarioId[scenario.scenarioId],
+                    )
+                  ];
+                return (
+                  <Tr key={scenario.scenarioId}>
+                    <Td>{displayNameOf(area)}</Td>
+                    <Td>{displayNameOf(scenario)}</Td>
+                    <Td>
+                      {scenarioStatuses.isUnknown ? (
+                        <Text color="gray.600" aria-label="Status not available">
+                          —
+                        </Text>
+                      ) : (
+                        <CertificationStatusIndicator display={display} fontSize="sm" />
+                      )}
+                    </Td>
+                    <Td textAlign="right">
+                      <Button
+                        size="sm"
+                        colorScheme="primary"
+                        type="button"
+                        isDisabled={!isAuthenticated}
+                        onClick={() =>
+                          navigate({
+                            pathname: 'execution',
+                            search: toSearch({ scenarioId: scenario.scenarioId }),
+                          })
+                        }
+                      >
+                        Validate Scenario
+                      </Button>
+                    </Td>
+                  </Tr>
+                );
+              })}
               {tableScenarios.length === 0 && (
                 <Tr>
-                  <Td colSpan={3}>
+                  <Td colSpan={4}>
                     <Text color="gray.600">
                       {catalog.isPending
                         ? 'Loading scenarios...'

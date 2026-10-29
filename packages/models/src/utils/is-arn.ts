@@ -1,9 +1,14 @@
 import { registerDecorator } from 'class-validator';
-import { validate as validateArn } from '@aws-sdk/util-arn-parser';
+import { parse } from '@aws-sdk/util-arn-parser';
 
+const errorMessage = 'Invalid Amazon Resource Name';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const validate = (value: any) => {
-  return validateArn(value) || 'Invalid Amazon Resource Name';
+  try {
+    return parse(value);
+  } catch {
+    return errorMessage;
+  }
 };
 
 export function IsArn(validationOptions?: { allowEmptyString?: boolean }) {
@@ -20,7 +25,7 @@ export function IsArn(validationOptions?: { allowEmptyString?: boolean }) {
       },
       validator: {
         validate: (value) =>
-          (validationOptions?.allowEmptyString && value === '') || validate(value) === true
+          (validationOptions?.allowEmptyString && value === '') || validate(value) !== errorMessage
             ? true
             : false,
       },

@@ -155,6 +155,19 @@ export const toCertificationStepRunsDto = makeSerializer<
   CertificationStepRunsDto
 >(CertificationStepRunsDto);
 
+/** One scenario's saved status, as read back by GET .../scenario-statuses. */
+export class CertificationScenarioStatusDto {
+  @Expose()
+  scenarioId: number;
+
+  @Expose()
+  status: CertScenarioStatus;
+}
+
+export const toCertificationScenarioStatusDto = makeSerializer<
+  CertificationScenarioStatusDto,
+  CertificationScenarioStatusDto
+>(CertificationScenarioStatusDto);
 /** GET .../step-runs/:stepId/snapshot: the step's decrypted response snapshot (AC-690). */
 export class CertificationStepSnapshotDto {
   @Expose()

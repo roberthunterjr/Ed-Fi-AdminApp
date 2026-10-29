@@ -7,14 +7,32 @@
 # Entries are either devDependency-only (build/CI tooling) or, where stated, reachable in
 # production. A prod entry must say so in its reason and needs a fresh look at each review.
 
-# --- braces: via micromatch, @chakra-ui/cli (devDependency, build/test tooling) ---
-[[IgnoredVulns]]
-id = "GHSA-vfj7-8cjw-p6xm"
-reason = "braces, via micromatch (semantic-release and other build tooling) and @chakra-ui/cli -> chokidar (devDependency, build tooling). No patched braces version exists (3.0.3 is the latest release)."
-ignoreUntil = 2027-01-19
-
 # --- sprintf-js: via tedious -> mssql / connect-mssql-v2 (PRODUCTION dependency) ---
 [[IgnoredVulns]]
 id = "GHSA-hp3w-g68c-fv3c"
 reason = "sprintf-js 1.1.3, via tedious -> mssql / connect-mssql-v2 (production, MSSQL driver). No patched sprintf-js version exists (1.1.3 is the latest) and tedious 20.3.8 / mssql 12.7.10 (latest) still depend on it. Denial of service via unbounded precision specifiers. The same advisory also matches a devDependency-only sprintf-js 1.0.3 (via @istanbuljs/load-nyc-config -> argparse, test tooling). Revisit if the advisory gains a fix."
-ignoreUntil = 2027-01-19
+ignoreUntil = 2026-11-21
+
+# --- braces: via micromatch, @chakra-ui/cli (devDependency, build/test tooling) ---
+[[IgnoredVulns]]
+id = "GHSA-vfj7-8cjw-p6xm"
+reason = "braces, via micromatch (semantic-release and other build tooling) and @chakra-ui/cli -> chokidar (devDependency, build tooling). No patched braces version exists (3.0.3 is the latest release)."
+ignoreUntil = 2027-01-24
+
+# --- npm-bundled dependencies: ip-address 10.7.2, undici 6.29.0 (devDependency: npm itself) ---
+# npm bundles these inside its own tarball, so root `overrides` cannot patch them.
+[[IgnoredVulns]]
+id = "GHSA-rxp7-6hxx-x8q5"
+reason = "ip-address 10.7.2, bundled inside the npm devDependency (npm -> socks -> ip-address; build/CI tooling only, not shipped). Fixed in 10.7.4 but bundled dependencies cannot be overridden; clears once a npm release bundles the fix."
+ignoreUntil = 2027-01-24
+
+[[IgnoredVulns]]
+id = "GHSA-4qv8-2p9j-2685"
+reason = "undici 6.29.0, bundled inside the npm devDependency (build/CI tooling only, not shipped). Fixed in 6.29.1 but bundled dependencies cannot be overridden; clears once a npm release bundles the fix."
+ignoreUntil = 2027-01-24
+
+[[IgnoredVulns]]
+id = "GHSA-xjj6-f33q-929c"
+reason = "undici 6.29.0, bundled inside the npm devDependency (build/CI tooling only, not shipped). Fixed in 6.29.1 but bundled dependencies cannot be overridden; clears once a npm release bundles the fix."
+ignoreUntil = 2027-01-24
+

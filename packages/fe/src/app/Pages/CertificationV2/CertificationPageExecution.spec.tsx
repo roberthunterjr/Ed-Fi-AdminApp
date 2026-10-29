@@ -27,7 +27,22 @@ jest.mock('./CertificationAuthContext', () => ({
   useCertificationAuth: jest.fn(),
 }));
 jest.mock('./useCertificationCatalog', () => ({
-  certificationQueryKeys: { all: (sbEnvironmentId: number) => ['certification', sbEnvironmentId] },
+  certificationQueryKeys: {
+    all: (sbEnvironmentId: number) => ['certification', sbEnvironmentId],
+    scenarioStatuses: (
+      sbEnvironmentId: number,
+      edfiTenantId: number | undefined,
+      odsId: number | undefined,
+      sisVersion: string | undefined,
+    ) => [
+      'certification',
+      sbEnvironmentId,
+      'scenario-statuses',
+      edfiTenantId,
+      odsId ?? null,
+      sisVersion,
+    ],
+  },
   useCertificationCatalog: jest.fn(),
   useCertificationSteps: jest.fn(),
 }));
@@ -188,14 +203,14 @@ describe('CertificationPageExecution', () => {
     expect(screen.getByText('02 - 2nd Calendar is valid')).toBeTruthy();
   });
 
-  const renderAuthenticated = () => {
+  const renderAuthenticated = (odsId?: number) => {
     (useCertificationSelection as jest.Mock).mockReturnValue({
       edfiTenantId: 10,
-      odsId: undefined,
+      odsId,
       scenarioId: 52,
     });
     (useCertificationAuth as jest.Mock).mockReturnValue({
-      auth: validAuth,
+      auth: { ...validAuth, odsId },
       setAuth: jest.fn(),
       clearAuth: jest.fn(),
     });
@@ -626,6 +641,30 @@ describe('CertificationPageExecution', () => {
       });
       expect(mockQueryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: STEP_RUNS_KEY });
     });
+
+    it.each([undefined, 5])(
+      'also invalidates the scenario statuses list used by the request page (odsId %s)',
+      (odsId) => {
+        mockStepRuns({ 189: savedFailure });
+        renderAuthenticated(odsId);
+        select(0);
+        fireEvent.click(executeButton());
+        handlers().onSuccess(
+          {
+            stepId: 189,
+            status: 'success',
+            ranAt: '2026-10-16T10:00:00.000Z',
+            scenarioStatus: 'inprogress',
+            errors: [],
+          },
+          runState.mutate.mock.calls[0][0],
+        );
+
+        expect(mockQueryClient.invalidateQueries).toHaveBeenCalledWith({
+          queryKey: certificationQueryKeys.scenarioStatuses(1, 10, odsId, 'v5'),
+        });
+      },
+    );
 
     it('shows the API message when the run is rejected', () => {
       const message =

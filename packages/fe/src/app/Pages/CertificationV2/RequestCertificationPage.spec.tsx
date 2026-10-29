@@ -1,10 +1,11 @@
 import 'reflect-metadata';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { useQuery } from '@tanstack/react-query';
 import { RequestCertificationPage } from './RequestCertificationPage';
 import { useCertificationSelection } from './useCertificationSelection';
 import { useCertificationAuth } from './CertificationAuthContext';
 import { useCertificationCatalog } from './useCertificationCatalog';
+import { useCertificationScenarioStatuses } from './useCertificationScenarioStatuses';
 
 const mockNavigate = jest.fn();
 jest.mock('react-router', () => ({
@@ -35,6 +36,9 @@ jest.mock('./CertificationAuthContext', () => ({
 }));
 jest.mock('./useCertificationCatalog', () => ({
   useCertificationCatalog: jest.fn(),
+}));
+jest.mock('./useCertificationScenarioStatuses', () => ({
+  useCertificationScenarioStatuses: jest.fn(),
 }));
 jest.mock('./CertificationAuthenticateForm', () => ({
   CertificationAuthenticateForm: (p: { isDisabled?: boolean }) => (
@@ -99,6 +103,18 @@ const twoOdss = { ...odss, 6: { id: 6, displayName: 'EdFi_Ods_255902' } };
 
 type QueryState = { isPending?: boolean };
 
+const refetchStatuses = jest.fn();
+const loadedStatuses = (overrides: object = {}) => ({
+  statusByScenarioId: {},
+  isUnknown: false,
+  isLoading: false,
+  isError: false,
+  isStale: false,
+  refetch: refetchStatuses,
+  ...overrides,
+});
+const lastStatusesArgs = () => (useCertificationScenarioStatuses as jest.Mock).mock.calls.at(-1)[0];
+
 const mockQueries = (
   env: object,
   tenantRecord: object,
@@ -126,6 +142,7 @@ describe('RequestCertificationPage', () => {
       toSearch: (e: { scenarioId?: number } = {}) => `?edfiTenantId=10&scenarioId=${e.scenarioId}`,
     });
     (useCertificationCatalog as jest.Mock).mockReturnValue(loadedCatalog);
+    (useCertificationScenarioStatuses as jest.Mock).mockReturnValue(loadedStatuses());
   });
 
   it('shows the data standard version and lists the catalog areas and scenarios', () => {
@@ -185,7 +202,11 @@ describe('RequestCertificationPage', () => {
 
   it('shows only an inline warning with Cancel when the environment does not support certification', () => {
     const clearAuth = jest.fn();
-    (useCertificationAuth as jest.Mock).mockReturnValue({ auth: null, setAuth: jest.fn(), clearAuth });
+    (useCertificationAuth as jest.Mock).mockReturnValue({
+      auth: null,
+      setAuth: jest.fn(),
+      clearAuth,
+    });
     (useCertificationCatalog as jest.Mock).mockReturnValue({
       dataStandardVersion: 'v4',
       unsupportedMessage: 'Certification requires Ed-Fi Data Standard 5.0.0 or later.',
@@ -465,5 +486,204 @@ describe('RequestCertificationPage', () => {
       pathname: 'execution',
       search: '?edfiTenantId=10&scenarioId=52',
     });
+  });
+
+  const rowFor = (scenarioName: string) =>
+    screen.getByRole('row', { name: new RegExp(scenarioName) });
+
+  it('shows a Status column between Scenario and Action', () => {
+    mockQueries(multiTenantEnv, tenants, {});
+    render(<RequestCertificationPage />);
+    const headers = screen.getAllByRole('columnheader').map((th) => th.textContent);
+    expect(headers).toEqual(['Area or Group', 'Scenario', 'Status', 'Action']);
+  });
+
+  it('shows Successful, Failed and Not executed for each scenario from the statuses hook', () => {
+    (useCertificationScenarioStatuses as jest.Mock).mockReturnValue(
+      // Scenario 60 (Staffs) is absent from the loaded response.
+      loadedStatuses({ statusByScenarioId: { 52: 'completed', 51: 'failed' } }),
+    );
+    mockQueries(multiTenantEnv, tenants, {});
+    render(<RequestCertificationPage />);
+
+    expect(within(rowFor('Calendars')).getByText('Successful')).toBeTruthy();
+    expect(within(rowFor('CalendarDates')).getByText('Failed')).toBeTruthy();
+    expect(within(rowFor('Staffs')).getByText('Not executed')).toBeTruthy();
+  });
+
+  it('shows In progress for a scenario with an in-progress saved status', () => {
+    (useCertificationScenarioStatuses as jest.Mock).mockReturnValue(
+      loadedStatuses({ statusByScenarioId: { 52: 'inprogress' } }),
+    );
+    mockQueries(multiTenantEnv, tenants, {});
+    render(<RequestCertificationPage />);
+
+    expect(within(rowFor('Calendars')).getByText('In progress')).toBeTruthy();
+  });
+
+  it('shows an unknown saved status as Failed', () => {
+    (useCertificationScenarioStatuses as jest.Mock).mockReturnValue(
+      loadedStatuses({ statusByScenarioId: { 52: 'bogus' } }),
+    );
+    mockQueries(multiTenantEnv, tenants, {});
+    render(<RequestCertificationPage />);
+
+    expect(within(rowFor('Calendars')).getByText('Failed')).toBeTruthy();
+  });
+
+  it('passes the tenant, ODS and data standard to the statuses hook without needing a login', () => {
+    (useCertificationSelection as jest.Mock).mockReturnValue({
+      edfiTenantId: 10,
+      odsId: 5,
+      scenarioId: undefined,
+      setSelection,
+      toSearch: () => '?',
+    });
+    mockQueries(multiTenantEnv, tenants, odss);
+    render(<RequestCertificationPage />);
+
+    expect(lastStatusesArgs()).toEqual({
+      sbEnvironmentId: 1,
+      edfiTenantId: 10,
+      odsId: 5,
+      sisVersion: 'v5',
+      enabled: true,
+    });
+  });
+
+  it('shows "—", not Not executed, for every row while the statuses are unknown', () => {
+    (useCertificationScenarioStatuses as jest.Mock).mockReturnValue(
+      loadedStatuses({ isUnknown: true }),
+    );
+    mockQueries(multiTenantEnv, tenants, {});
+    render(<RequestCertificationPage />);
+
+    for (const name of ['Calendars', 'CalendarDates', 'Staffs']) {
+      expect(within(rowFor(name)).getByText('—')).toBeTruthy();
+      expect(within(rowFor(name)).queryByText('Not executed')).toBeNull();
+    }
+  });
+
+  it('disables the statuses request when no tenant is selected', () => {
+    (useCertificationSelection as jest.Mock).mockReturnValue({
+      edfiTenantId: undefined,
+      odsId: undefined,
+      scenarioId: undefined,
+      setSelection,
+      toSearch: () => '?',
+    });
+    mockQueries(multiTenantEnv, {}, {});
+    render(<RequestCertificationPage />);
+
+    expect(lastStatusesArgs()).toMatchObject({ enabled: false });
+  });
+
+  it('disables the statuses request for a tenant ID that is not in the list', () => {
+    (useCertificationSelection as jest.Mock).mockReturnValue({
+      edfiTenantId: 99,
+      odsId: undefined,
+      scenarioId: undefined,
+      setSelection,
+      toSearch: () => '?',
+    });
+    mockQueries(multiTenantEnv, tenants, {});
+    render(<RequestCertificationPage />);
+
+    expect(lastStatusesArgs()).toMatchObject({ enabled: false });
+  });
+
+  it('disables the statuses request while the ODS list is still pending', () => {
+    mockQueries(multiTenantEnv, tenants, odss, { isPending: true });
+    render(<RequestCertificationPage />);
+
+    expect(lastStatusesArgs()).toMatchObject({ enabled: false });
+  });
+
+  it('disables the statuses request while an ODS is required but not selected', () => {
+    mockQueries(multiTenantEnv, tenants, twoOdss);
+    render(<RequestCertificationPage />);
+
+    expect(lastStatusesArgs()).toMatchObject({ enabled: false });
+  });
+
+  it('disables the statuses request when no catalog matches the data standard', () => {
+    (useCertificationCatalog as jest.Mock).mockReturnValue({
+      ...loadedCatalog,
+      catalogVersion: undefined,
+      areas: [],
+    });
+    mockQueries(multiTenantEnv, tenants, {});
+    render(<RequestCertificationPage />);
+
+    expect(lastStatusesArgs()).toMatchObject({ enabled: false });
+  });
+
+  it('shows one loading notice, not a spinner per row, while statuses load', () => {
+    (useCertificationScenarioStatuses as jest.Mock).mockReturnValue(
+      loadedStatuses({ isUnknown: true, isLoading: true }),
+    );
+    mockQueries(multiTenantEnv, tenants, {});
+    render(<RequestCertificationPage />);
+
+    expect(screen.getAllByText('Loading scenario statuses...')).toHaveLength(1);
+    expect(within(rowFor('Calendars')).queryByRole('progressbar')).toBeNull();
+  });
+
+  it('keeps the form and Validate Scenario buttons and offers Retry when statuses fail to load', () => {
+    (useCertificationScenarioStatuses as jest.Mock).mockReturnValue(
+      loadedStatuses({ isUnknown: true, isError: true }),
+    );
+    mockQueries(multiTenantEnv, tenants, {});
+    render(<RequestCertificationPage />);
+
+    expect(screen.getByText("We couldn't load the scenario statuses.")).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: 'Validate Scenario' })).toHaveLength(3);
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(refetchStatuses).toHaveBeenCalled();
+  });
+
+  it('warns that statuses may be out of date when a refresh fails, keeping the old ones', () => {
+    (useCertificationScenarioStatuses as jest.Mock).mockReturnValue(
+      loadedStatuses({
+        statusByScenarioId: { 52: 'completed' },
+        isError: true,
+        isStale: true,
+      }),
+    );
+    mockQueries(multiTenantEnv, tenants, {});
+    render(<RequestCertificationPage />);
+
+    expect(screen.getByText(/may be out of date/)).toBeTruthy();
+    expect(within(rowFor('Calendars')).getByText('Successful')).toBeTruthy();
+  });
+
+  it('renders scenario statuses even while the vendor is not authenticated', () => {
+    (useCertificationAuth as jest.Mock).mockReturnValue({
+      auth: null,
+      setAuth: jest.fn(),
+      clearAuth: jest.fn(),
+    });
+    (useCertificationScenarioStatuses as jest.Mock).mockReturnValue(
+      loadedStatuses({ statusByScenarioId: { 52: 'completed' } }),
+    );
+    mockQueries(multiTenantEnv, tenants, {});
+    render(<RequestCertificationPage />);
+
+    expect(within(rowFor('Calendars')).getByText('Successful')).toBeTruthy();
+  });
+
+  it('spans the empty-state row across all four columns', () => {
+    (useCertificationCatalog as jest.Mock).mockReturnValue({
+      ...loadedCatalog,
+      areas: [],
+    });
+    mockQueries(multiTenantEnv, tenants, {});
+    render(<RequestCertificationPage />);
+    expect(
+      screen
+        .getByText('No scenarios found for the current filters.')
+        .closest('td')
+        ?.getAttribute('colspan'),
+    ).toBe('4');
   });
 });

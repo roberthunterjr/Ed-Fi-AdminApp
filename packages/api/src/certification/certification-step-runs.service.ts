@@ -1,30 +1,40 @@
 import {
+  CertificationScenarioStatusDto,
   CERT_SNAPSHOT_STATE,
   CertificationStepRunsDto,
   CertificationStepSnapshotDto,
   CertStepErrorKind,
   isSupportedSisVersion,
+  toCertificationScenarioStatusDto,
   toCertificationStepRunsDto,
   toCertificationStepSnapshotDto,
 } from '@edanalytics/models';
 import {
+  CatalogVersion,
   CertificationProcess,
   CertificationProcessScenario,
   ScenarioCatalog,
   ScenarioStep,
   ScenarioStepError,
 } from '@edanalytics/models-server';
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, IsNull, Repository } from 'typeorm';
 import { ValidationHttpException } from '../utils';
-import { CERT_RUN_MESSAGES } from './certification.service';
+import { ArtifactService } from './artifact/artifact.service';
+import { CERT_RUN_MESSAGES, isCurrentCatalogVersion } from './certification.service';
 
 export interface FindStepRunsParams {
   edfiTenantId: number;
   odsId: number | null;
   sisVersion: string;
   scenarioId: number;
+}
+
+export interface FindScenarioStatusesParams {
+  edfiTenantId: number;
+  odsId: number | null;
+  sisVersion: string;
 }
 
 const EMPTY: CertificationStepRunsDto = { scenarioStatus: null, steps: [] };
@@ -35,6 +45,8 @@ const EMPTY: CertificationStepRunsDto = { scenarioStatus: null, steps: [] };
  */
 @Injectable()
 export class CertificationStepRunsService {
+  private readonly logger = new Logger(CertificationStepRunsService.name);
+
   constructor(
     @InjectRepository(ScenarioCatalog)
     private readonly scenarioRepository: Repository<ScenarioCatalog>,
@@ -46,6 +58,9 @@ export class CertificationStepRunsService {
     private readonly stepRunRepository: Repository<ScenarioStep>,
     @InjectRepository(ScenarioStepError)
     private readonly stepErrorRepository: Repository<ScenarioStepError>,
+    @InjectRepository(CatalogVersion)
+    private readonly catalogVersionRepository: Repository<CatalogVersion>,
+    private readonly artifactService: ArtifactService,
   ) {}
 
   async findStepRuns(params: FindStepRunsParams): Promise<CertificationStepRunsDto> {
@@ -54,7 +69,9 @@ export class CertificationStepRunsService {
     }
 
     // runStep keys the process on step.scenario.area.catalogVersionId; take the same value
-    // from the requested scenario so a read always finds the process a run wrote.
+    // from the requested scenario so a read always finds the process a run wrote. This is
+    // deliberately not isCurrentCatalogVersion: saved results stay readable for the
+    // scenario's own catalog version even if it is no longer the configured one.
     const scenario = await this.scenarioRepository.findOne({
       where: { scenarioId: params.scenarioId },
       relations: { area: { catalogVersion: true } },
@@ -105,6 +122,56 @@ export class CertificationStepRunsService {
           })),
       })),
     });
+  }
+
+  /**
+   * Every scenario's saved status for the current catalog version, read-only: it never
+   * creates a certification process. Scenarios without a saved row are left out.
+   */
+  async findScenarioStatuses(
+    params: FindScenarioStatusesParams,
+  ): Promise<CertificationScenarioStatusDto[]> {
+    if (!isSupportedSisVersion(params.sisVersion)) {
+      throw new ValidationHttpException(CERT_RUN_MESSAGES.unsupportedVersion);
+    }
+
+    const catalogVersions = await this.catalogVersionRepository.find({
+      where: { dataStandardVersion: params.sisVersion, isActive: true },
+    });
+    const catalogVersion = catalogVersions.find((version) =>
+      isCurrentCatalogVersion(version, params.sisVersion, this.artifactService.currentRef),
+    );
+    if (!catalogVersion) {
+      // An empty list reads as "no runs" to the caller, so make this case diagnosable.
+      this.logger.warn(
+        `No current catalog version for ${params.sisVersion}: configured artifact ref is ${
+          this.artifactService.currentRef ?? 'not set'
+        }; active versions: ${
+          catalogVersions.map((version) => version.artifactVersion).join(', ') || 'none'
+        }.`,
+      );
+      return [];
+    }
+
+    const certificationProcess = await this.processRepository.findOne({
+      where: {
+        edfiTenantId: params.edfiTenantId,
+        odsId: params.odsId ?? IsNull(),
+        catalogVersionId: catalogVersion.catalogVersionId,
+      },
+    });
+    if (!certificationProcess) return [];
+
+    const rows = await this.processScenarioRepository.find({
+      where: { certificationProcessId: certificationProcess.certificationProcessId },
+    });
+
+    return toCertificationScenarioStatusDto(
+      rows.map((row) => ({
+        scenarioId: row.scenarioId,
+        status: row.status as CertificationScenarioStatusDto['status'],
+      })),
+    );
   }
 
   /**

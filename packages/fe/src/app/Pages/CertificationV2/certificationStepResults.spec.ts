@@ -1,7 +1,8 @@
 import 'reflect-metadata';
-import { CertificationStepParameterDto } from '@edanalytics/models';
+import { CertificationStepParameterDto, CertScenarioStatus } from '@edanalytics/models';
 import {
   classifyRunError,
+  SCENARIO_STATUS_DISPLAY,
   httpStatusColorScheme,
   httpStatusLabel,
   STEP_NOT_FOUND_MESSAGE,
@@ -9,6 +10,7 @@ import {
   toDisplayStatus,
   toParameterValues,
   toRunInputs,
+  toScenarioDisplayStatus,
 } from './certificationStepResults';
 
 const parameters = [
@@ -51,6 +53,34 @@ describe('STEP_STATUS_DISPLAY', () => {
       'Successful',
       'Failed',
     ]);
+  });
+});
+
+describe('toScenarioDisplayStatus', () => {
+  it('shows a scenario that never ran as not executed', () => {
+    expect(toScenarioDisplayStatus(undefined)).toBe('notExecuted');
+  });
+
+  it.each([
+    ['completed', 'success'],
+    ['inprogress', 'inProgress'],
+    ['failed', 'failed'],
+  ] as const)('maps a saved %s status', (saved, expected) => {
+    expect(toScenarioDisplayStatus(saved)).toBe(expected);
+  });
+
+  it('never shows an unknown saved status as successful', () => {
+    expect(toScenarioDisplayStatus('bogus' as CertScenarioStatus)).toBe('failed');
+  });
+
+  it('does not resolve a prototype member name to a display status', () => {
+    expect(toScenarioDisplayStatus('constructor' as CertScenarioStatus)).toBe('failed');
+  });
+});
+
+describe('SCENARIO_STATUS_DISPLAY', () => {
+  it('shows "In progress" for the inProgress status', () => {
+    expect(SCENARIO_STATUS_DISPLAY.inProgress.label).toBe('In progress');
   });
 });
 

@@ -38,6 +38,7 @@ import { CertificationAuthenticateForm } from './CertificationAuthenticateForm';
 import { isAuthValidFor, useCertificationAuth } from './CertificationAuthContext';
 import { CertificationStepResponseDetails } from './CertificationStepResponseDetails';
 import { CertificationStepResult } from './CertificationStepResult';
+import { CertificationStatusIndicator } from './CertificationStatusIndicator';
 import { useCertificationSelection } from './useCertificationSelection';
 import {
   displayNameOf,
@@ -116,6 +117,16 @@ export const CertificationPageExecution = () => {
         },
       );
       queryClient.invalidateQueries({ queryKey: stepRunsQueryKey });
+      // The request page's scenario-statuses list is keyed separately; a step run can change
+      // the scenario's overall status, so that list needs its own invalidation too.
+      queryClient.invalidateQueries({
+        queryKey: certificationQueryKeys.scenarioStatuses(
+          sbEnvironmentId,
+          edfiTenantId,
+          odsId,
+          sisVersion,
+        ),
+      });
     },
     onError: (error: unknown) => {
       const kind = classifyRunError(error);
@@ -302,15 +313,10 @@ export const CertificationPageExecution = () => {
                   <Tr key={row.stepId}>
                     <Td>{stepNameOf(row)}</Td>
                     <Td>
-                      <HStack spacing={2}>
-                        <Box w="8px" h="8px" borderRadius="full" bg={display.dotColor} />
-                        <Text
-                          color={display.textColor}
-                          fontWeight={status === 'notExecuted' ? 'normal' : 'medium'}
-                        >
-                          {display.label}
-                        </Text>
-                      </HStack>
+                      <CertificationStatusIndicator
+                        display={display}
+                        fontWeight={status === 'notExecuted' ? 'normal' : 'medium'}
+                      />
                     </Td>
                     <Td>
                       <Button

@@ -1,5 +1,12 @@
-import { CertificationStepParameterDto, CertStepStatus } from '@edanalytics/models';
+import {
+  CERT_SCENARIO_STATUS,
+  CertificationStepParameterDto,
+  CertScenarioStatus,
+  CertStepStatus,
+} from '@edanalytics/models';
 import { isUserInputParameter } from './certificationCatalog';
+
+export type StatusDisplay = { label: string; textColor: string; dotColor: string };
 
 export type StepDisplayStatus = 'notExecuted' | 'running' | 'success' | 'failed';
 
@@ -7,13 +14,10 @@ export type StepDisplayStatus = 'notExecuted' | 'running' | 'success' | 'failed'
  * The one place a step status gets its label and colours. New states (such as
  * "Environment unreachable" in AC-654) are added here only.
  */
-export const STEP_STATUS_DISPLAY: Record<
-  StepDisplayStatus,
-  { label: string; textColor: string; dotColor: string }
-> = {
+export const STEP_STATUS_DISPLAY: Record<StepDisplayStatus, StatusDisplay> = {
   notExecuted: { label: 'Not executed', textColor: 'gray.600', dotColor: 'gray.400' },
   running: { label: 'Running', textColor: 'blue.600', dotColor: 'blue.500' },
-  success: { label: 'Successful', textColor: 'green.600', dotColor: 'green.500' },
+  success: { label: 'Successful', textColor: 'green.700', dotColor: 'green.500' },
   failed: { label: 'Failed', textColor: 'red.600', dotColor: 'red.500' },
 };
 
@@ -25,6 +29,37 @@ export const toDisplayStatus = (
   if (isRunning) return 'running';
   if (saved === undefined) return 'notExecuted';
   return saved === 'success' ? 'success' : 'failed';
+};
+
+export type ScenarioDisplayStatus = Exclude<StepDisplayStatus, 'running'> | 'inProgress';
+
+/**
+ * Same labels/colours as `STEP_STATUS_DISPLAY`, plus the scenario-only "in progress" state.
+ * Purple, not orange: orange reads as a warning or a run that is happening now.
+ */
+export const SCENARIO_STATUS_DISPLAY: Record<ScenarioDisplayStatus, StatusDisplay> = {
+  notExecuted: STEP_STATUS_DISPLAY.notExecuted,
+  success: STEP_STATUS_DISPLAY.success,
+  failed: STEP_STATUS_DISPLAY.failed,
+  inProgress: { label: 'In progress', textColor: 'purple.700', dotColor: 'purple.500' },
+};
+
+// Exhaustive on purpose: a status added to or renamed in models fails the build here.
+const SCENARIO_STATUS_TO_DISPLAY: Record<CertScenarioStatus, ScenarioDisplayStatus> = {
+  [CERT_SCENARIO_STATUS.completed]: 'success',
+  [CERT_SCENARIO_STATUS.inprogress]: 'inProgress',
+  [CERT_SCENARIO_STATUS.failed]: 'failed',
+};
+
+/** An unknown saved status shows as failed: it must never look like a pass. */
+export const toScenarioDisplayStatus = (
+  saved: CertScenarioStatus | undefined,
+): ScenarioDisplayStatus => {
+  if (saved === undefined) return 'notExecuted';
+  // hasOwn, so a value such as "constructor" can't resolve to an inherited member.
+  return Object.hasOwn(SCENARIO_STATUS_TO_DISPLAY, saved)
+    ? SCENARIO_STATUS_TO_DISPLAY[saved]
+    : 'failed';
 };
 
 const REASON_PHRASES: Record<number, string> = {

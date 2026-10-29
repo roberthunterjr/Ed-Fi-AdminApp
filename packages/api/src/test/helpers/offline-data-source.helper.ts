@@ -1,8 +1,13 @@
+import type * as ModelsServerModule from '@edanalytics/models-server';
 import type { DataSource } from 'typeorm';
 
 export type DbEngine = 'pgsql' | 'mssql';
 
-type ModelsServer = typeof import('@edanalytics/models-server');
+type ModelsServer = typeof ModelsServerModule;
+
+// Loaded through a variable on purpose: Nx reads a literal `require('@edanalytics/models-server')`
+// as a lazy import and then forbids every static import of that library across the API.
+const MODELS_SERVER_MODULE = '@edanalytics/models-server';
 
 /**
  * Builds real TypeORM entity metadata for one database engine without connecting to a database,
@@ -24,7 +29,7 @@ export const buildOfflineDataSource = async <T = undefined>(
   jest.isolateModules(() => {
     jest.doMock('config', () => ({ ...jest.requireActual('config'), DB_ENGINE: engine }));
     typeorm = require('typeorm');
-    models = require('@edanalytics/models-server');
+    models = require(MODELS_SERVER_MODULE);
     entities = pickEntities(models);
     alongside = requireAlongside?.() as T;
   });

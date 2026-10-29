@@ -1,4 +1,5 @@
 import {
+  CatalogVersion,
   CertificationProcess,
   CertificationProcessScenario,
   EdfiTenant,
@@ -35,6 +36,7 @@ import { CertificationTokenService } from './certification-token.service';
       CertificationProcessScenario,
       ScenarioStep,
       ScenarioStepError,
+      CatalogVersion,
     ]),
   ],
   controllers: [

@@ -113,6 +113,35 @@ describe('CertificationController', () => {
     });
   });
 
+  describe('getScenarioStatuses', () => {
+    const statuses = [{ scenarioId: 1, status: 'completed' }];
+
+    it('delegates with odsId ?? null', async () => {
+      const stepRunsService = { findScenarioStatuses: jest.fn().mockResolvedValue(statuses) };
+      const controller = new CertificationController({} as never, stepRunsService as never);
+
+      await expect(controller.getScenarioStatuses(edfiTenant, 'v5', 5)).resolves.toEqual(statuses);
+      expect(stepRunsService.findScenarioStatuses).toHaveBeenCalledWith({
+        edfiTenantId: 10,
+        odsId: 5,
+        sisVersion: 'v5',
+      });
+
+      await controller.getScenarioStatuses(edfiTenant, 'v5', undefined);
+      expect(stepRunsService.findScenarioStatuses).toHaveBeenCalledWith(expect.objectContaining({ odsId: null }),
+      );
+    });
+
+    it('is guarded by sb-environment:read on the environment', () => {
+      expect(
+        Reflect.getMetadata(AUTHORIZE_KEY, CertificationController.prototype.getScenarioStatuses),
+      ).toEqual({
+        privilege: 'sb-environment:read',
+        subject: { id: 'sbEnvironmentId' },
+      });
+    });
+  });
+  
   describe('getStepSnapshot', () => {
     const snapshot = { state: 'none' };
 

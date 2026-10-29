@@ -75,6 +75,16 @@ export const deriveScenarioStatus = (
     : CERT_SCENARIO_STATUS.inprogress;
 };
 
+/** A catalog version is current when it's active, matches the requested SIS version, and matches the loaded artifact. */
+export const isCurrentCatalogVersion = (
+  catalogVersion: { isActive: boolean; dataStandardVersion: string; artifactVersion: string },
+  sisVersion: string,
+  currentRef: string | undefined,
+): boolean =>
+  catalogVersion.isActive &&
+  catalogVersion.dataStandardVersion === sisVersion &&
+  catalogVersion.artifactVersion === currentRef;
+
 /** A finite number above zero, else the fallback, so a bad config value can't disable a cap or timeout. */
 export const positiveNumber = (value: unknown, fallback: number): number => {
   const parsed = Number(value);
@@ -177,9 +187,7 @@ export class CertificationService {
       step.isEnabled &&
       scenario.isEnabled &&
       area.isEnabled &&
-      catalogVersion.isActive &&
-      catalogVersion.dataStandardVersion === sisVersion &&
-      catalogVersion.artifactVersion === this.artifactService.currentRef;
+      isCurrentCatalogVersion(catalogVersion, sisVersion, this.artifactService.currentRef);
     if (!runnable) throw new NotFoundException();
     return step;
   }
