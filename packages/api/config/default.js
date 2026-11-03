@@ -198,6 +198,9 @@ module.exports = {
   OPENAPI_DESCRIPTION: 'OpenAPI spec for the EA Starting Blocks admin application.',
   EDFI_URLS_TIMEOUT_MS: 5000, // 5 seconds
   OIDC_DISCOVERY_TIMEOUT_MS: 10000, // 10 seconds
+  // Backoff for retrying discovery of a provider that failed at startup: doubles from the initial delay up to the max
+  OIDC_DISCOVERY_RETRY_INITIAL_DELAY_MS: 5000, // 5 seconds
+  OIDC_DISCOVERY_RETRY_MAX_DELAY_MS: 300000, // 5 minutes
 
   // The time to live in milliseconds
   RATE_LIMIT_TTL: 60000,

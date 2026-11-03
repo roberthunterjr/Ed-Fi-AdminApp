@@ -164,5 +164,21 @@ describe('OidcProviderRegistry', () => {
       registry.clearFailures();
       expect(registry.getFailedProviderIds()).toEqual([]);
     });
+
+    it('clears a single provider that later recovered', () => {
+      registry.markFailed(3);
+      registry.markFailed(4);
+
+      registry.clearFailure(3);
+      expect(registry.getFailedProviderIds()).toEqual([4]);
+    });
+
+    it('reports whether a provider failed, accepting a route-param string id', () => {
+      registry.markFailed(3);
+
+      expect(registry.isFailed(3)).toBe(true);
+      expect(registry.isFailed('3')).toBe(true);
+      expect(registry.isFailed(4)).toBe(false);
+    });
   });
 });

@@ -102,6 +102,12 @@ declare module 'config' {
     /** Per-provider OIDC discovery timeout in milliseconds (default: 10000) */
     OIDC_DISCOVERY_TIMEOUT_MS: number;
 
+    /** Delay before the first retry of a failed OIDC discovery; doubles per attempt (default: 5000) */
+    OIDC_DISCOVERY_RETRY_INITIAL_DELAY_MS: number;
+
+    /** Upper bound on the delay between OIDC discovery retries (default: 300000) */
+    OIDC_DISCOVERY_RETRY_MAX_DELAY_MS: number;
+
     RATE_LIMIT_TTL: number; // The time to live in milliseconds
     RATE_LIMIT_LIMIT: number; // The maximum number of requests within the ttl
 

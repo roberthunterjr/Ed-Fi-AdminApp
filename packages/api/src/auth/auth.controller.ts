@@ -25,6 +25,7 @@ import {
   Query,
   Request as Req, // TODO: can Req just be used here?
   Res,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -86,6 +87,13 @@ export class AuthController {
     })(request, response, (error: any) => {
       Logger.error(error);
       if (error?.message.includes('Unknown authentication strategy')) {
+        // A configured provider whose discovery failed is retried in the background,
+        // so it is temporarily unavailable rather than nonexistent
+        if (this.oidcProviderRegistry.isFailed(oidcId)) {
+          throw new ServiceUnavailableException(
+            'This sign-in provider is temporarily unavailable. Try again shortly.'
+          );
+        }
         throw new NotFoundException();
       } else {
         throw new InternalServerErrorException();

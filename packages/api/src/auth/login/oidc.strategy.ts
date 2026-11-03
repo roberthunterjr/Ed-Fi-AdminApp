@@ -1,5 +1,5 @@
 import { Oidc, User } from '@edanalytics/models-server';
-import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import config from 'config';
 import * as client from 'openid-client';
@@ -14,6 +14,21 @@ export interface OidcLoginInfo {
 }
 
 const DEFAULT_OIDC_DISCOVERY_TIMEOUT_MS = 10000;
+const DEFAULT_OIDC_DISCOVERY_RETRY_INITIAL_DELAY_MS = 5000;
+const DEFAULT_OIDC_DISCOVERY_RETRY_MAX_DELAY_MS = 300000;
+
+/**
+ * Delay before the given retry attempt (1-based): doubles from the initial
+ * delay and is capped at the maximum.
+ */
+const retryDelayMs = (attempt: number): number => {
+  const initial =
+    Number(config.OIDC_DISCOVERY_RETRY_INITIAL_DELAY_MS) ||
+    DEFAULT_OIDC_DISCOVERY_RETRY_INITIAL_DELAY_MS;
+  const max =
+    Number(config.OIDC_DISCOVERY_RETRY_MAX_DELAY_MS) || DEFAULT_OIDC_DISCOVERY_RETRY_MAX_DELAY_MS;
+  return Math.min(initial * 2 ** (attempt - 1), max);
+};
 
 /**
  * USE_PKCE arrives as the string "false" when set through an env var, which
@@ -64,9 +79,16 @@ const withClientAuthentication = (
  * Discovers and registers the configured OIDC providers at startup: it loads
  * the provider rows, runs discovery (bounded by a timeout), wires each one into
  * Passport, and populates the OidcProviderRegistry the rest of the app queries.
+ *
+ * A provider whose discovery fails (e.g. the IdP is still starting and its
+ * reverse proxy answers 502) is retried in the background with exponential
+ * backoff until it registers, so a startup race does not leave login broken
+ * until the API is restarted. Retries do not delay application startup.
  */
 @Injectable()
-export class OidcIdpBootstrapper implements OnModuleInit {
+export class OidcIdpBootstrapper implements OnModuleInit, OnModuleDestroy {
+  private readonly retryTimers = new Map<number, NodeJS.Timeout>();
+
   constructor(
     @InjectRepository(Oidc)
     private readonly oidcRepo: Repository<Oidc>,
@@ -86,20 +108,55 @@ export class OidcIdpBootstrapper implements OnModuleInit {
     this.registry.setConfiguredProviderCount(oidcConfigs.length);
     this.registry.clearFailures();
     await Promise.all(
-      oidcConfigs.map((oidcConfig) =>
-        this.registerIdp(oidcConfig).catch((err) => {
+      oidcConfigs.map(async (oidcConfig) => {
+        try {
+          if (!(await this.registerIdp(oidcConfig))) {
+            this.scheduleRetry(oidcConfig, 1);
+          }
+        } catch (err) {
           this.registry.markFailed(oidcConfig.id);
           Logger.error(`Unexpected error registering OIDC provider ${oidcConfig.issuer}: ${err}`);
-        })
-      )
+        }
+      })
     );
 
     const failedIds = this.registry.getFailedProviderIds();
     if (failedIds.length > 0) {
       Logger.warn(
-        `OIDC provider registration incomplete: ${failedIds.length} of ${this.registry.configuredProviderTotal} configured provider(s) failed to register (ids: ${failedIds.join(', ')}). Logout for sessions on those providers will be local-only.`
+        `OIDC provider registration incomplete: ${failedIds.length} of ${this.registry.configuredProviderTotal} configured provider(s) failed to register (ids: ${failedIds.join(', ')}). Discovery will be retried in the background; until it succeeds, login with those providers is unavailable and logout is local-only.`
       );
     }
+  }
+
+  onModuleDestroy(): void {
+    for (const timer of this.retryTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.retryTimers.clear();
+  }
+
+  private scheduleRetry(oidcConfig: Oidc, attempt: number): void {
+    const delayMs = retryDelayMs(attempt);
+    Logger.log(
+      `Retrying discovery for OIDC provider ${oidcConfig.issuer} (id ${oidcConfig.id}) in ${delayMs}ms (attempt ${attempt})`
+    );
+    const timer = setTimeout(async () => {
+      this.retryTimers.delete(oidcConfig.id);
+      let registered = false;
+      try {
+        registered = await this.registerIdp(oidcConfig);
+      } catch (err) {
+        Logger.error(`Unexpected error registering OIDC provider ${oidcConfig.issuer}: ${err}`);
+      }
+      if (registered) {
+        this.registry.clearFailure(oidcConfig.id);
+      } else {
+        this.scheduleRetry(oidcConfig, attempt + 1);
+      }
+    }, delayMs);
+    // Pending retries must not keep the process alive on shutdown
+    timer.unref();
+    this.retryTimers.set(oidcConfig.id, timer);
   }
 
   /**
@@ -130,7 +187,8 @@ export class OidcIdpBootstrapper implements OnModuleInit {
     }
   }
 
-  private async registerIdp(oidcConfig: Oidc): Promise<void> {
+  /** Resolves true once the provider is registered, false when discovery failed. */
+  private async registerIdp(oidcConfig: Oidc): Promise<boolean> {
     let oidcClient: client.Configuration;
     try {
       const timeoutMs = config.OIDC_DISCOVERY_TIMEOUT_MS ?? DEFAULT_OIDC_DISCOVERY_TIMEOUT_MS;
@@ -138,7 +196,7 @@ export class OidcIdpBootstrapper implements OnModuleInit {
     } catch (err) {
       this.registry.markFailed(oidcConfig.id);
       Logger.error(`Error registering OIDC provider ${oidcConfig.issuer}: ${err}`);
-      return;
+      return false;
     }
 
     const strategy = new AdminAppOidcStrategy(
@@ -206,6 +264,7 @@ export class OidcIdpBootstrapper implements OnModuleInit {
     Logger.log(`Registering OIDC provider ${oidcConfig.issuer} with id ${oidcConfig.id}`);
     this.registry.register(oidcConfig.id, oidcClient);
     passport.use(`oidc-${oidcConfig.id}`, strategy);
+    return true;
   }
 }
 

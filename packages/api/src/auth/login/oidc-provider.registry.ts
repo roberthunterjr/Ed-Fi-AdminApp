@@ -48,8 +48,17 @@ export class OidcProviderRegistry {
     this.failedProviderIds.add(oidcId);
   }
 
+  clearFailure(oidcId: number): void {
+    this.failedProviderIds.delete(oidcId);
+  }
+
   clearFailures(): void {
     this.failedProviderIds.clear();
+  }
+
+  /** Whether the provider is configured but has not registered (yet): discovery failed and is being retried. */
+  isFailed(oidcId: number | string): boolean {
+    return this.failedProviderIds.has(Number(oidcId));
   }
 
   getFailedProviderIds(): number[] {

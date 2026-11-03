@@ -98,14 +98,22 @@ const googleConfig = new client.Configuration(
 describe('OidcIdpBootstrapper', () => {
   let registry: OidcProviderRegistry;
   let passportUseSpy: jest.SpyInstance;
+  let bootstrapper: OidcIdpBootstrapper | undefined;
 
   const bootstrap = async (rows: unknown[], authService: unknown = {}): Promise<void> => {
     registry = new OidcProviderRegistry();
     const oidcRepo = { find: jest.fn().mockResolvedValue(rows) };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const bootstrapper = new OidcIdpBootstrapper(oidcRepo as any, authService as any, registry);
+    bootstrapper = new OidcIdpBootstrapper(oidcRepo as any, authService as any, registry);
     await bootstrapper.onModuleInit();
   };
+
+  afterEach(() => {
+    // Cancels any discovery retries a failing provider scheduled
+    bootstrapper?.onModuleDestroy();
+    bootstrapper = undefined;
+    jest.useRealTimers();
+  });
 
   beforeEach(() => {
     jest.restoreAllMocks();
@@ -257,6 +265,97 @@ describe('OidcIdpBootstrapper', () => {
 
       expect(passportUseSpy).toHaveBeenCalledWith('oidc-1', expect.any(Object));
       expect(passportUseSpy).not.toHaveBeenCalledWith('oidc-2', expect.any(Object));
+    });
+  });
+
+  describe('when discovery fails at startup', () => {
+    const retryConfig = config as unknown as {
+      OIDC_DISCOVERY_RETRY_INITIAL_DELAY_MS?: number;
+      OIDC_DISCOVERY_RETRY_MAX_DELAY_MS?: number;
+    };
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+      // discovery is a module-mock jest.fn, so spyOn reuses it with earlier tests' calls
+      jest.mocked(client.discovery).mockClear();
+      retryConfig.OIDC_DISCOVERY_RETRY_INITIAL_DELAY_MS = 1000;
+      retryConfig.OIDC_DISCOVERY_RETRY_MAX_DELAY_MS = 3000;
+    });
+
+    afterEach(() => {
+      delete retryConfig.OIDC_DISCOVERY_RETRY_INITIAL_DELAY_MS;
+      delete retryConfig.OIDC_DISCOVERY_RETRY_MAX_DELAY_MS;
+    });
+
+    it('registers the provider once a background retry succeeds', async () => {
+      // The IdP's reverse proxy answers 502 until the IdP finishes starting
+      jest
+        .spyOn(client, 'discovery')
+        .mockRejectedValueOnce(new Error('expected 200 OK, got: 502 Bad Gateway'))
+        .mockResolvedValue(keycloakConfig);
+
+      await bootstrap([keycloakOidcRow]);
+      expect(passportUseSpy).not.toHaveBeenCalled();
+      expect(registry.getFailedProviderIds()).toEqual([keycloakOidcRow.id]);
+
+      await jest.advanceTimersByTimeAsync(1000);
+
+      expect(passportUseSpy).toHaveBeenCalledWith('oidc-1', expect.any(Object));
+      expect(registry.getFailedProviderIds()).toEqual([]);
+      expect(registry.getEndSessionUrl(keycloakOidcRow.id, 'token')).not.toBeNull();
+    });
+
+    it('backs off exponentially up to the maximum delay', async () => {
+      const discovery = jest
+        .spyOn(client, 'discovery')
+        .mockRejectedValue(new Error('discovery unavailable'));
+
+      await bootstrap([keycloakOidcRow]);
+      expect(discovery).toHaveBeenCalledTimes(1);
+
+      // Retries follow after 1000ms, 2000ms, then capped at 3000ms
+      await jest.advanceTimersByTimeAsync(999);
+      expect(discovery).toHaveBeenCalledTimes(1);
+      await jest.advanceTimersByTimeAsync(1);
+      expect(discovery).toHaveBeenCalledTimes(2);
+      await jest.advanceTimersByTimeAsync(2000);
+      expect(discovery).toHaveBeenCalledTimes(3);
+      await jest.advanceTimersByTimeAsync(3000);
+      expect(discovery).toHaveBeenCalledTimes(4);
+      await jest.advanceTimersByTimeAsync(3000);
+      expect(discovery).toHaveBeenCalledTimes(5);
+      expect(passportUseSpy).not.toHaveBeenCalled();
+    });
+
+    it('does not retry providers that registered at startup', async () => {
+      const discovery = jest.spyOn(client, 'discovery').mockImplementation((url: URL) =>
+        url.href.startsWith(keycloakOidcRow.issuer)
+          ? Promise.resolve(keycloakConfig)
+          : Promise.reject(new Error('discovery unavailable'))
+      );
+
+      await bootstrap([keycloakOidcRow, googleOidcRow]);
+      await jest.advanceTimersByTimeAsync(1000);
+
+      const discoveredIssuers = discovery.mock.calls.map(([url]) => url.href);
+      expect(
+        discoveredIssuers.filter((href) => href.startsWith(keycloakOidcRow.issuer))
+      ).toHaveLength(1);
+      expect(discoveredIssuers.filter((href) => href.startsWith(googleOidcRow.issuer))).toHaveLength(
+        2
+      );
+    });
+
+    it('stops retrying when the module is destroyed', async () => {
+      const discovery = jest
+        .spyOn(client, 'discovery')
+        .mockRejectedValue(new Error('discovery unavailable'));
+
+      await bootstrap([keycloakOidcRow]);
+      bootstrapper?.onModuleDestroy();
+      await jest.advanceTimersByTimeAsync(10000);
+
+      expect(discovery).toHaveBeenCalledTimes(1);
     });
   });
 

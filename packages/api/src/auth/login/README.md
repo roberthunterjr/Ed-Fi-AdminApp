@@ -20,6 +20,10 @@ Unlike other apps SBAA only supports OIDC. Multiple IdPs can be registered, each
    - The data that you might call the authentication "result" is in the redirect URL, and it's parsed by PassportJS,
    - and then used by the OIDC library to complete the OIDC flow (called the private client authorization code flow)
 
+### Provider discovery at startup
+
+Each configured IdP is discovered (its `.well-known/openid-configuration` fetched) when the API starts, bounded by `OIDC_DISCOVERY_TIMEOUT_MS`. Only providers that discover successfully get a Passport strategy. Until a configured provider registers, `/login/:id` for it returns 503 Service Unavailable. An id that isn't configured at all returns 404. A provider that fails, for example because the IdP is still starting and its reverse proxy answers 502, is retried in the background with exponential backoff: the first retry waits `OIDC_DISCOVERY_RETRY_INITIAL_DELAY_MS` (default 5 seconds), and each retry after that doubles the wait, up to `OIDC_DISCOVERY_RETRY_MAX_DELAY_MS` (default 5 minutes). Retries continue until the provider registers. They don't hold up startup, so healthy providers are usable right away.
+
 A strategy other than OIDC could have any kind of unique logic in it, but the end result for Passport is always the same: a user object to store in the authenticated session cache.
 
 ## Session cache

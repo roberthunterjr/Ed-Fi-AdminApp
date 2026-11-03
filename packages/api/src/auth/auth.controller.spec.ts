@@ -17,7 +17,12 @@ jest.mock('./login/oidc.strategy', () => ({
   NO_ROLE: 'No role assigned for user',
 }));
 
-import { BadRequestException } from '@nestjs/common';
+import {
+  BadRequestException,
+  InternalServerErrorException,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import type { Request, Response } from 'express';
 import passport from 'passport';
 import { AuditEventQueue } from '../audit/audit-event.queue';
@@ -36,6 +41,7 @@ describe('AuthController', () => {
   let getEndSessionUrl: jest.Mock;
   let getSoleOidcId: jest.Mock;
   let getIssuer: jest.Mock;
+  let isFailed: jest.Mock;
   let response: Response;
   let record: jest.Mock;
 
@@ -56,6 +62,7 @@ describe('AuthController', () => {
     getEndSessionUrl = jest.fn();
     getSoleOidcId = jest.fn();
     getIssuer = jest.fn((id: number | string) => `https://idp.example/realms/${id}`);
+    isFailed = jest.fn(() => false);
     record = jest.fn();
     controller = new AuthController(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -63,7 +70,7 @@ describe('AuthController', () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       {} as any,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      { getEndSessionUrl, getSoleOidcId, getIssuer } as any,
+      { getEndSessionUrl, getSoleOidcId, getIssuer, isFailed } as any,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       { record } as any,
     );
@@ -144,6 +151,43 @@ describe('AuthController', () => {
 
       expect(getEndSessionUrl).not.toHaveBeenCalled();
       expect(response.redirect).toHaveBeenCalledWith('http://frontend');
+    });
+  });
+
+  describe('oidcLogin', () => {
+    const mockAuthenticateError = (error: Error) => {
+      jest
+        .spyOn(passport, 'authenticate')
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .mockImplementation(() => (_req: any, _res: any, next: any) => next(error));
+    };
+
+    const login = () => {
+      const request = buildRequest({});
+      request.query = {};
+      // Route params arrive as strings at runtime despite the number annotation
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      controller.oidcLogin('3' as any, request, response);
+    };
+
+    it('returns 404 for a provider that is not configured', () => {
+      mockAuthenticateError(new Error('Unknown authentication strategy "oidc-3"'));
+
+      expect(login).toThrow(NotFoundException);
+    });
+
+    it('returns 503 for a configured provider whose discovery failed', () => {
+      isFailed.mockReturnValue(true);
+      mockAuthenticateError(new Error('Unknown authentication strategy "oidc-3"'));
+
+      expect(login).toThrow(ServiceUnavailableException);
+      expect(isFailed).toHaveBeenCalledWith('3');
+    });
+
+    it('returns 500 for any other authentication error', () => {
+      mockAuthenticateError(new Error('something else'));
+
+      expect(login).toThrow(InternalServerErrorException);
     });
   });
 
@@ -427,7 +471,7 @@ describe('AuthController', () => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         {} as any,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        { getEndSessionUrl, getSoleOidcId, getIssuer } as any,
+        { getEndSessionUrl, getSoleOidcId, getIssuer, isFailed } as any,
         new AuditEventRecorder(queue, true)
       );
       const request = buildRequest({});
@@ -449,7 +493,7 @@ describe('AuthController', () => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         {} as any,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        { getEndSessionUrl, getSoleOidcId, getIssuer } as any,
+        { getEndSessionUrl, getSoleOidcId, getIssuer, isFailed } as any,
         new AuditEventRecorder(queue, true)
       );
       mockAuthenticate(
