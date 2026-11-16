@@ -201,11 +201,17 @@ table.t td.act{text-align:right;white-space:nowrap}
 .mapform input,.mapform select,.mapin,.mapels select,.mapels textarea{font:inherit;font-size:13px;padding:5px 8px;
   border:1px solid var(--line);border-radius:6px;background:#fff;max-width:100%}
 .mapin{width:100%}
-.mapels textarea{width:100%;min-width:180px}
+.mapels{table-layout:fixed;width:100%}
+.mapels th:nth-child(1){width:24%}.mapels th:nth-child(2){width:15%}.mapels th:nth-child(3){width:33%}
+.mapels th:nth-child(5){width:44px}
+.mapels td{vertical-align:top;overflow-wrap:anywhere}
+.mapels select{width:100%}
+.mapels textarea{width:100%;box-sizing:border-box}
 .mchips{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:5px}
-.mchip{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line);background:#f4f7fa;border-radius:999px;
-  padding:2px 4px 2px 10px;font-family:ui-monospace,Consolas,monospace;font-size:11.5px}
-.mchip select{font-size:11.5px;padding:1px 4px}
+.mchip{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px;border:1px solid var(--line);background:#f4f7fa;
+  border-radius:12px;padding:2px 4px 2px 10px;font-family:ui-monospace,Consolas,monospace;font-size:11.5px;max-width:100%;
+  box-sizing:border-box;overflow-wrap:anywhere}
+.mchip select{font-size:11.5px;padding:1px 4px;width:auto;max-width:100%}
 .mchip .x{border:0;background:transparent;cursor:pointer;font-size:14px;line-height:1;color:var(--muted)}
 .mapadd{font-size:12px}
 .mapissue{font-size:12px;color:#9c4221;margin-bottom:4px}
@@ -1402,6 +1408,8 @@ function hist(sub, what, who, when){
     doc.product = {name:'Northwind Assess', namespace:'uri://northwind.example.com/',
       description:'Northwind’s reading screener.'};
     doc.importReport.source = 'workbook';
+    Object.assign(doc.assessments[0], {title:'Northwind Reading Screener', identifier:'NORTHWIND-SCREENER-READING',
+      family:'NORTHWIND-SCREENER'});
     const el = n => doc.elements.find(e => e.name === n);
     removeElement(doc, el('TestDate').id);
     setElementField(doc, el('Grade').id, 'type', 'String');
@@ -3461,11 +3469,53 @@ function mapChecksHTML(doc, issues){
       : '<div class="empty">No type problems.</div>'}`;
 }
 
-/* ---- issues (filled out in the generate/review step) ---- */
+/* ---- issues: flagged for the reviewer, never blocking (D27) ---- */
+const explainedBadge = (doc, i) => String(doc.issueNotes[i.key] || '').trim()
+  ? '<span class="badge b-green">Explained</span>' : '<span class="badge b-amber">Unexplained</span>';
 function mapIssuesHTML(sub, doc, issues, ro){
-  return `<h2>Issues</h2>${issues.length ? `<ul>${issues.map(i => `<li>${esc(i.message)}</li>`).join('')}</ul>`
-    : '<div class="empty">No issues.</div>'}`;
+  const sum = issueSummary(issues, doc);
+  return `<h2>Issues <span class="hint">${sum.total} issues &middot; ${sum.explained} explained. Notes explain special
+      circumstances; they never clear an issue — the reviewer judges.</span></h2>
+    ${!issues.length ? '<div class="empty">No issues.</div>' : ''}
+    ${ISSUE_KINDS.map(([kind, heading]) => {
+      const list = issues.filter(i => i.kind === kind);
+      if (!list.length) return '';
+      return `<h3 class="mapsubhead">${heading} <span class="muted">(${list.length})</span></h3>
+        <table class="t"><tbody>${list.map(i => `<tr>
+          <td style="width:42%">${esc(i.message)}</td>
+          <td class="nowrap">${explainedBadge(doc, i)}</td>
+          <td>${ro ? (doc.issueNotes[i.key] ? `<div class="mapnote">${esc(doc.issueNotes[i.key])}</div>`
+              : '<span class="muted">No note from vendor</span>')
+            : `<textarea class="mapin" rows="2" data-act="mapissuenote" data-sub="${sub.id}" data-key="${esc(i.key)}"
+                placeholder="Explain this for the reviewer (optional)">${esc(doc.issueNotes[i.key] || '')}</textarea>`}</td>
+        </tr>`).join('')}</tbody></table>`;
+    }).join('')}
+    ${doc.orphanNotes.length ? `<h3 class="mapsubhead">Notes from removed items</h3>
+      ${doc.orphanNotes.map(n => `<div class="mapnote"><strong>${esc(n.from)}:</strong> ${esc(n.text)}</div>`).join('')}` : ''}`;
 }
+
+function generateModalHTML(sub){
+  const doc = sub.mappingDraft.doc;
+  const issues = computeIssues(doc);
+  const sum = issueSummary(issues, doc);
+  const cur = currentVersion(sub, 'mapping');
+  const runs = runsFor(sub);
+  const next = sub.artifacts.mapping.length + 1;
+  return {body:`
+    <div class="banner"><h3>Issues don’t block generation. They travel with this version for the reviewer (D27).</h3>
+      <p>This creates <strong>Vendor mapping CSV v${next}</strong> with ${sum.total} issues
+        (${sum.explained} explained, ${sum.total - sum.explained} unexplained).</p></div>
+    ${cur && runs.length ? `<div class="banner"><h3>Runs pinned to v${cur.v} will be marked stale (D14).</h3>
+      <p>They keep pointing at v${cur.v}; nothing is re-run.</p></div>` : ''}
+    ${ISSUE_KINDS.map(([kind, heading]) => {
+      const list = issues.filter(i => i.kind === kind);
+      return list.length ? `<h3 class="mapsubhead">${heading} (${list.length})</h3><ul>${list.map(i =>
+        `<li>${explainedBadge(doc, i)} ${esc(i.message)}</li>`).join('')}</ul>` : '';
+    }).join('')}`,
+    footer:`<button class="btn ghost" data-act="cancel">Keep editing</button>
+      <button class="btn" data-act="mapgenerateconfirm" data-sub="${sub.id}">Generate v${next}</button>`};
+}
+function generateModal(sub){ const m = generateModalHTML(sub); modal('Generate mapping CSV', m.body, m.footer); }
 
 /* ---------------- REVIEWER ---------------- */
 function reviewerScreen(route){
@@ -3758,6 +3808,7 @@ function bind(){
         case 'mapblank': startBlankMapping(sub); go('#/mapping/' + sub.id); break;
         case 'mapimport': importModal(sub); break;
         case 'mapview': go('#/mapping/' + sub.id); break;
+        case 'mapgenerate': generateModal(sub); break;
         default:
           if (act.startsWith('map') && sub && sub.mappingDraft) mapAction(act, sub, node);
         case 'gotorun': go('#/newrun/' + sub.id); break;
@@ -3973,6 +4024,15 @@ function bindOverlay(){
         return;
       }
       if (act === 'mapimportretry'){ importModal(sub); return; }
+      if (act === 'mapgenerateconfirm'){
+        const v = generateMapping(sub);
+        closeModal();
+        toast('<strong>Vendor mapping CSV v' + v.v + '</strong> generated with ' + v.summary.total + ' issues (' +
+          v.summary.explained + ' explained). Reviewers see this version.');
+        go('#/submission/' + sub.id);
+        render();
+        return;
+      }
       if (act === 'mapgoeditor'){ closeModal(); go('#/mapping/' + sub.id); return; }
       if (act === 'dochanges'){
         const text = ($('#commentBox') && $('#commentBox').value.trim()) || '';

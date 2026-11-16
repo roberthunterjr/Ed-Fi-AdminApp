@@ -905,3 +905,42 @@ test('a vendor with no draft and no version gets the import choices', () => {
   const s = p.startCertification('p7', 'assessments');
   assert.match(p.mappingScreen(s.id, 'elements', false), /data-act="mapimport"/);
 });
+
+test('the reviewer sees the generated version, not the vendor draft', () => {
+  const p = loadPrototype();
+  const f2 = p.APP.submissions.find(s => s.productId === 'p5');
+  f2.mappingDraft = {doc:p.emptyMappingDoc(), baseVersion:3, dirty:true};
+  f2.mappingDraft.doc.product.name = 'DRAFT ONLY';
+  const html = p.mappingScreen(f2.id, 'issues', true);
+  assert.doesNotMatch(html, /DRAFT ONLY/);
+  assert.match(html, /Unexplained/);
+  assert.match(html, />Explained</);
+});
+
+test('issue notes are shown to the reviewer inline', () => {
+  const p = loadPrototype();
+  const f2 = p.APP.submissions.find(s => s.productId === 'p5');
+  const cur = p.currentVersion(f2, 'mapping');
+  const html = p.mappingScreen(f2.id, 'issues', true);
+  for (const note of Object.values(cur.doc.issueNotes)) assert.ok(html.includes(p.esc(note)), note);
+  assert.match(html, /No note from vendor/);
+  assert.match(html, /Required fields not mapped/);
+});
+
+test('the vendor issues tab offers a note box per issue', () => {
+  const p = loadPrototype(); const s = asmSub(p);
+  p.openMappingDraft(s);
+  const html = p.mappingScreen(s.id, 'issues', false);
+  assert.match(html, /data-act="mapissuenote"[^>]*data-key="unmapped:/);
+});
+
+test('generate modal never disables confirm', () => {
+  const p = loadPrototype(); const s = asmSub(p);
+  p.openMappingDraft(s);
+  const {body, footer} = p.generateModalHTML(s);
+  assert.match(footer, /data-act="mapgenerateconfirm"/);
+  assert.doesNotMatch(footer, /disabled/);
+  assert.match(body, /D27/);
+  assert.match(body, /Unexplained/);
+  assert.match(body, /will be marked stale/);
+});
