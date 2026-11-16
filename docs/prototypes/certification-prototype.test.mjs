@@ -753,3 +753,52 @@ test('a note on a cleared issue moves to the element, tagged', () => {
   assert.equal(d.issueNotes[key], undefined);
   assert.match(el.notes, /\[issue resolved\] Placement is a label, not a number\./);
 });
+
+const asmSub = p => p.APP.submissions.find(s => s.productId === 'p2');
+
+test('opening the tool on an uploaded CSV parses it into a draft', () => {
+  const p = loadPrototype(); const s = asmSub(p);
+  const d = p.openMappingDraft(s);
+  assert.equal(d.baseVersion, 1);
+  assert.equal(d.doc.importReport.source, 'csv');
+  assert.equal(d.dirty, false);
+});
+
+test('re-importing over a draft needs confirmation', () => {
+  const p = loadPrototype(); const s = asmSub(p);
+  p.openMappingDraft(s);
+  s.mappingDraft.doc.elements[0].notes = 'keep me?';
+  assert.deepEqual(p.importWorkbook(s, 'clean'), {needsConfirm:true});
+  assert.equal(s.mappingDraft.doc.elements[0].notes, 'keep me?');
+  assert.equal(p.importWorkbook(s, 'clean', {replace:true}).ok, true);
+});
+
+test('a malformed workbook leaves the draft untouched and is audited', () => {
+  const p = loadPrototype(); const s = asmSub(p);
+  const r = p.importWorkbook(s, 'malformed');
+  assert.equal(r.ok, false);
+  assert.equal(s.mappingDraft == null, true);
+  assert.match(s.history[0].what, /import rejected/);
+});
+
+test('generating from a blank mapping is allowed and stales older runs', () => {
+  const p = loadPrototype(); const s = asmSub(p);
+  const old = p.APP.runs.find(r => r.submissionId === s.id && r.pinned.mapping === 1);
+  p.startBlankMapping(s);
+  const v = p.generateMapping(s);
+  assert.equal(v.v, 2);
+  assert.equal(v.source, 'tool');
+  assert.ok(v.issues.some(i => i.key === 'unmapped:-:-:-:assessments'), 'empty mapping is flagged, not blocked');
+  assert.equal(p.isStale(s, old), true);
+  assert.equal(s.mappingDraft.dirty, false);
+  assert.match(s.history[0].what, /Mapping generated in mapping tool: Vendor mapping CSV v2/);
+});
+
+test('the reviewer-side seed carries 4 issues, 3 explained', () => {
+  const p = loadPrototype();
+  const f2 = p.APP.submissions.find(s => s.productId === 'p5');
+  const cur = p.currentVersion(f2, 'mapping');
+  assert.equal(cur.source, 'tool');
+  assert.deepEqual(cur.summary, {total:4, explained:3});
+  assert.match(p.mappingIssueBadge(cur), /4 issues · 3 explained/);
+});

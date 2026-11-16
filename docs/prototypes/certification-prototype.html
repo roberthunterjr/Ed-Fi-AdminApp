@@ -1201,14 +1201,14 @@ function artifactSet(list){
   const out = {};
   ARTIFACTS.forEach(a => out[a.id] = []);
   (list||[]).forEach(([type, name, by, at]) => {
-    out[type].push({v:out[type].length+1, name, by, at});
+    out[type].push({v:out[type].length+1, name, by, at, source:'upload'});
   });
   return out;
 }
 function mkSubmission(o){
   const sub = Object.assign({
     id:uid('sub'), status:'draft', comments:[], history:[],
-    reviewerSeenAt:null, artifactsChangedAt:null, decision:null
+    reviewerSeenAt:null, artifactsChangedAt:null, decision:null, mappingDraft:null
   }, o);
   APP.submissions.push(sub);
   return sub;
@@ -1372,6 +1372,30 @@ function hist(sub, what, who, when){
     {what:'Status changed to Ready for Review (readiness gate met)', who:'Platform', at:d(11,10,8)},
     {what:'Submission created', who:'eng@northwind.example.com', at:d(4,12,0)}
   ];
+  /* f2 — a tool-generated mapping version with issues and vendor notes, so the
+     reviewer side of the mapping tool has something to show (design §5.10). */
+  (function(){
+    const NW = 'eng@northwind.example.com';
+    const doc = parseWorkbook(WORKBOOK_FIXTURES.clean).doc;
+    doc.product = {name:'Northwind Assess', namespace:'uri://northwind.example.com/',
+      description:'Northwind’s reading screener.'};
+    doc.importReport.source = 'workbook';
+    const el = n => doc.elements.find(e => e.name === n);
+    removeElement(doc, el('TestDate').id);
+    setElementField(doc, el('Grade').id, 'type', 'String');
+    addElement(doc, {assessmentId:doc.assessments[0].id, name:'Fluency Band', definition:'Fluency band label.', type:'Level'});
+    const issues = computeIssues(doc);
+    const note = (pred, text) => { const i = issues.find(pred); if (i) doc.issueNotes[i.key] = text; };
+    note(i => i.kind === 'unmapped', 'Administration date comes from the district SIS roster feed, not from Northwind Assess.');
+    note(i => i.kind === 'type-mismatch', 'Grade is exported as text (e.g. "3"); our loader translates it to GradeLevelDescriptor.');
+    note(i => i.kind === 'unused-value', 'Kept so districts can see the grade levels we support.');
+    const at = d(14,16,10);
+    f2.artifacts.mapping.push({v:f2.artifacts.mapping.length + 1, name:'nw-assessments-mapping-v3.csv', by:NW, at,
+      source:'tool', doc, issues, summary:issueSummary(issues, doc)});
+    f2.artifactsChangedAt = at;
+    f2.history.unshift({what:'Mapping generated in mapping tool: Vendor mapping CSV v3 (' + issues.length +
+      ' issues, ' + issueSummary(issues, doc).explained + ' explained)', who:NW, at});
+  })();
   f3.history = [
     {what:'Run run-113 failed — infrastructure error (executor could not reach Larkspur_Cert)', who:'Platform', at:d(14,17,41)},
     {what:'Changes requested with comment', who:R, at:d(9,14,10)},
@@ -2041,7 +2065,7 @@ function uploadArtifact(sub, type, name, malformed){
   }
   const list = sub.artifacts[type];
   const replacing = list.length > 0;
-  list.push({v:list.length + 1, name, by:me(), at:tick()});
+  list.push({v:list.length + 1, name, by:me(), at:tick(), source:'upload'});
   const label = ARTIFACTS.find(a => a.id === type).label;
   hist(sub, (replacing
     ? 'Artifact replaced: ' + label + ' → v' + list.length + ' (' + name + ')'
@@ -2050,6 +2074,71 @@ function uploadArtifact(sub, type, name, malformed){
   sub.artifactsChangedAt = tick();
   recomputeStatus(sub);
   return {ok:true};
+}
+
+/* ---- mapping tool: submission lifecycle ----
+   A submission keeps one working draft. Only Generate creates an artifact
+   version; issues and notes travel with it for the reviewer (D27). */
+const cloneDoc = doc => JSON.parse(JSON.stringify(doc));
+function openMappingDraft(sub){
+  if (sub.mappingDraft) return sub.mappingDraft;
+  const cur = currentVersion(sub, 'mapping');
+  if (!cur) return null;
+  let doc;
+  if (cur.source === 'tool') doc = cloneDoc(cur.doc);
+  else {
+    /* prototype: an uploaded CSV in the tool's export format is read back in */
+    doc = parseWorkbook(WORKBOOK_FIXTURES.vendorb).doc;
+    doc.importReport.source = 'csv';
+  }
+  sub.mappingDraft = {doc, baseVersion:cur.v, dirty:false};
+  return sub.mappingDraft;
+}
+function startBlankMapping(sub){
+  const doc = emptyMappingDoc();
+  doc.importReport = {source:'blank', resolved:0, needsTarget:0, typesCorrected:0, valuesAdded:0,
+    standardEnabled:0, placeholders:[]};
+  const cur = currentVersion(sub, 'mapping');
+  sub.mappingDraft = {doc, baseVersion:cur ? cur.v : null, dirty:true};
+  hist(sub, 'Mapping started from scratch in mapping tool');
+  return sub.mappingDraft;
+}
+function importWorkbook(sub, sim, opts){
+  opts = opts || {};
+  if (sub.mappingDraft && !opts.replace) return {needsConfirm:true};
+  const res = parseWorkbook(WORKBOOK_FIXTURES[sim]);
+  if (!res.ok){
+    hist(sub, 'Mapping workbook import rejected — ' + res.errors.length + ' problems');
+    return {ok:false, errors:res.errors};
+  }
+  const cur = currentVersion(sub, 'mapping');
+  sub.mappingDraft = {doc:res.doc, baseVersion:cur ? cur.v : null, dirty:true};
+  hist(sub, 'Mapping workbook imported — ' + res.report.resolved + ' resolved, ' +
+    res.report.needsTarget + ' need a target');
+  return {ok:true, report:res.report};
+}
+function markDraftDirty(sub){ if (sub.mappingDraft) sub.mappingDraft.dirty = true; }
+function generateMapping(sub){
+  const draft = sub.mappingDraft;
+  reconcileNotes(draft.doc);
+  const issues = computeIssues(draft.doc);
+  const summary = issueSummary(issues, draft.doc);
+  const list = sub.artifacts.mapping;
+  const version = {v:list.length + 1, name:suggestName(sub, 'mapping', currentVersion(sub, 'mapping')),
+    by:me(), at:tick(), source:'tool', doc:cloneDoc(draft.doc), issues, summary};
+  list.push(version);
+  hist(sub, 'Mapping generated in mapping tool: Vendor mapping CSV v' + version.v + ' (' +
+    summary.total + ' issues, ' + summary.explained + ' explained)');
+  sub.artifactsChangedAt = tick();
+  recomputeStatus(sub);
+  draft.baseVersion = version.v;
+  draft.dirty = false;
+  return version;
+}
+function mappingIssueBadge(version){
+  if (!version || version.source !== 'tool' || !version.summary || !version.summary.total) return '';
+  return '<span class="badge b-amber">' + version.summary.total + ' issues · ' +
+    version.summary.explained + ' explained</span>';
 }
 
 function startRun(sub, outcomeMode){
