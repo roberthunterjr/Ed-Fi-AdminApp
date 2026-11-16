@@ -964,6 +964,90 @@ const ST_LABEL = {
   'fail-auth':['bad','Authentication failed']
 };
 
+/* ---------- mapping tool: data ----------
+   A representative slice of the Ed-Fi Assessments v5 model, the standard Ed-Fi
+   descriptors the bank starts with (all disabled), and the workbook fixtures the
+   import simulates. Declared above seed() so seed() can use them (TDZ). */
+const DATA_TYPES = ['String','Integer','Decimal','Percent','Percentile','Boolean','Date','Range','Level','Enumeration'];
+const TYPE_ALIASES = {interger:'Integer', int:'Integer', percentage:'Percent', pct:'Percent',
+  bool:'Boolean', enum:'Enumeration', text:'String'};
+const RM = 'AssessmentReportingMethodDescriptor';
+const EDFI_V5_TARGETS = [
+  {path:'assessment.assessmentIdentifier', entity:'Assessment', type:'String', required:true,
+   def:'A unique number or alphanumeric code assigned to an assessment.'},
+  {path:'assessment.namespace', entity:'Assessment', type:'String', required:true,
+   def:'Namespace for the assessment.'},
+  {path:'assessment.assessmentTitle', entity:'Assessment', type:'String', required:true,
+   def:'The title or name of the assessment.'},
+  {path:'assessment.academicSubjects', entity:'Assessment', type:'Descriptor', required:true,
+   descriptor:'AcademicSubjectDescriptor', def:'The subject area(s) of the assessment.'},
+  {path:'assessment.assessedGradeLevels', entity:'Assessment', type:'Descriptor', required:true,
+   descriptor:'GradeLevelDescriptor', def:'The grade level(s) for which the assessment is designed.'},
+  {path:'assessment.assessmentCategoryDescriptor', entity:'Assessment', type:'Descriptor',
+   descriptor:'AssessmentCategoryDescriptor', def:'The category of an assessment based on format and content.'},
+  {path:'assessment.maxRawScore', entity:'Assessment', type:'Decimal', def:'The maximum raw score achievable.'},
+  {path:'assessment.adaptiveAssessment', entity:'Assessment', type:'Boolean', def:'Whether the assessment is adaptive.'},
+  {path:'assessment.assessmentFamily', entity:'Assessment', type:'String', def:'The assessment family this assessment belongs to.'},
+  {path:'assessment.period', entity:'Assessment', type:'Descriptor', descriptor:'AssessmentPeriodDescriptor',
+   def:'The period or window in which the assessment is administered.'},
+  {path:'assessment.languages', entity:'Assessment', type:'Descriptor', collection:true,
+   keyedBy:'LanguageDescriptor', descriptor:'LanguageDescriptor', def:'Languages the assessment is offered in.'},
+  {path:'assessment.scores', entity:'Assessment', type:'Score', collection:true, keyedBy:RM,
+   def:'Definition of a score the assessment reports (reporting method, datatype, range).'},
+  {path:'assessment.performanceLevels', entity:'Assessment', type:'Descriptor', collection:true,
+   keyedBy:'PerformanceLevelDescriptor', descriptor:'PerformanceLevelDescriptor', def:'Performance levels defined for the assessment.'},
+  {path:'objectiveAssessment.identificationCode', entity:'ObjectiveAssessment', type:'String',
+   def:'Identifier for a sub-test or objective of the assessment.'},
+  {path:'objectiveAssessment.scores', entity:'ObjectiveAssessment', type:'Score', collection:true, keyedBy:RM,
+   def:'Definition of a score reported for an objective.'},
+  {path:'studentAssessment.studentAssessmentIdentifier', entity:'StudentAssessment', type:'String', required:true,
+   def:'A unique identifier for one student administration.'},
+  {path:'studentAssessment.studentReference', entity:'StudentAssessment', type:'String', required:true,
+   def:'The student who took the assessment.'},
+  {path:'studentAssessment.administrationDate', entity:'StudentAssessment', type:'Date', required:true,
+   def:'The date and time the assessment was administered.'},
+  {path:'studentAssessment.administrationLanguageDescriptor', entity:'StudentAssessment', type:'Descriptor',
+   descriptor:'LanguageDescriptor', def:'The language the assessment was administered in.'},
+  {path:'studentAssessment.eventCircumstanceDescriptor', entity:'StudentAssessment', type:'Descriptor',
+   descriptor:'EventCircumstanceDescriptor', def:'An unusual event during the administration.'},
+  {path:'studentAssessment.retestIndicatorDescriptor', entity:'StudentAssessment', type:'Descriptor',
+   descriptor:'RetestIndicatorDescriptor', def:'Whether this administration is a retest.'},
+  {path:'studentAssessment.whenAssessedGradeLevelDescriptor', entity:'StudentAssessment', type:'Descriptor',
+   descriptor:'GradeLevelDescriptor', def:'The student’s grade level when assessed.'},
+  {path:'studentAssessment.scoreResults', entity:'StudentAssessment', type:'Score', collection:true, keyedBy:RM,
+   def:'A score the student achieved, keyed by reporting method.'},
+  {path:'studentAssessment.performanceLevels', entity:'StudentAssessment', type:'Descriptor', collection:true,
+   keyedBy:'PerformanceLevelDescriptor', descriptor:'PerformanceLevelDescriptor', def:'The performance level the student achieved.'},
+  {path:'studentObjectiveAssessment.scoreResults', entity:'StudentObjectiveAssessment', type:'Score', collection:true,
+   keyedBy:RM, def:'A score the student achieved on an objective, keyed by reporting method.'}
+];
+const SCORE_COLLECTIONS = ['assessment.scores','studentAssessment.scoreResults',
+  'objectiveAssessment.scores','studentObjectiveAssessment.scoreResults'];
+/* vendor type → Ed-Fi ResultDatatypeType for a score result */
+const SCORE_TYPES = {Integer:'Integer', Decimal:'Decimal', Percent:'Percentage', Percentile:'Percentile',
+  Range:'Range', Level:'Level'};
+const STANDARD_DESCRIPTORS = [
+  {type:RM, definition:'The method used to report assessment performance.',
+   values:['Scale score','Percentile','Lexile Measure','Quantile Measure','Raw score']},
+  {type:'AssessmentCategoryDescriptor', definition:'The category of an assessment.',
+   values:['Diagnostic','Benchmark test']},
+  {type:'AcademicSubjectDescriptor', definition:'The subject area of an assessment.',
+   values:['English Language Arts','Mathematics','Reading']},
+  {type:'GradeLevelDescriptor', definition:'A grade level.',
+   values:['Kindergarten','First grade','Second grade','Third grade','Fourth grade','Fifth grade',
+     'Sixth grade','Seventh grade','Eighth grade']},
+  {type:'LanguageDescriptor', definition:'A language.', values:['English','Spanish']},
+  {type:'ResultDatatypeTypeDescriptor', definition:'The datatype of a score result.',
+   values:['Decimal','Integer','Level','Percentage','Percentile','Range']},
+  {type:'AssessmentPeriodDescriptor', definition:'The period in which an assessment is given.',
+   values:['Beginning of Year','Middle of Year','End of Year']},
+  {type:'RetestIndicatorDescriptor', definition:'Whether an administration is a retest.',
+   values:['Primary Administration','Retest']},
+  {type:'EventCircumstanceDescriptor', definition:'An unusual event during an administration.', values:['Other']},
+  {type:'PerformanceLevelDescriptor', definition:'A performance level.',
+   values:['Advanced','Proficient','Basic','Below Basic']}
+].map(d => ({type:d.type, definition:d.definition, values:d.values.map(code => ({code, short:code}))}));
+
 /* ---------- mutable application state ---------- */
 const APP = {
   persona: 'vendor',
@@ -1383,6 +1467,20 @@ function resultTally(r){
   let pass = 0, fail = 0;
   r.groups.forEach(g => g.elements.forEach(e => e.st === 'pass' ? pass++ : fail++));
   return {pass, fail, notAttempted:0, total:pass + fail, unit:'element checks'};
+}
+
+/* ---------- mapping tool: model ----------
+   Pure functions over a MappingDoc. None of them touch APP or the DOM. */
+function normalizeType(raw){
+  const s = String(raw == null ? '' : raw).trim().toLowerCase();
+  const type = DATA_TYPES.find(t => t.toLowerCase() === s) || TYPE_ALIASES[s] || null;
+  return {type, corrected: !!type && type.toLowerCase() !== s};
+}
+function targetByPath(path){ return EDFI_V5_TARGETS.find(t => t.path === path); }
+function resolveTargets(completeName){
+  const parts = String(completeName == null ? '' : completeName).trim().split('/')
+    .map(s => s.trim()).filter(Boolean);
+  return {paths: parts.filter(p => targetByPath(p)), unresolved: parts.filter(p => !targetByPath(p))};
 }
 
 /* ---------- derived state ---------- */

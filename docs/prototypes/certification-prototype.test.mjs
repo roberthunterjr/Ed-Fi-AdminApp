@@ -588,3 +588,31 @@ test('infra and auth failures are distinguishable from scenario failures (FR8)',
   });
   assert.deepEqual(kinds, ['fail-unchanged', 'fail-infra', 'fail-auth']);
 });
+
+/* ---- mapping tool ---- */
+test('normalizeType fixes typos and records the correction', () => {
+  const p = loadPrototype();
+  assert.deepEqual(p.normalizeType('Interger'), {type:'Integer', corrected:true});
+  assert.deepEqual(p.normalizeType('integer'), {type:'Integer', corrected:false});
+  assert.deepEqual(p.normalizeType('percentage'), {type:'Percent', corrected:true});
+  assert.deepEqual(p.normalizeType('Widget'), {type:null, corrected:false});
+});
+
+test('resolveTargets splits workbook complete names and keeps unknown parts', () => {
+  const p = loadPrototype();
+  assert.deepEqual(p.resolveTargets('assessment.scores/studentAssessment.scoreResults'),
+    {paths:['assessment.scores','studentAssessment.scoreResults'], unresolved:[]});
+  assert.deepEqual(p.resolveTargets('assessments.assessment.id'),
+    {paths:[], unresolved:['assessments.assessment.id']});
+});
+
+test('the v5 slice marks the required fields from the design', () => {
+  const p = loadPrototype();
+  const req = p.EDFI_V5_TARGETS.filter(t => t.required).map(t => t.path).sort();
+  assert.deepEqual(req, ['assessment.academicSubjects','assessment.assessedGradeLevels',
+    'assessment.assessmentIdentifier','assessment.assessmentTitle','assessment.namespace',
+    'studentAssessment.administrationDate','studentAssessment.studentAssessmentIdentifier',
+    'studentAssessment.studentReference']);
+  assert.equal(p.targetByPath('studentAssessment.scoreResults').keyedBy,
+    'AssessmentReportingMethodDescriptor');
+});
