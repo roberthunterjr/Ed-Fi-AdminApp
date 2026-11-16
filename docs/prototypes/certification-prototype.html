@@ -1062,6 +1062,7 @@ const WB_HEADERS = {
   EnumerationDefinitions: ['Enumeration','Definition'],
   EnumerationItems: ['Enumeration','Code Value','Short Description','Description']
 };
+const ELEMENT_FIELDS = ['name','definition','type','enumType','notes','objective'];
 const WB_REQUIRED_COLS = {Product:3, Assessments:2, ElementDefinitions:7, EnumerationDefinitions:2, EnumerationItems:4};
 const WORKBOOK_FIXTURES = (function(){
   const VB = 'uri://vendor-b.example.com/';
@@ -1720,6 +1721,113 @@ function parseWorkbook(wb){
 
   doc.importReport = report;
   return {ok:true, doc, report};
+}
+
+/* ---- bank operations (D28: the bank is the only source of selectable values) ---- */
+function bankValue(doc, id){ return doc.bank.values.find(v => v.id === id); }
+function mapElement(doc, id){ return doc.elements.find(e => e.id === id); }
+function selectableValues(doc, type){
+  return doc.bank.values.filter(v => (v.ns === 'vendor' || v.enabled) && (!type || v.type === type));
+}
+function valueUsers(doc, valueId){
+  const v = bankValue(doc, valueId);
+  if (!v) return [];
+  const els = doc.elements.filter(e => e.targets.some(t => t.entryKey === valueId) || e.enumType === v.type)
+    .map(e => e.name);
+  const asms = doc.assessments.filter(a => a.category === v.uri).map(a => a.title || a.type);
+  return els.concat(asms);
+}
+function addBankValue(doc, o){
+  const type = String(o.type || '').trim(), code = String(o.code || '').trim();
+  if (!type || !code) return {ok:false, error:'A descriptor type and a code value are required.'};
+  if (doc.bank.values.some(v => v.type === type && v.code.toLowerCase() === code.toLowerCase()))
+    return {ok:false, error:'"' + code + '" already exists in ' + type + '.'};
+  if (!doc.bank.types.some(t => t.type === type)) doc.bank.types.push({type, definition:''});
+  const value = {id:uid('mval'), type, ns:'vendor', uri:doc.product.namespace + type + '#' + code,
+    code, short:o.short || '', desc:o.desc || '', enabled:true};
+  doc.bank.values.push(value);
+  return {ok:true, value};
+}
+function setStandardEnabled(doc, valueId, on){
+  const v = bankValue(doc, valueId);
+  if (!v || v.ns !== 'edfi') return {ok:false, blockedBy:[]};
+  if (!on){
+    const users = valueUsers(doc, valueId);
+    if (users.length) return {ok:false, blockedBy:users};
+  }
+  v.enabled = !!on;
+  return {ok:true};
+}
+function removeBankValue(doc, valueId){
+  const v = bankValue(doc, valueId);
+  if (!v || v.ns !== 'vendor') return {ok:false, blockedBy:[]};
+  const users = valueUsers(doc, valueId);
+  if (users.length) return {ok:false, blockedBy:users};
+  doc.bank.values.splice(doc.bank.values.indexOf(v), 1);
+  return {ok:true};
+}
+
+/* ---- element operations ---- */
+function addElement(doc, o){
+  const el = {id:uid('mel'), assessmentId:o.assessmentId || null, objective:o.objective || null,
+    name:o.name || 'New element', definition:o.definition || '', type:o.type || null, enumType:null,
+    targets:[], notes:'', importNote:null};
+  doc.elements.push(el);
+  return el;
+}
+function removeElement(doc, elementId){
+  const el = mapElement(doc, elementId);
+  if (!el) return;
+  if (el.notes) doc.orphanNotes.push({from:el.name, text:el.notes});
+  Object.keys(doc.issueNotes).filter(k => k.includes(elementId)).forEach(k => {
+    if (doc.issueNotes[k]) doc.orphanNotes.push({from:el.name, text:doc.issueNotes[k]});
+    delete doc.issueNotes[k];
+  });
+  doc.elements.splice(doc.elements.indexOf(el), 1);
+}
+function setElementField(doc, elementId, field, value){
+  const el = mapElement(doc, elementId);
+  if (!el || !ELEMENT_FIELDS.includes(field)) return;
+  el[field] = value === '' && field !== 'notes' && field !== 'definition' ? null : value;
+  if (field === 'type' && value !== 'Enumeration') el.enumType = null;
+}
+function addTarget(doc, elementId, path, entryKey){
+  const el = mapElement(doc, elementId);
+  if (!el) return {ok:false, error:'No such element.'};
+  if (!targetByPath(path)) return {ok:false, error:'"' + path + '" is not in the Ed-Fi v5 model.'};
+  const key = entryKey || null;
+  if (el.targets.some(t => t.path === path && t.entryKey === key))
+    return {ok:false, error:'That target is already mapped.'};
+  el.targets.push({path, entryKey:key});
+  return {ok:true};
+}
+function removeTarget(doc, elementId, index){
+  const el = mapElement(doc, elementId);
+  if (el) el.targets.splice(index, 1);
+}
+function setTargetKey(doc, elementId, index, valueId){
+  const el = mapElement(doc, elementId);
+  if (el && el.targets[index]) el.targets[index].entryKey = valueId || null;
+}
+function collectionEntries(doc, assessmentId){
+  const groups = {};
+  doc.elements.filter(e => e.assessmentId === assessmentId).forEach(e => e.targets.forEach(t => {
+    const tgt = targetByPath(t.path);
+    if (!tgt || !tgt.collection || !t.entryKey) return;
+    const k = t.path + '|' + (e.objective || '') + '|' + t.entryKey;
+    if (!groups[k]) groups[k] = {collection:t.path, objective:e.objective || null,
+      key:bankValue(doc, t.entryKey), elements:[]};
+    if (!groups[k].elements.includes(e)) groups[k].elements.push(e);
+  }));
+  return Object.values(groups).filter(g => g.key).sort((a, b) =>
+    a.collection.localeCompare(b.collection) || (a.objective || '').localeCompare(b.objective || '') ||
+    a.key.code.localeCompare(b.key.code));
+}
+function addCollectionEntry(doc, o){
+  const key = bankValue(doc, o.keyValueId);
+  if (!key || !selectableValues(doc).includes(key))
+    return {ok:false, error:'Add or enable this descriptor value in the bank first.'};
+  return addTarget(doc, o.elementId, o.collection, o.keyValueId);
 }
 
 /* ---------- derived state ---------- */

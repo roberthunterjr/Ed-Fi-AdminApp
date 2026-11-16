@@ -653,3 +653,55 @@ test('emptyMappingDoc holds standard descriptors, all disabled', () => {
   assert.ok(d.bank.values.every(v => v.ns === 'edfi' && v.enabled === false));
   assert.deepEqual(d.elements, []);
 });
+
+const vbDoc = p => p.parseWorkbook(p.WORKBOOK_FIXTURES.vendorb).doc;
+
+test('bank: only enabled or vendor values are selectable, duplicates rejected', () => {
+  const p = loadPrototype(); const d = vbDoc(p);
+  const pct = d.bank.values.find(v => v.uri === 'uri://ed-fi.org/AssessmentReportingMethodDescriptor#Percentile');
+  assert.ok(p.selectableValues(d, 'AssessmentReportingMethodDescriptor').includes(pct));
+  const raw = d.bank.values.find(v => v.uri === 'uri://ed-fi.org/AssessmentReportingMethodDescriptor#Raw score');
+  assert.ok(!p.selectableValues(d).includes(raw), 'disabled standard value is not selectable');
+  const dup = p.addBankValue(d, {type:'EventCircumstanceDescriptor', code:'yellow rush flag', short:'', desc:''});
+  assert.equal(dup.ok, false);
+  assert.match(dup.error, /already exists/);
+});
+
+test('bank: a value in use cannot be disabled or removed', () => {
+  const p = loadPrototype(); const d = vbDoc(p);
+  const scale = d.bank.values.find(v => v.uri.endsWith('AssessmentReportingMethodDescriptor#Scale score'));
+  const r = p.setStandardEnabled(d, scale.id, false);
+  assert.equal(r.ok, false);
+  assert.ok(r.blockedBy.includes('Scale Score'));
+  const gain = d.bank.values.find(v => v.ns === 'vendor' && v.code === 'Diagnostic Gain');
+  assert.equal(p.removeBankValue(d, gain.id).ok, false);
+});
+
+test('elements: many targets per element, and collection entries group by key', () => {
+  const p = loadPrototype(); const d = vbDoc(p);
+  const ela = d.assessments.find(a => a.type === 'ELA Diagnostic');
+  const entries = p.collectionEntries(d, ela.id);
+  const scaleRes = entries.find(e => e.collection === 'studentAssessment.scoreResults' &&
+    e.objective === null && e.key.code === 'Scale score');
+  assert.deepEqual(scaleRes.elements.map(e => e.name), ['Scale Score']);
+  const el = p.addElement(d, {assessmentId:ela.id, name:'Raw Score', definition:'', type:'Level'});
+  const lex = d.bank.values.find(v => v.uri.endsWith('#Raw score'));
+  assert.equal(lex.enabled, false);
+  assert.equal(p.addCollectionEntry(d, {assessmentId:ela.id, objective:null,
+    collection:'studentAssessment.scoreResults', keyValueId:lex.id, elementId:el.id}).ok, false,
+    'standard value must be enabled first');
+  p.setStandardEnabled(d, lex.id, true);
+  assert.equal(p.addCollectionEntry(d, {assessmentId:ela.id, objective:null,
+    collection:'studentAssessment.scoreResults', keyValueId:lex.id, elementId:el.id}).ok, true);
+  assert.equal(p.addTarget(d, el.id, 'assessment.scores', lex.id).ok, true);
+  assert.equal(el.targets.length, 2);
+  assert.equal(p.addTarget(d, el.id, 'no.such.path').ok, false);
+});
+
+test('removing an element keeps its notes as orphan notes', () => {
+  const p = loadPrototype(); const d = vbDoc(p);
+  const el = d.elements.find(e => e.name === 'Rush Flag');
+  p.setElementField(d, el.id, 'notes', 'Yellow means possible rush.');
+  p.removeElement(d, el.id);
+  assert.deepEqual(d.orphanNotes, [{from:'Rush Flag', text:'Yellow means possible rush.'}]);
+});
