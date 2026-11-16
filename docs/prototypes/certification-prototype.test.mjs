@@ -616,3 +616,40 @@ test('the v5 slice marks the required fields from the design', () => {
   assert.equal(p.targetByPath('studentAssessment.scoreResults').keyedBy,
     'AssessmentReportingMethodDescriptor');
 });
+
+test('parseWorkbook rejects a workbook missing tabs or headers', () => {
+  const p = loadPrototype();
+  const r = p.parseWorkbook(p.WORKBOOK_FIXTURES.malformed);
+  assert.equal(r.ok, false);
+  assert.ok(r.errors.includes('Tab "ElementDefinitions" is missing.'));
+  assert.ok(r.errors.includes('Tab "Product": expected column "Namespace".'));
+});
+
+test('parseWorkbook imports the vendor B workbook with visible corrections', () => {
+  const p = loadPrototype();
+  const {ok, doc, report} = p.parseWorkbook(p.WORKBOOK_FIXTURES.vendorb);
+  assert.equal(ok, true);
+  assert.equal(doc.product.namespace, 'uri://vendor-b.example.com/');
+  assert.equal(doc.assessments.length, 2);
+  const el = n => doc.elements.find(e => e.name === n);
+  assert.equal(el('Annual Typical Growth Measure').type, 'Integer');
+  assert.deepEqual(el('Annual Typical Growth Measure').importNote.corrections, ['Interger → Integer']);
+  assert.deepEqual(el('AssessmentID').targets, []);
+  assert.deepEqual(el('AssessmentID').importNote.unresolved, ['assessments.assessment.id']);
+  assert.equal(el('Phonics Scale Score').objective, 'Phonics');
+  assert.equal(el('Rush Flag').enumType, 'EventCircumstanceDescriptor');
+  const scale = doc.bank.values.find(v => v.uri === 'uri://ed-fi.org/AssessmentReportingMethodDescriptor#Scale score');
+  assert.equal(scale.enabled, true, 'referenced standard value is enabled by import');
+  assert.ok(el('Scale Score').targets.every(t => t.entryKey === scale.id));
+  assert.deepEqual(report.placeholders, ['PerformanceLevelDescriptor']);
+  assert.ok(!doc.bank.values.some(v => v.code === 'CustomValue'));
+  assert.ok(doc.bank.values.some(v => v.type === 'AccommodationDescriptor' && v.ns === 'vendor'));
+});
+
+test('emptyMappingDoc holds standard descriptors, all disabled', () => {
+  const p = loadPrototype();
+  const d = p.emptyMappingDoc();
+  assert.ok(d.bank.values.length > 20);
+  assert.ok(d.bank.values.every(v => v.ns === 'edfi' && v.enabled === false));
+  assert.deepEqual(d.elements, []);
+});

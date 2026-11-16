@@ -1047,6 +1047,130 @@ const STANDARD_DESCRIPTORS = [
   {type:'PerformanceLevelDescriptor', definition:'A performance level.',
    values:['Advanced','Proficient','Basic','Below Basic']}
 ].map(d => ({type:d.type, definition:d.definition, values:d.values.map(code => ({code, short:code}))}));
+const DESCRIPTOR_TYPE_ALIASES = {Accomodation:'AccommodationDescriptor', resultDatatypeType:'ResultDatatypeTypeDescriptor'};
+
+/* Workbook fixtures, in the Data Mapping Template's tab and header layout. The
+   Vendor B Diagnostic workbook is an anonymized stand-in for a real vendor's filled
+   template: its element names, v6.2-style paths, column-H descriptor JSON, type
+   typos and CustomValue placeholder are kept; identifiers and definitions are not. */
+const WB_HEADERS = {
+  Product: ['Vendor Product','Namespace','Description'],
+  Assessments: ['Assessment Type','Description','assessmentTitle','assessmentIdentifier','adaptiveAssessment',
+    'assessmentCategoryDescriptor','assessmentFamily','maxRawScore'],
+  ElementDefinitions: ['Assessment Type','Element','Definition','Data Type','Ed-Fi ODS/API Version',
+    'Ed-Fi ODS/API Element','Ed-Fi ODS/API Element Complete Name','Descriptor JSON'],
+  EnumerationDefinitions: ['Enumeration','Definition'],
+  EnumerationItems: ['Enumeration','Code Value','Short Description','Description']
+};
+const WB_REQUIRED_COLS = {Product:3, Assessments:2, ElementDefinitions:7, EnumerationDefinitions:2, EnumerationItems:4};
+const WORKBOOK_FIXTURES = (function(){
+  const VB = 'uri://vendor-b.example.com/';
+  const SC = 'assessment.scores/studentAssessment.scoreResults';
+  const OBJ = 'objectiveAssessment.scores/studentObjectiveAssessment.scoreResults';
+  const rmJson = (ns, code) => '"assessmentReportingMethodDescriptor": "' + ns + RM + '#' + code + '"';
+  const vh = code => rmJson(VB, code), eh = code => rmJson('uri://ed-fi.org/', code);
+  const DIAG = 'uri://ed-fi.org/AssessmentCategoryDescriptor#Diagnostic';
+  const el = (asm, name, def, type, path, h) =>
+    [asm, name, def, type, 'v6.2', path.split('/').pop().split('.').pop(), path, h || ''];
+  const ELA = 'Vendor B ELA Diagnostic', MATH = 'Vendor B Math Diagnostic';
+
+  const vendorb = {tabs:{
+    Product: [WB_HEADERS.Product,
+      ['Vendor B Diagnostic', VB, 'An adaptive reading and mathematics diagnostic.']],
+    Assessments: [WB_HEADERS.Assessments,
+      ['ELA Diagnostic', 'Adaptive diagnostic for reading.', 'Vendor B ELA Diagnostic',
+       'VENDORB-DIAGNOSTIC-ELA', '1', DIAG, 'VENDORB-DIAGNOSTIC', '800'],
+      ['Math Diagnostic', 'Adaptive diagnostic for mathematics.', 'Vendor B Math Diagnostic',
+       'VENDORB-DIAGNOSTIC-MATH', '1', DIAG, 'VENDORB-DIAGNOSTIC', '800']],
+    ElementDefinitions: [WB_HEADERS.ElementDefinitions,
+      el(ELA, 'Baseline Diagnostic (Y/N)', 'Whether this is the student’s baseline diagnostic.', 'Enumeration', SC, vh('Is Baseline Diagnostic?')),
+      el(ELA, 'Most Recent Diagnostic (Y/N)', 'Whether this is the most recent diagnostic.', 'Enumeration', 'studentAssessment.retestIndicatorDescriptor'),
+      el(ELA, 'Duration (minutes)', 'Minutes spent on the diagnostic.', 'Integer', SC, vh('Duration (minutes)')),
+      el(ELA, 'Rush Flag', 'Whether the student may have rushed.', 'Enumeration', 'studentAssessment.eventCircumstanceDescriptor'),
+      el(ELA, 'Scale Score', 'Scale score achieved (0-800).', 'Integer', SC, eh('Scale score')),
+      el(ELA, 'Placement Level', 'Placement level achieved, e.g. "Level 5".', 'String', SC, vh('Placement Level')),
+      el(ELA, 'Relative Placement', 'Placement relative to grade level.', 'String', SC, vh('Relative Placement')),
+      el(ELA, 'Percentile', 'Normed percentile.', 'Percentile', SC, eh('Percentile')),
+      el(ELA, 'Lexile Measure', 'Lexile measure.', 'Level', SC, eh('Lexile Measure')),
+      el(ELA, 'Lexile Range', 'Recommended text difficulty range.', 'Range', SC, vh('Lexile Range')),
+      el(ELA, 'Diagnostic Language', 'Language the diagnostic was taken in.', 'Enumeration',
+        'assessment.languages.studentAssessment/studentAssessment.administrationLanguageDescriptor'),
+      el(ELA, 'Diagnostic Gain', 'Scale score gain from baseline to most recent.', 'Integer', 'studentAssessment.scoreResults', vh('Diagnostic Gain')),
+      el(ELA, 'Annual Typical Growth Measure', 'Typical annual growth for the student.', 'Interger', SC, vh('Typical Growth Measure')),
+      el(ELA, 'Annual Stretch Growth Measure', 'Ambitious annual growth for the student.', 'Interger', SC, vh('Stretch Growth Measure')),
+      el(ELA, 'Percent Progress to Annual Typical Growth (%)', 'Progress toward typical growth.', 'percentage', SC, vh('Progress To Typical Growth')),
+      el(ELA, 'Mid On-Grade Level Score', 'Scale score for mid on-grade level.', 'integer', SC, vh('Mid On-Grade Level Scale Score')),
+      el(ELA, 'Phonics Scale Score', 'Phonics domain scale score.', 'Integer', OBJ, eh('Scale score')),
+      el(ELA, 'Phonics Placement Level', 'Phonics domain placement level.', 'String', OBJ, vh('Placement Level')),
+      el(ELA, 'Vocabulary Scale Score', 'Vocabulary domain scale score.', 'Integer', OBJ, eh('Scale score')),
+      el(MATH, 'AssessmentID', 'Identifier of the assessment.', 'String', 'assessments.assessment.id'),
+      el(MATH, 'Scale Score', 'Scale score achieved (0-800).', 'Integer', SC, eh('Scale score')),
+      el(MATH, 'Percentile', 'Normed percentile.', 'Percentile', SC, eh('Percentile')),
+      el(MATH, 'Quantile Measure', 'Quantile measure.', 'Level', SC, eh('Quantile Measure')),
+      el(MATH, 'Placement Level', 'Placement level achieved.', 'String', SC, vh('Placement Level')),
+      el(MATH, 'Number and Operations Scale Score', 'Number and Operations domain scale score.', 'Integer', OBJ, eh('Scale score'))],
+    EnumerationDefinitions: [WB_HEADERS.EnumerationDefinitions,
+      ['AssessmentPeriod', 'The window in which an assessment is administered.'],
+      ['Accomodation', 'A variation in how an assessment is presented or taken.'],
+      ['AssessmentReportingMethod', 'The method used to report performance.'],
+      ['EventCircumstance', 'An unusual event during an administration.'],
+      ['RetestIndicator', 'Whether an administration is the latest.'],
+      ['PerformanceLevel', 'Performance levels defined for the assessment.']],
+    EnumerationItems: [WB_HEADERS.EnumerationItems].concat([
+      ['AssessmentReportingMethod','Diagnostic Gain','Gain from baseline to most recent diagnostic'],
+      ['AssessmentReportingMethod','Is Baseline Diagnostic?','Whether this is the baseline diagnostic'],
+      ['AssessmentReportingMethod','Progress To Stretch Growth','Progress to stretch growth'],
+      ['AssessmentReportingMethod','Progress To Typical Growth','Progress to typical growth'],
+      ['AssessmentReportingMethod','Lexile Range','Recommended text difficulty range'],
+      ['AssessmentReportingMethod','Mid On-Grade Level Scale Score','Scale score for mid on-grade level'],
+      ['AssessmentReportingMethod','Quantile Range','Recommended math difficulty range'],
+      ['AssessmentReportingMethod','Duration (minutes)','Time spent on the diagnostic'],
+      ['AssessmentReportingMethod','Relative Placement','Placement relative to grade level'],
+      ['AssessmentReportingMethod','Stretch Growth Measure','Ambitious annual growth'],
+      ['AssessmentReportingMethod','Typical Growth Measure','Typical annual growth'],
+      ['AssessmentReportingMethod','Placement Level','Placement level'],
+      ['AssessmentPeriod','Spring','Spring norming window'],
+      ['AssessmentPeriod','Winter','Winter norming window'],
+      ['AssessmentPeriod','Fall','Fall norming window'],
+      ['EventCircumstance','Yellow Rush Flag','The student may have rushed'],
+      ['EventCircumstance','Red Rush Flag','The student rushed'],
+      ['RetestIndicator','Latest Diagnostic','The most recently completed diagnostic'],
+      ['RetestIndicator','Previous Diagnostic','Not the most recently completed diagnostic'],
+      ['Accomodation','Read Aloud Directions Questions Answers','Directions, questions and answers read aloud'],
+      ['Accomodation','Read Aloud On','Assessment read aloud'],
+      ['Accomodation','Read Aloud Directions Questions Answers Passages','Everything read aloud, including passages'],
+      ['Accomodation','Read Aloud Off','Assessment not read aloud'],
+      ['PerformanceLevel','CustomValue','Custom Value']
+    ].map(r => [r[0], r[1], r[2], r[2]]))
+  }};
+
+  const clean = {tabs:{
+    Product: [WB_HEADERS.Product, ['Vendor B Reading Screener', VB, 'A short reading screener.']],
+    Assessments: [WB_HEADERS.Assessments,
+      ['Reading Screener', 'A short reading screener.', 'Vendor B Reading Screener',
+       'VENDORB-SCREENER-READING', '0', DIAG, 'VENDORB-SCREENER', '100']],
+    ElementDefinitions: [WB_HEADERS.ElementDefinitions,
+      el('Reading Screener', 'StudentID', 'The student’s identifier.', 'String', 'studentAssessment.studentReference'),
+      el('Reading Screener', 'TestID', 'Identifier of one administration.', 'String', 'studentAssessment.studentAssessmentIdentifier'),
+      el('Reading Screener', 'TestDate', 'Date the screener was taken.', 'Date', 'studentAssessment.administrationDate'),
+      el('Reading Screener', 'Subject', 'Subject of the screener.', 'Enumeration', 'assessment.academicSubjects'),
+      el('Reading Screener', 'Grade', 'Grade the screener is designed for.', 'Enumeration', 'assessment.assessedGradeLevels'),
+      el('Reading Screener', 'Scale Score', 'Scale score achieved.', 'Integer', SC, eh('Scale score'))],
+    EnumerationDefinitions: [WB_HEADERS.EnumerationDefinitions,
+      ['AcademicSubject', 'The subject area of the assessment.'],
+      ['GradeLevel', 'The grade level of the assessment.']],
+    EnumerationItems: [WB_HEADERS.EnumerationItems,
+      ['AcademicSubject', 'uri://ed-fi.org/AcademicSubjectDescriptor#Reading', 'Reading', 'Reading'],
+      ['GradeLevel', 'uri://ed-fi.org/GradeLevelDescriptor#Third grade', 'Third grade', 'Third grade']]
+  }};
+
+  const malformed = {tabs:Object.assign({}, vendorb.tabs, {
+    Product: [['Vendor Product','Namespace URI','Description'], vendorb.tabs.Product[1]]
+  })};
+  delete malformed.tabs.ElementDefinitions;
+
+  return {clean, vendorb, malformed};
+})();
 
 /* ---------- mutable application state ---------- */
 const APP = {
@@ -1481,6 +1605,121 @@ function resolveTargets(completeName){
   const parts = String(completeName == null ? '' : completeName).trim().split('/')
     .map(s => s.trim()).filter(Boolean);
   return {paths: parts.filter(p => targetByPath(p)), unresolved: parts.filter(p => !targetByPath(p))};
+}
+function descriptorTypeName(raw){
+  const s = String(raw || '').trim();
+  return DESCRIPTOR_TYPE_ALIASES[s] || (/Descriptor$/.test(s) ? s : s + 'Descriptor');
+}
+function emptyMappingDoc(){
+  const doc = {product:{name:'', namespace:'', description:''}, assessments:[],
+    bank:{types:[], values:[]}, elements:[], issueNotes:{}, orphanNotes:[], importReport:null};
+  STANDARD_DESCRIPTORS.forEach(d => {
+    doc.bank.types.push({type:d.type, definition:d.definition});
+    d.values.forEach(v => doc.bank.values.push({id:uid('mval'), type:d.type, ns:'edfi',
+      uri:'uri://ed-fi.org/' + d.type + '#' + v.code, code:v.code, short:v.short, desc:'', enabled:false}));
+  });
+  return doc;
+}
+/* Turn on a standard value named by its full uri. Returns the value, or null. */
+function enableStandardByUri(doc, uri, report){
+  const v = doc.bank.values.find(x => x.ns === 'edfi' && x.uri === uri);
+  if (v && !v.enabled){ v.enabled = true; if (report) report.standardEnabled++; }
+  return v || null;
+}
+function parseWorkbook(wb){
+  const tabs = (wb && wb.tabs) || {};
+  const errors = [];
+  Object.keys(WB_REQUIRED_COLS).forEach(name => {
+    const rows = tabs[name];
+    if (!rows){ errors.push('Tab "' + name + '" is missing.'); return; }
+    const head = rows[0] || [];
+    WB_HEADERS[name].slice(0, WB_REQUIRED_COLS[name]).forEach(col => {
+      if (!head.includes(col)) errors.push('Tab "' + name + '": expected column "' + col + '".');
+    });
+  });
+  if (errors.length) return {ok:false, errors};
+
+  const doc = emptyMappingDoc();
+  const report = {source:'workbook', resolved:0, needsTarget:0, typesCorrected:0, valuesAdded:0,
+    standardEnabled:0, placeholders:[]};
+  const body = name => tabs[name].slice(1).filter(r => r.some(c => String(c == null ? '' : c).trim()));
+  const col = (name, row, header) => {
+    const i = tabs[name][0].indexOf(header);
+    return i < 0 ? '' : String(row[i] == null ? '' : row[i]).trim();
+  };
+
+  const prod = body('Product')[0] || [];
+  doc.product = {name:col('Product', prod, 'Vendor Product'), namespace:col('Product', prod, 'Namespace'),
+    description:col('Product', prod, 'Description')};
+
+  body('Assessments').forEach(r => {
+    const c = h => col('Assessments', r, h);
+    const a = {id:uid('masm'), type:c('Assessment Type'), description:c('Description'),
+      title:c('assessmentTitle'), identifier:c('assessmentIdentifier'),
+      adaptive:c('adaptiveAssessment') === '1' || /^true$/i.test(c('adaptiveAssessment')),
+      category:c('assessmentCategoryDescriptor'), family:c('assessmentFamily'), maxRawScore:c('maxRawScore')};
+    doc.assessments.push(a);
+    if (/^uri:\/\/ed-fi\.org\//.test(a.category)) enableStandardByUri(doc, a.category, report);
+  });
+
+  body('EnumerationDefinitions').forEach(r => {
+    const type = descriptorTypeName(col('EnumerationDefinitions', r, 'Enumeration'));
+    if (!doc.bank.types.some(t => t.type === type))
+      doc.bank.types.push({type, definition:col('EnumerationDefinitions', r, 'Definition')});
+  });
+
+  body('EnumerationItems').forEach(r => {
+    const c = h => col('EnumerationItems', r, h);
+    const type = descriptorTypeName(c('Enumeration'));
+    const code = c('Code Value');
+    if (code === 'CustomValue'){
+      if (!report.placeholders.includes(type)) report.placeholders.push(type);
+      return;
+    }
+    if (/^uri:\/\/ed-fi\.org\//.test(code)){ enableStandardByUri(doc, code, report); return; }
+    if (!doc.bank.types.some(t => t.type === type)) doc.bank.types.push({type, definition:''});
+    doc.bank.values.push({id:uid('mval'), type, ns:'vendor', uri:doc.product.namespace + type + '#' + code,
+      code, short:c('Short Description'), desc:c('Description'), enabled:true});
+    report.valuesAdded++;
+  });
+
+  const asmFor = t => doc.assessments.find(a => a.type === t) ||
+    doc.assessments.find(a => t.includes(a.type)) || null;
+  body('ElementDefinitions').forEach(r => {
+    const c = h => col('ElementDefinitions', r, h);
+    const rawType = c('Data Type');
+    const nt = normalizeType(rawType);
+    const complete = c('Ed-Fi ODS/API Element Complete Name');
+    const res = resolveTargets(complete);
+    const corrections = [];
+    if (nt.corrected){ corrections.push(rawType + ' → ' + nt.type); report.typesCorrected++; }
+    const m = /"assessmentReportingMethodDescriptor"\s*:\s*"([^"]+)"/.exec(String(r[7] || ''));
+    let key = null;
+    if (m){
+      key = /^uri:\/\/ed-fi\.org\//.test(m[1]) ? enableStandardByUri(doc, m[1], report)
+        : doc.bank.values.find(v => v.uri === m[1]) || null;
+    }
+    const name = c('Element');
+    const isObjective = res.paths.some(p => /^(studentO|o)bjectiveAssessment\./.test(p));
+    let objective = null;
+    if (isObjective){
+      objective = key && name.toLowerCase().endsWith(key.code.toLowerCase())
+        ? name.slice(0, name.length - key.code.length).trim() : name;
+    }
+    const targets = res.paths.map(path => ({path,
+      entryKey: SCORE_COLLECTIONS.includes(path) && key ? key.id : null}));
+    const firstDesc = res.paths.map(targetByPath).find(t => t.type === 'Descriptor');
+    const asm = asmFor(c('Assessment Type'));
+    doc.elements.push({id:uid('mel'), assessmentId:asm ? asm.id : null, objective, name,
+      definition:c('Definition'), type:nt.type,
+      enumType: nt.type === 'Enumeration' && firstDesc ? firstDesc.descriptor : null,
+      targets, notes:'',
+      importNote:{originalTarget:complete, unresolved:res.unresolved, corrections}});
+    if (res.unresolved.length) report.needsTarget++; else report.resolved++;
+  });
+
+  doc.importReport = report;
+  return {ok:true, doc, report};
 }
 
 /* ---------- derived state ---------- */
