@@ -856,3 +856,52 @@ test('the mapping route resolves for both personas', () => {
   const f2 = p.APP.submissions.find(s => s.productId === 'p5');
   assert.match(p.reviewerScreen({name:'mapping', args:[f2.id]}), /Mapping tool/);
 });
+
+test('the elements tab shows multiple target chips and an add-target control', () => {
+  const p = loadPrototype(); const s = asmSub(p);
+  p.openMappingDraft(s);
+  const html = p.mappingScreen(s.id, 'elements', false);
+  assert.match(html, /studentAssessment\.scoreResults/);
+  assert.match(html, /data-act="mapaddtarget"/);
+  assert.match(html, /Interger → Integer/);
+});
+
+test('the collections tab lists keyed entries with their coverage', () => {
+  const p = loadPrototype(); const s = asmSub(p);
+  p.openMappingDraft(s);
+  const html = p.mappingScreen(s.id, 'collections', false);
+  assert.match(html, /Diagnostic Gain/);
+  assert.match(html, /data-act="mapaddentry"/);
+});
+
+test('read-only rendering has no edit controls', () => {
+  const p = loadPrototype();
+  const f2 = p.APP.submissions.find(s => s.productId === 'p5');
+  for (const tab of ['product','bank','elements','collections','checks','issues']){
+    const html = p.mappingScreen(f2.id, tab, true);
+    assert.doesNotMatch(html, /data-act="map(add|rm|set|toggle|notes)/, tab);
+  }
+});
+
+test('the bank starts with standard values switched off', () => {
+  const p = loadPrototype(); const s = asmSub(p);
+  p.startBlankMapping(s);
+  const html = p.mappingScreen(s.id, 'bank', false);
+  assert.match(html, /data-act="maptoggle"/);
+  assert.match(html, /Unsaved changes/);
+});
+
+test('the checks tab groups coverage by assessment and reporting method', () => {
+  const p = loadPrototype(); const s = asmSub(p);
+  p.openMappingDraft(s);
+  const html = p.mappingScreen(s.id, 'checks', false);
+  assert.match(html, /Vendor B ELA Diagnostic/);
+  assert.match(html, /Phonics/);
+  assert.match(html, /Unmapped/);
+});
+
+test('a vendor with no draft and no version gets the import choices', () => {
+  const p = loadPrototype();
+  const s = p.startCertification('p7', 'assessments');
+  assert.match(p.mappingScreen(s.id, 'elements', false), /data-act="mapimport"/);
+});

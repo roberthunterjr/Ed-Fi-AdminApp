@@ -191,6 +191,27 @@ table.t td.act{text-align:right;white-space:nowrap}
 .radios label{display:flex;gap:9px;align-items:flex-start;font-weight:400;margin:0 0 9px;font-size:13.5px}
 .radios input{margin-top:3px}
 .maprowacts{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
+.maptabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin:0 0 14px;flex-wrap:wrap}
+.maptabs a{padding:9px 14px;color:inherit;text-decoration:none;border-bottom:3px solid transparent;font-weight:600;font-size:13.5px}
+.maptabs a.on{border-bottom-color:var(--teal-dark)}
+.mapsubhead{margin:18px 0 8px;font-size:15px}
+.mapgroup{margin:0 0 18px}.mapgroup h3{font-size:14px;margin:0 0 6px}
+.mapgroup details{margin-top:6px}.mapgroup summary{cursor:pointer;font-size:12.5px;color:var(--muted)}
+.mapform{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0 14px}
+.mapform input,.mapform select,.mapin,.mapels select,.mapels textarea{font:inherit;font-size:13px;padding:5px 8px;
+  border:1px solid var(--line);border-radius:6px;background:#fff;max-width:100%}
+.mapin{width:100%}
+.mapels textarea{width:100%;min-width:180px}
+.mchips{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:5px}
+.mchip{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line);background:#f4f7fa;border-radius:999px;
+  padding:2px 4px 2px 10px;font-family:ui-monospace,Consolas,monospace;font-size:11.5px}
+.mchip select{font-size:11.5px;padding:1px 4px}
+.mchip .x{border:0;background:transparent;cursor:pointer;font-size:14px;line-height:1;color:var(--muted)}
+.mapadd{font-size:12px}
+.mapissue{font-size:12px;color:#9c4221;margin-bottom:4px}
+.mapnote{font-size:12.5px;background:#fffbea;border-left:3px solid #d69e2e;padding:4px 8px;margin:4px 0;white-space:pre-wrap}
+.ok{color:#2f855a;font-weight:700}.bad{color:#c53030;font-weight:700}
+.maptoggle{display:inline-flex;gap:5px;align-items:center;font-size:12.5px;font-weight:600}
 .drop{border:1.5px dashed var(--line);border-radius:var(--radius);padding:22px;text-align:center;color:var(--muted);
   background:#fafbfc;margin-bottom:14px;font-size:13px}
 
@@ -3194,6 +3215,10 @@ function importSummaryHTML(sub, r){
 }
 function importSummaryModal(sub, r){ const m = importSummaryHTML(sub, r); modal('Import summary', m.body, m.footer); }
 
+const MAP_TABS = [['product','Product & assessments'], ['bank','Descriptor bank'], ['elements','Elements'],
+  ['collections','Collections'], ['checks','Checks'], ['issues','Issues']];
+const asmLabel = a => a ? (a.title || a.type) : 'No assessment';
+
 function mappingScreen(subId, tab, readOnly){
   const sub = submission(subId);
   if (!sub) return placeholder('Mapping tool');
@@ -3202,7 +3227,244 @@ function mappingScreen(subId, tab, readOnly){
     ? crumbs([['Home', '#/dashboard'], ['Review queue', '#/queue'], [p.name, '#/review/' + sub.id], ['Mapping tool']])
     : crumbs([['Home', '#/products'], ['My products', '#/products'], [p.name, '#/application/' + p.id],
         [m.label, '#/submission/' + sub.id], ['Mapping tool']]);
-  return head + `<div class="pagehead"><div><h1>Mapping tool</h1></div></div>`;
+  const cur = currentVersion(sub, 'mapping');
+  let doc, issues;
+  if (readOnly){
+    if (!cur || cur.source !== 'tool') return head + `<div class="card"><h2>Mapping tool</h2>
+      <div class="empty">The current Vendor mapping CSV was uploaded as a file, not generated in the mapping tool,
+        so there is no mapping to browse here.</div></div>`;
+    doc = cur.doc; issues = cur.issues;
+  } else {
+    const draft = openMappingDraft(sub);
+    if (!draft) return head + `<div class="pagehead"><div><h1>Mapping tool</h1>
+        <div class="sub">${esc(p.name)} &middot; ${esc(m.label)}</div></div></div>
+      <div class="card"><h2>Start a mapping</h2>
+        <p>Import a filled Data Mapping Template workbook (most vendors start here), or build the mapping from scratch.</p>
+        ${mappingRowActions(sub, null)}</div>`;
+    doc = draft.doc; issues = computeIssues(doc);
+  }
+  const ro = readOnly;
+  const draft = sub.mappingDraft;
+  const versionLine = readOnly ? `Vendor mapping CSV v${cur.v} &middot; generated ${fmtShort(cur.at)} by ${esc(cur.by)}`
+    : (draft.baseVersion ? `Based on Vendor mapping CSV v${draft.baseVersion}` : 'Not generated yet');
+  const count = {product:doc.assessments.length, bank:selectableValues(doc).length, elements:doc.elements.length,
+    collections:doc.assessments.reduce((n, a) => n + collectionEntries(doc, a.id).length, 0),
+    checks:issues.filter(i => i.kind === 'unmapped' || i.kind === 'type-mismatch').length, issues:issues.length};
+  const showTab = t => t !== 'issues' || ro || issues.length;
+  const tabs = `<div class="maptabs">${MAP_TABS.filter(([t]) => showTab(t)).map(([t, label]) =>
+    `<a href="#/mapping/${sub.id}/${t}"${t === tab ? ' class="on"' : ''}>${label}
+      <span class="muted">(${count[t]}${t === 'checks' ? ' open' : ''})</span></a>`).join('')}</div>`;
+  const body = {product:() => mapProductHTML(sub, doc, ro), bank:() => mapBankHTML(sub, doc, ro),
+    elements:() => mapElementsHTML(sub, doc, issues, ro), collections:() => mapCollectionsHTML(sub, doc, ro),
+    checks:() => mapChecksHTML(doc, issues), issues:() => mapIssuesHTML(sub, doc, issues, ro)}[tab] ||
+    (() => mapElementsHTML(sub, doc, issues, ro));
+  return head + `
+    <div class="pagehead">
+      <div><h1>Mapping tool</h1>
+        <div class="sub">${esc(doc.product.name || p.name)} &middot; ${esc(m.label)} &middot; ${versionLine}</div></div>
+      <div class="acts">${ro ? '<span class="tag">Read-only — reviewers do not edit mappings (§5.5)</span>'
+        : `<button class="btn" data-act="mapgenerate" data-sub="${sub.id}">Generate mapping CSV</button>`}</div>
+    </div>
+    ${!ro && draft.dirty ? `<div class="banner"><h3>${draft.baseVersion
+      ? 'Unsaved changes since v' + draft.baseVersion : 'Unsaved changes — not generated yet'}</h3>
+      <p>Your draft is kept between visits. Reviewers see only generated versions.</p></div>` : ''}
+    ${tabs}
+    <div class="card">${body()}</div>`;
+}
+
+/* ---- product & assessments ---- */
+function mapProductHTML(sub, doc, ro){
+  const inp = (act, field, value, extra) => ro ? esc(value) || '<span class="muted">—</span>'
+    : `<input type="text" class="mapin" data-act="${act}" data-sub="${sub.id}" data-field="${field}" ${extra || ''}
+        value="${esc(value)}" />`;
+  return `<h2>Product</h2>
+    <table class="t"><tbody>
+      <tr><th>Vendor product</th><td>${inp('mapsetproduct', 'name', doc.product.name)}</td></tr>
+      <tr><th>Namespace</th><td>${inp('mapsetproduct', 'namespace', doc.product.namespace)}</td></tr>
+      <tr><th>Description</th><td>${inp('mapsetproduct', 'description', doc.product.description)}</td></tr>
+    </tbody></table>
+    <h2 style="margin-top:22px">Assessments</h2>
+    ${doc.assessments.length ? `<table class="t"><thead><tr><th>Assessment type</th><th>Title</th><th>Identifier</th>
+      <th>Category</th><th>Family</th><th>Max raw score</th></tr></thead><tbody>
+      ${doc.assessments.map(a => `<tr>${['type','title','identifier','category','family','maxRawScore'].map(f =>
+        `<td>${inp('mapsetasm', f, a[f], 'data-asm="' + a.id + '"')}</td>`).join('')}</tr>`).join('')}
+    </tbody></table>` : '<div class="empty">No assessments yet.</div>'}
+    ${ro ? '' : `<p style="margin-top:12px"><button class="btn ghost sm" data-act="mapaddasm" data-sub="${sub.id}">
+      + Add assessment</button></p>`}`;
+}
+
+/* ---- descriptor bank ---- */
+function mapBankHTML(sub, doc, ro){
+  const users = v => valueUsers(doc, v.id);
+  const types = doc.bank.types.slice().sort((a, b) => {
+    const live = t => doc.bank.values.some(v => v.type === t.type && (v.ns === 'vendor' || v.enabled));
+    return (live(b) - live(a)) || a.type.localeCompare(b.type);
+  });
+  const valueRow = v => {
+    const u = users(v), on = v.ns === 'vendor' || v.enabled;
+    return `<tr>
+      <td><strong>${esc(v.code)}</strong>${v.short && v.short !== v.code ? `<div class="muted" style="font-size:12px">${esc(v.short)}</div>` : ''}</td>
+      <td class="mono muted" style="font-size:12px">${esc(v.uri)}</td>
+      <td>${u.length ? '<span class="muted" style="font-size:12px">' + u.map(esc).join(', ') + '</span>'
+        : on ? '<span class="badge b-amber">Unused</span>' : ''}</td>
+      <td class="act">${v.ns === 'edfi'
+        ? (ro ? (v.enabled ? 'Enabled' : '<span class="muted">Off</span>')
+          : `<label class="maptoggle"><input type="checkbox" data-act="maptoggle" data-sub="${sub.id}"
+              data-val="${v.id}" ${v.enabled ? 'checked' : ''}/> ${v.enabled ? 'Enabled' : 'Off'}</label>`)
+        : (ro ? '' : `<button class="btn ghost sm" data-act="maprmvalue" data-sub="${sub.id}" data-val="${v.id}">Remove</button>`)}</td>
+    </tr>`;
+  };
+  return `<h2>Descriptor bank <span class="hint">Only values enabled or defined here can be picked in the mapping (D28).
+      Ed-Fi standard values start switched off.</span></h2>
+    ${ro ? '' : `<div class="mapform">
+      <select id="mapNewType">${types.map(t => `<option>${esc(t.type)}</option>`).join('')}</select>
+      <input type="text" id="mapNewCode" placeholder="Code value" />
+      <input type="text" id="mapNewShort" placeholder="Short description" />
+      <button class="btn sm" data-act="mapaddvalue" data-sub="${sub.id}">+ Add value</button></div>`}
+    ${types.map(t => {
+      const vendor = doc.bank.values.filter(v => v.type === t.type && v.ns === 'vendor');
+      const std = doc.bank.values.filter(v => v.type === t.type && v.ns === 'edfi');
+      const on = std.filter(v => v.enabled).length;
+      return `<div class="mapgroup"><h3>${esc(t.type)} <span class="muted" style="font-weight:400;font-size:12.5px">${
+          esc(t.definition || '')}</span></h3>
+        ${vendor.length ? `<table class="t"><tbody>${vendor.map(valueRow).join('')}</tbody></table>`
+          : '<div class="muted" style="font-size:12.5px">No vendor values.</div>'}
+        ${std.length ? `<details${on ? ' open' : ''}><summary>Ed-Fi standard values (${std.length}, ${on} enabled)</summary>
+          <table class="t"><tbody>${std.map(valueRow).join('')}</tbody></table></details>` : ''}</div>`;
+    }).join('')}`;
+}
+
+/* ---- elements: element-first, like the workbook ---- */
+function mapElementsHTML(sub, doc, issues, ro){
+  const opts = (list, sel, blank) => (blank != null ? `<option value="">${blank}</option>` : '') +
+    list.map(([v, l]) => `<option value="${esc(v)}"${v === sel ? ' selected' : ''}>${esc(l)}</option>`).join('');
+  const chips = e => e.targets.map((t, i) => {
+    const tgt = targetByPath(t.path);
+    const key = t.entryKey ? bankValue(doc, t.entryKey) : null;
+    const keyCtl = tgt && tgt.collection
+      ? (ro ? (key ? ' #' + esc(key.code) : ' <em>no key</em>')
+        : ` <select data-act="mapsetkey" data-sub="${sub.id}" data-el="${e.id}" data-idx="${i}">${
+            opts(selectableValues(doc, tgt.keyedBy).map(v => [v.id, v.code]), t.entryKey, '— pick ' +
+              tgt.keyedBy.replace(/Descriptor$/, '') + ' —')}</select>`) : '';
+    return `<span class="mchip" title="${esc(tgt ? tgt.def : '')}">${esc(t.path)}${keyCtl}${ro ? ''
+      : ` <button class="x" data-act="maprmtarget" data-sub="${sub.id}" data-el="${e.id}" data-idx="${i}"
+          title="Remove target">&times;</button>`}</span>`;
+  }).join('');
+  const row = e => {
+    const mine = issues.filter(i => i.elementId === e.id);
+    const note = e.importNote;
+    return `<tr>
+      <td><strong>${esc(e.name)}</strong>${e.objective ? ` <span class="tag">${esc(e.objective)}</span>` : ''}
+        <div class="muted" style="font-size:12px">${esc(e.definition)}</div>
+        ${note && (note.unresolved.length || note.corrections.length) ? `<div class="muted" style="font-size:11.5px">
+          Workbook: <span class="mono">${esc(note.originalTarget)}</span>${note.corrections.length
+            ? ' &middot; ' + note.corrections.map(esc).join(', ') : ''}</div>` : ''}</td>
+      <td>${ro ? esc(e.type || 'Unknown') : `<select data-act="mapsettype" data-sub="${sub.id}" data-el="${e.id}">${
+          opts(DATA_TYPES.map(t => [t, t]), e.type, 'Unknown')}</select>`}
+        ${e.type === 'Enumeration' ? (ro ? '<div class="muted" style="font-size:12px">' + esc(e.enumType || 'no descriptor') + '</div>'
+          : `<div><select data-act="mapsetenum" data-sub="${sub.id}" data-el="${e.id}">${
+            opts(doc.bank.types.map(t => [t.type, t.type.replace(/Descriptor$/, '')]), e.enumType, '— descriptor —')}</select></div>`) : ''}</td>
+      <td><div class="mchips">${chips(e) || '<span class="muted">No target</span>'}</div>
+        ${ro ? '' : `<select class="mapadd" data-act="mapaddtarget" data-sub="${sub.id}" data-el="${e.id}">
+          <option value="">+ Add target…</option>${EDFI_V5_TARGETS.map(t =>
+            `<option value="${t.path}" title="${esc(t.def)}">${t.path}${t.required ? ' *' : ''}</option>`).join('')}</select>`}</td>
+      <td>${mine.map(i => `<div class="mapissue">${esc(i.message)}</div>`).join('')}
+        ${ro ? (e.notes ? `<div class="mapnote">${esc(e.notes)}</div>` : '')
+          : `<textarea data-act="mapnotes" data-sub="${sub.id}" data-el="${e.id}" rows="2"
+              placeholder="Notes for the reviewer">${esc(e.notes)}</textarea>`}</td>
+      ${ro ? '' : `<td class="act"><button class="btn ghost sm" data-act="maprmelement" data-sub="${sub.id}"
+          data-el="${e.id}" title="Remove element">&times;</button></td>`}
+    </tr>`;
+  };
+  const groups = doc.assessments.map(a => [a, doc.elements.filter(e => e.assessmentId === a.id)])
+    .concat([[null, doc.elements.filter(e => !doc.assessments.some(a => a.id === e.assessmentId))]])
+    .filter(([a, els]) => a || els.length);
+  return `<h2>Element mappings <span class="hint">One vendor element can map to several Ed-Fi fields.
+      Keyed collections (scores, scoreResults) need a reporting method from the bank.</span></h2>
+    ${groups.map(([a, els]) => `<h3 class="mapsubhead">${esc(asmLabel(a))} <span class="muted">(${els.length})</span></h3>
+      ${els.length ? `<table class="t mapels"><thead><tr><th>Vendor element</th><th>Data type</th><th>Ed-Fi targets</th>
+        <th>Issues &amp; notes</th>${ro ? '' : '<th></th>'}</tr></thead><tbody>${els.map(row).join('')}</tbody></table>`
+        : '<div class="empty">No elements for this assessment.</div>'}`).join('')}
+    ${ro ? '' : `<div class="mapform" style="margin-top:14px">
+      <input type="text" id="mapNewElName" placeholder="Vendor element name" />
+      <select id="mapNewElAsm">${doc.assessments.map(a => `<option value="${a.id}">${esc(asmLabel(a))}</option>`).join('')}</select>
+      <select id="mapNewElType">${DATA_TYPES.map(t => `<option>${t}</option>`).join('')}</select>
+      <button class="btn sm" data-act="mapaddelement" data-sub="${sub.id}"${doc.assessments.length ? '' : ' disabled'}>
+        + Add element</button>${doc.assessments.length ? '' : ' <span class="muted">Add an assessment first.</span>'}</div>`}
+    ${doc.orphanNotes.length ? `<h3 class="mapsubhead">Notes from removed items</h3>
+      ${doc.orphanNotes.map(n => `<div class="mapnote"><strong>${esc(n.from)}:</strong> ${esc(n.text)}</div>`).join('')}` : ''}`;
+}
+
+/* ---- collections: Ed-Fi-first, the way the v5 model and the reviewer see it ---- */
+function mapCollectionsHTML(sub, doc, ro){
+  const cov = coverage(doc);
+  const mark = (a, e, field) => {
+    const r = cov.find(c => c.assessmentId === a.id && c.objective === e.objective &&
+      c.reportingMethodId === e.key.id && c.field === field);
+    return !r ? '<span class="muted">—</span>' : r.mapped ? '<span class="ok">&#10003;</span>' : '<span class="bad">&#10007;</span>';
+  };
+  const keyed = EDFI_V5_TARGETS.filter(t => t.collection);
+  const keyOpts = doc.bank.values.filter(v => (v.ns === 'vendor' || v.enabled) && keyed.some(t => t.keyedBy === v.type));
+  return `<h2>Collection entries <span class="hint">Each keyed entry of a collection, with the vendor elements feeding it.
+      Score coverage is checked per assessment and per reporting method.</span></h2>
+    ${doc.assessments.map(a => {
+      const entries = collectionEntries(doc, a.id);
+      const els = doc.elements.filter(e => e.assessmentId === a.id);
+      return `<h3 class="mapsubhead">${esc(asmLabel(a))}</h3>
+        ${entries.length ? `<table class="t"><thead><tr><th>Collection</th><th>Objective</th><th>Key</th>
+          <th>Vendor element(s)</th><th>scores</th><th>result</th><th>datatype</th></tr></thead><tbody>
+          ${entries.map(e => `<tr><td class="mono" style="font-size:12px">${esc(e.collection)}</td>
+            <td>${e.objective ? esc(e.objective) : '<span class="muted">—</span>'}</td>
+            <td><strong>${esc(e.key.code)}</strong> <span class="muted" style="font-size:11.5px">${
+              e.key.ns === 'edfi' ? 'Ed-Fi' : 'vendor'}</span></td>
+            <td>${e.elements.map(x => esc(x.name)).join(', ')}</td>
+            <td>${mark(a, e, 'scores')}</td><td>${mark(a, e, 'scoreResults.result')}</td>
+            <td>${mark(a, e, 'scoreResults.resultDatatypeType')}</td></tr>`).join('')}</tbody></table>`
+          : '<div class="empty">No collection entries yet.</div>'}
+        ${ro ? '' : `<div class="mapform">
+          <select id="mapEntCol-${a.id}">${keyed.map(t => `<option>${t.path}</option>`).join('')}</select>
+          <select id="mapEntKey-${a.id}">${keyOpts.map(v => `<option value="${v.id}">${
+            esc(v.type.replace(/Descriptor$/, '') + ' #' + v.code)}</option>`).join('')}</select>
+          <select id="mapEntEl-${a.id}">${els.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select>
+          <button class="btn sm" data-act="mapaddentry" data-sub="${sub.id}" data-asm="${a.id}">+ Add entry</button></div>`}`;
+    }).join('') || '<div class="empty">Add an assessment first.</div>'}`;
+}
+
+/* ---- checks: coverage per assessment → objective → reporting method ---- */
+function mapChecksHTML(doc, issues){
+  const cov = coverage(doc);
+  const types = issues.filter(i => i.kind === 'type-mismatch' || i.kind === 'type-unknown');
+  const status = r => r.mapped ? '<span class="badge b-green">Mapped</span>' : '<span class="badge b-red">Unmapped</span>';
+  return `<h2>Required-field coverage <span class="hint">From the Ed-Fi v5 model, not the vendor.
+      Checked per assessment and per reporting method.</span></h2>
+    ${!doc.assessments.length ? '<div class="empty">No assessments defined — every required field is unmapped.</div>' : ''}
+    ${doc.assessments.map(a => {
+      const rows = cov.filter(r => r.assessmentId === a.id);
+      const groups = [];
+      rows.forEach(r => {
+        const k = (r.objective || '') + '|' + (r.reportingMethodId || '');
+        let g = groups.find(x => x.k === k);
+        if (!g) groups.push(g = {k, objective:r.objective, rm:r.reportingMethodId, rows:[]});
+        g.rows.push(r);
+      });
+      return `<h3 class="mapsubhead">${esc(asmLabel(a))}</h3>
+        <table class="t"><thead><tr><th>Scope</th><th>Field</th><th>Status</th><th>Covered by</th></tr></thead><tbody>
+        ${groups.map(g => g.rows.map((r, i) => `<tr>
+          ${i ? '' : `<td rowspan="${g.rows.length}">${g.rm ? (g.objective ? esc(g.objective) + ' &rsaquo; ' : '') +
+            '<strong>' + esc((bankValue(doc, g.rm) || {code:'?'}).code) + '</strong>' : 'Assessment &amp; student assessment'}</td>`}
+          <td class="mono" style="font-size:12px">${esc(r.field)}</td><td>${status(r)}</td>
+          <td class="muted" style="font-size:12px">${r.by.map(esc).join(', ') || '—'}</td></tr>`).join('')).join('')}
+        </tbody></table>`;
+    }).join('')}
+    <h2 style="margin-top:22px">Type checks</h2>
+    ${types.length ? `<ul>${types.map(i => `<li>${esc(i.message)}</li>`).join('')}</ul>`
+      : '<div class="empty">No type problems.</div>'}`;
+}
+
+/* ---- issues (filled out in the generate/review step) ---- */
+function mapIssuesHTML(sub, doc, issues, ro){
+  return `<h2>Issues</h2>${issues.length ? `<ul>${issues.map(i => `<li>${esc(i.message)}</li>`).join('')}</ul>`
+    : '<div class="empty">No issues.</div>'}`;
 }
 
 /* ---------------- REVIEWER ---------------- */
@@ -3483,7 +3745,9 @@ function bind(){
 
   /* Most actions are clicks, but a typed parameter fires input and a filter
      checkbox fires change, so the event is chosen per action. */
-  const ACTION_EVENT = {setparam:'input', toggleopenruns:'change'};
+  const ACTION_EVENT = {setparam:'input', toggleopenruns:'change', maptoggle:'change', mapsettype:'change',
+    mapsetenum:'change', mapsetkey:'change', mapnotes:'change', mapissuenote:'change', mapaddtarget:'change',
+    mapsetproduct:'change', mapsetasm:'change'};
   main.querySelectorAll('[data-act]').forEach(node => {
     node.addEventListener(ACTION_EVENT[node.dataset.act] || 'click', ev => {
       const act = node.dataset.act;
@@ -3494,6 +3758,8 @@ function bind(){
         case 'mapblank': startBlankMapping(sub); go('#/mapping/' + sub.id); break;
         case 'mapimport': importModal(sub); break;
         case 'mapview': go('#/mapping/' + sub.id); break;
+        default:
+          if (act.startsWith('map') && sub && sub.mappingDraft) mapAction(act, sub, node);
         case 'gotorun': go('#/newrun/' + sub.id); break;
         case 'startrun': {
           const mode = $('#outcomeSel') ? $('#outcomeSel').value : 'realistic';
@@ -3607,6 +3873,49 @@ function bind(){
     clearTimeout(APP.poll);
     APP.poll = setTimeout(render, 1200);
   }
+}
+
+/* Every mapping-editor edit goes through a Task 3 model function, then marks
+   the draft dirty and re-renders. Blocked actions explain themselves. */
+function mapAction(act, sub, node){
+  const doc = sub.mappingDraft.doc, ds = node.dataset, val = node.value;
+  const v = id => ($('#' + id) || {}).value || '';
+  let r = null;
+  switch (act){
+    case 'mapsetproduct': doc.product[ds.field] = val.trim(); break;
+    case 'mapsetasm': { const a = doc.assessments.find(x => x.id === ds.asm); if (a) a[ds.field] = val.trim(); break; }
+    case 'mapaddasm': doc.assessments.push({id:uid('masm'), type:'New assessment', description:'', title:'',
+      identifier:'', adaptive:false, category:'', family:'', maxRawScore:''}); break;
+    case 'maptoggle': r = setStandardEnabled(doc, ds.val, node.checked); break;
+    case 'maprmvalue': r = removeBankValue(doc, ds.val); break;
+    case 'mapaddvalue': r = addBankValue(doc, {type:v('mapNewType'), code:v('mapNewCode'), short:v('mapNewShort')}); break;
+    case 'mapsettype': setElementField(doc, ds.el, 'type', val); break;
+    case 'mapsetenum': setElementField(doc, ds.el, 'enumType', val); break;
+    case 'mapnotes': setElementField(doc, ds.el, 'notes', val); break;
+    case 'mapissuenote':
+      if (val.trim()) doc.issueNotes[ds.key] = val.trim(); else delete doc.issueNotes[ds.key];
+      break;
+    case 'mapaddtarget': if (!val) return; r = addTarget(doc, ds.el, val, null); break;
+    case 'maprmtarget': removeTarget(doc, ds.el, +ds.idx); break;
+    case 'mapsetkey': setTargetKey(doc, ds.el, +ds.idx, val); break;
+    case 'mapaddelement':
+      if (!v('mapNewElName').trim()){ toast('Give the element a name first.'); return; }
+      addElement(doc, {assessmentId:v('mapNewElAsm'), name:v('mapNewElName').trim(), type:v('mapNewElType')});
+      break;
+    case 'maprmelement': removeElement(doc, ds.el); break;
+    case 'mapaddentry':
+      r = addCollectionEntry(doc, {assessmentId:ds.asm, objective:null, collection:v('mapEntCol-' + ds.asm),
+        keyValueId:v('mapEntKey-' + ds.asm), elementId:v('mapEntEl-' + ds.asm)});
+      break;
+    default: return;
+  }
+  if (r && !r.ok){
+    toast(r.blockedBy ? 'In use by: ' + r.blockedBy.map(esc).join(', ') : esc(r.error || 'Not allowed.'));
+    render();
+    return;
+  }
+  markDraftDirty(sub);
+  render();
 }
 
 function bindOverlay(){
