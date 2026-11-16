@@ -1989,6 +1989,9 @@ function addCollectionEntry(doc, o){
   const key = bankValue(doc, o.keyValueId);
   if (!key || !selectableValues(doc).includes(key))
     return {ok:false, error:'Add or enable this descriptor value in the bank first.'};
+  const tgt = targetByPath(o.collection);
+  if (tgt && tgt.keyedBy && key.type !== tgt.keyedBy)
+    return {ok:false, error:o.collection + ' is keyed by ' + tgt.keyedBy + ', not ' + key.type + '.'};
   return addTarget(doc, o.elementId, o.collection, o.keyValueId);
 }
 
@@ -2096,6 +2099,10 @@ function uploadArtifact(sub, type, name, malformed){
   const list = sub.artifacts[type];
   const replacing = list.length > 0;
   list.push({v:list.length + 1, name, by:me(), at:tick(), source:'upload'});
+  if (type === 'mapping' && sub.mappingDraft){
+    hist(sub, 'Mapping tool draft discarded — superseded by uploaded Vendor mapping CSV v' + list.length);
+    sub.mappingDraft = null;
+  }
   const label = ARTIFACTS.find(a => a.id === type).label;
   hist(sub, (replacing
     ? 'Artifact replaced: ' + label + ' → v' + list.length + ' (' + name + ')'
@@ -3775,6 +3782,9 @@ function uploadModal(sub, type){
         mapping CSV template</label>
       <label><input type="radio" name="sim" value="bad" /> A malformed file — to see structural
         validation reject it (D9, FR6)</label></div>` : ''}
+    ${isMapping && sub.mappingDraft ? `<div class="banner red"><h3>Uploading a CSV discards your mapping-tool draft</h3>
+      <p>The draft and its notes are replaced by this file. Generated versions stay in audit history.
+      To keep working in the tool, cancel and generate from the draft instead.</p></div>` : ''}
     ${cur ? `<div class="banner"><h3>This creates version ${cur.v + 1}</h3>
       <p>Prior versions remain visible in audit history, and any run that pinned v${cur.v} keeps pointing at
       v${cur.v} — it will simply be marked stale (D14, FR11).</p></div>` : ''}
@@ -3799,109 +3809,8 @@ function bind(){
     mapsetenum:'change', mapsetkey:'change', mapnotes:'change', mapissuenote:'change', mapaddtarget:'change',
     mapsetproduct:'change', mapsetasm:'change'};
   main.querySelectorAll('[data-act]').forEach(node => {
-    node.addEventListener(ACTION_EVENT[node.dataset.act] || 'click', ev => {
-      const act = node.dataset.act;
-      const sub = node.dataset.sub ? submission(node.dataset.sub) : null;
-      switch (act){
-        case 'upload': ev.preventDefault(); uploadModal(sub, node.dataset.type); break;
-        case 'mapopen': openMappingDraft(sub); go('#/mapping/' + sub.id); break;
-        case 'mapblank': startBlankMapping(sub); go('#/mapping/' + sub.id); break;
-        case 'mapimport': importModal(sub); break;
-        case 'mapview': go('#/mapping/' + sub.id); break;
-        case 'mapgenerate': generateModal(sub); break;
-        default:
-          if (act.startsWith('map') && sub && sub.mappingDraft) mapAction(act, sub, node);
-        case 'gotorun': go('#/newrun/' + sub.id); break;
-        case 'startrun': {
-          const mode = $('#outcomeSel') ? $('#outcomeSel').value : 'realistic';
-          const r = startRun(sub, mode);
-          toast('Run <strong>' + r.id + '</strong> queued and stamped <strong>' + r.completeness +
-            '</strong>. Completeness is fixed now and never recalculated.');
-          go('#/run/' + r.id);
-          render();
-          break;
-        }
-        case 'setparam': {
-          const run = APP.runs.find(x => x.id === node.dataset.run);
-          const scen = scenarioOf(run, node.dataset.key);
-          scen.params[node.dataset.param] = node.value;
-          break;
-        }
-        case 'sealrun': {
-          const run = APP.runs.find(x => x.id === node.dataset.run);
-          const summary = sealSummary(run);
-          sealRun(run);
-          APP.prepare = null;
-          toast('Run <strong>' + run.id + '</strong> sealed — ' + esc(summary) +
-            '. Its checks are now immutable evidence.');
-          render();
-          break;
-        }
-        case 'abandonrun': {
-          const run = APP.runs.find(x => x.id === node.dataset.run);
-          abandonRun(run);
-          APP.prepare = null;
-          toast('Run <strong>' + run.id + '</strong> abandoned — its checks were discarded.');
-          render();
-          break;
-        }
-        case 'toggleopenruns': APP.showOpenRuns = !APP.showOpenRuns; render(); break;
-        case 'openprepare':
-          APP.prepare = {run: node.dataset.run, key: node.dataset.key};
-          APP.openSteps = {};
-          render();
-          break;
-        case 'closeprepare': APP.prepare = null; APP.openSteps = {}; render(); break;
-        case 'runcheck': {
-          const run = APP.runs.find(x => x.id === node.dataset.run);
-          const c = runCheck(run, node.dataset.key, +node.dataset.task);
-          toast(c.st === 'pass'
-            ? 'Task <strong>' + node.dataset.task + '</strong> verified.'
-            : 'Task <strong>' + node.dataset.task + '</strong> failed — ' + esc(c.msg));
-          render();
-          break;
-        }
-        case 'checkall': {
-          const run = APP.runs.find(x => x.id === node.dataset.run);
-          const n = checkAll(run, node.dataset.key);
-          const scen = scenarioOf(run, node.dataset.key);
-          const stopped = scen.tasks.some(x => x.check && x.check.st === 'fail');
-          toast('Checked ' + n + ' task(s)' + (stopped
-            ? ' — stopped at the first failure.' : '. All verified.'));
-          render();
-          break;
-        }
-        case 'openscenario': APP.openScenario = node.dataset.key; APP.openSteps = {}; render(); break;
-        case 'closescenario': APP.openScenario = null; APP.openSteps = {}; render(); break;
-        case 'togglestepels': {
-          const k = node.dataset.key;
-          if (APP.openSteps[k]) delete APP.openSteps[k]; else APP.openSteps[k] = true;
-          render();
-          break;
-        }
-        case 'onescenario':
-          toast('In the product this runs the single scenario and loads its dynamic parameters. ' +
-                'The prototype only simulates whole runs.');
-          break;
-        case 'pickup':
-          reviewerOpen(sub);
-          go('#/review/' + sub.id);
-          render();
-          toast('Submission moved to <strong>In Review</strong> and is now visible to the vendor as such.');
-          break;
-        case 'changes': changesModal(sub); break;
-        case 'approve': decisionModal(sub, 'approved'); break;
-        case 'reject': decisionModal(sub, 'rejected'); break;
-        case 'newsub': newSubmissionModal(); break;
-        case 'startcert': ev.preventDefault(); startCertModal(node.dataset.app); break;
-        case 'viewcert': go('#/products/' + node.dataset.app); break;
-        case 'export':
-        case 'viewartifact':
-          toast('Not implemented in the prototype — the button is here because the existing Admin App ' +
-                'page furniture has it.');
-          break;
-      }
-    });
+    node.addEventListener(ACTION_EVENT[node.dataset.act] || 'click', ev =>
+      handleAction(node.dataset.act, node.dataset.sub ? submission(node.dataset.sub) : null, node, ev));
   });
 
   const st = $('#showTrial');
@@ -3926,6 +3835,113 @@ function bind(){
   }
 }
 
+/* One handler per data-act, shared by every rendered control. Pulled out of
+   bind() so tests can drive a click without a DOM. */
+function handleAction(act, sub, node, ev){
+  ev = ev || {preventDefault(){}};
+  switch (act){
+    case 'upload': ev.preventDefault(); uploadModal(sub, node.dataset.type); break;
+    case 'mapopen': openMappingDraft(sub); go('#/mapping/' + sub.id); break;
+    case 'mapblank': startBlankMapping(sub); go('#/mapping/' + sub.id); break;
+    case 'mapimport': importModal(sub); break;
+    case 'mapview': go('#/mapping/' + sub.id); break;
+    case 'mapgenerate': generateModal(sub); break;
+    default:
+      if (act.startsWith('map') && sub && sub.mappingDraft) mapAction(act, sub, node);
+      break;
+    case 'gotorun': go('#/newrun/' + sub.id); break;
+    case 'startrun': {
+      const mode = $('#outcomeSel') ? $('#outcomeSel').value : 'realistic';
+      const r = startRun(sub, mode);
+      toast('Run <strong>' + r.id + '</strong> queued and stamped <strong>' + r.completeness +
+        '</strong>. Completeness is fixed now and never recalculated.');
+      go('#/run/' + r.id);
+      render();
+      break;
+    }
+    case 'setparam': {
+      const run = APP.runs.find(x => x.id === node.dataset.run);
+      const scen = scenarioOf(run, node.dataset.key);
+      scen.params[node.dataset.param] = node.value;
+      break;
+    }
+    case 'sealrun': {
+      const run = APP.runs.find(x => x.id === node.dataset.run);
+      const summary = sealSummary(run);
+      sealRun(run);
+      APP.prepare = null;
+      toast('Run <strong>' + run.id + '</strong> sealed — ' + esc(summary) +
+        '. Its checks are now immutable evidence.');
+      render();
+      break;
+    }
+    case 'abandonrun': {
+      const run = APP.runs.find(x => x.id === node.dataset.run);
+      abandonRun(run);
+      APP.prepare = null;
+      toast('Run <strong>' + run.id + '</strong> abandoned — its checks were discarded.');
+      render();
+      break;
+    }
+    case 'toggleopenruns': APP.showOpenRuns = !APP.showOpenRuns; render(); break;
+    case 'openprepare':
+      APP.prepare = {run: node.dataset.run, key: node.dataset.key};
+      APP.openSteps = {};
+      render();
+      break;
+    case 'closeprepare': APP.prepare = null; APP.openSteps = {}; render(); break;
+    case 'runcheck': {
+      const run = APP.runs.find(x => x.id === node.dataset.run);
+      const c = runCheck(run, node.dataset.key, +node.dataset.task);
+      toast(c.st === 'pass'
+        ? 'Task <strong>' + node.dataset.task + '</strong> verified.'
+        : 'Task <strong>' + node.dataset.task + '</strong> failed — ' + esc(c.msg));
+      render();
+      break;
+    }
+    case 'checkall': {
+      const run = APP.runs.find(x => x.id === node.dataset.run);
+      const n = checkAll(run, node.dataset.key);
+      const scen = scenarioOf(run, node.dataset.key);
+      const stopped = scen.tasks.some(x => x.check && x.check.st === 'fail');
+      toast('Checked ' + n + ' task(s)' + (stopped
+        ? ' — stopped at the first failure.' : '. All verified.'));
+      render();
+      break;
+    }
+    case 'openscenario': APP.openScenario = node.dataset.key; APP.openSteps = {}; render(); break;
+    case 'closescenario': APP.openScenario = null; APP.openSteps = {}; render(); break;
+    case 'togglestepels': {
+      const k = node.dataset.key;
+      if (APP.openSteps[k]) delete APP.openSteps[k]; else APP.openSteps[k] = true;
+      render();
+      break;
+    }
+    case 'onescenario':
+      toast('In the product this runs the single scenario and loads its dynamic parameters. ' +
+            'The prototype only simulates whole runs.');
+      break;
+    case 'pickup':
+      reviewerOpen(sub);
+      go('#/review/' + sub.id);
+      render();
+      toast('Submission moved to <strong>In Review</strong> and is now visible to the vendor as such.');
+      break;
+    case 'changes': changesModal(sub); break;
+    case 'approve': decisionModal(sub, 'approved'); break;
+    case 'reject': decisionModal(sub, 'rejected'); break;
+    case 'newsub': newSubmissionModal(); break;
+    case 'startcert': ev.preventDefault(); startCertModal(node.dataset.app); break;
+    case 'viewcert': go('#/products/' + node.dataset.app); break;
+    case 'export':
+    case 'viewartifact':
+      toast('Not implemented in the prototype — the button is here because the existing Admin App ' +
+            'page furniture has it.');
+      break;
+  }
+}
+
+const QUIET_MAP_ACTS = ['mapnotes','mapissuenote','mapsetproduct','mapsetasm'];
 /* Every mapping-editor edit goes through a Task 3 model function, then marks
    the draft dirty and re-renders. Blocked actions explain themselves. */
 function mapAction(act, sub, node){
@@ -3959,6 +3975,12 @@ function mapAction(act, sub, node){
         keyValueId:v('mapEntKey-' + ds.asm), elementId:v('mapEntEl-' + ds.asm)});
       break;
     default: return;
+  }
+  if (QUIET_MAP_ACTS.includes(act)){
+    /* Saved on blur. Re-rendering here would replace the button the vendor is
+       clicking before the click lands, so the screen catches up on the next render. */
+    markDraftDirty(sub);
+    return;
   }
   if (r && !r.ok){
     toast(r.blockedBy ? 'In use by: ' + r.blockedBy.map(esc).join(', ') : esc(r.error || 'Not allowed.'));

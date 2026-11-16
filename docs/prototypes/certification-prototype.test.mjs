@@ -944,3 +944,49 @@ test('generate modal never disables confirm', () => {
   assert.match(body, /Unexplained/);
   assert.match(body, /will be marked stale/);
 });
+
+/* ---- final-review fixes ---- */
+test('editor actions stay on the mapping page', () => {
+  const p = loadPrototype(); const s = asmSub(p);
+  p.openMappingDraft(s);
+  p.location.hash = '#/mapping/' + s.id + '/bank';
+  const raw = s.mappingDraft.doc.bank.values.find(v => v.uri.endsWith('#Raw score'));
+  p.handleAction('maptoggle', s, {dataset:{act:'maptoggle', sub:s.id, val:raw.id}, checked:true, value:'on'});
+  assert.equal(raw.enabled, true);
+  assert.equal(p.location.hash, '#/mapping/' + s.id + '/bank');
+});
+
+test('typing a note does not re-render and swallow the next click', () => {
+  const p = loadPrototype(); const s = asmSub(p);
+  p.openMappingDraft(s);
+  const el = s.mappingDraft.doc.elements[0];
+  p.$('#main').innerHTML = 'SENTINEL';
+  p.handleAction('mapnotes', s, {dataset:{act:'mapnotes', sub:s.id, el:el.id}, value:'From the SIS.'});
+  assert.equal(el.notes, 'From the SIS.');
+  assert.equal(s.mappingDraft.dirty, true);
+  assert.equal(p.$('#main').innerHTML, 'SENTINEL');
+});
+
+test('replacing the CSV discards the mapping draft, with a warning and an audit entry', () => {
+  const p = loadPrototype(); const s = asmSub(p);
+  p.openMappingDraft(s);
+  /* modal() writes the overlay, then binds via a DOM stub that returns null — the markup is what we check */
+  try { p.uploadModal(s, 'mapping'); } catch { /* stub DOM */ }
+  assert.match(p.$('#overlay').innerHTML, /discards your mapping-tool draft/);
+  p.uploadArtifact(s, 'mapping', 'vendorb-assessments-mapping-v2.csv', false);
+  assert.equal(s.mappingDraft, null);
+  assert.ok(s.history.some(h => /Mapping tool draft discarded/.test(h.what)));
+  assert.equal(p.openMappingDraft(s).baseVersion, 2);
+});
+
+test('a collection entry key must match the descriptor the collection is keyed by', () => {
+  const p = loadPrototype(); const d = vbDoc(p);
+  const ela = d.assessments.find(a => a.type === 'ELA Diagnostic');
+  const eng = d.bank.values.find(v => v.uri.endsWith('LanguageDescriptor#English'));
+  p.setStandardEnabled(d, eng.id, true);
+  const el = d.elements.find(e => e.name === 'Scale Score');
+  const r = p.addCollectionEntry(d, {assessmentId:ela.id, objective:null, collection:'assessment.scores',
+    keyValueId:eng.id, elementId:el.id});
+  assert.equal(r.ok, false);
+  assert.match(r.error, /keyed by AssessmentReportingMethodDescriptor/);
+});
