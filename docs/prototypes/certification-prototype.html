@@ -190,6 +190,7 @@ table.t td.act{text-align:right;white-space:nowrap}
 .field.wide{max-width:none}
 .radios label{display:flex;gap:9px;align-items:flex-start;font-weight:400;margin:0 0 9px;font-size:13.5px}
 .radios input{margin-top:3px}
+.maprowacts{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
 .drop{border:1.5px dashed var(--line);border-radius:var(--radius);padding:22px;text-align:center;color:var(--muted);
   background:#fafbfc;margin-bottom:14px;font-size:13px}
 
@@ -2311,6 +2312,7 @@ function vendorScreen(route){
     case 'newrun':     return vendorNewRun(route.args[0]);
     case 'run':        return runResults(route.args[0], false);
     case 'runs':       return vendorRunHistory();
+    case 'mapping':    return mappingScreen(route.args[0], route.args[1] || 'elements', false);
     default:           return placeholder(route.name.charAt(0).toUpperCase() + route.name.slice(1));
   }
 }
@@ -2567,16 +2569,23 @@ function artifactCard(sub, reviewerView){
       <tbody>${ARTIFACTS.map(a => {
         const cur = currentVersion(sub, a.id);
         const versions = sub.artifacts[a.id].length;
+        const tool = a.id === 'mapping' && MODELS[sub.model].kind === 'assessments';
         return `<tr>
           <td><strong>${esc(a.label)}</strong><div class="muted" style="font-size:12px">${esc(a.note)}</div></td>
           <td>${cur ? `v${cur.v} <span class="muted">${esc(cur.name)}</span>${
+              tool && cur.source === 'tool' ? ' <span class="tag">mapping tool</span>' : ''}${
+              tool ? ' ' + mappingIssueBadge(cur) : ''}${
               versions > 1 ? `<div class="muted" style="font-size:12px">${versions} versions — prior versions retained in audit history</div>` : ''}`
             : '<span class="badge b-amber">Missing</span>'}</td>
           <td class="muted">${cur ? esc(cur.by) : '—'}</td>
           <td class="muted nowrap">${cur ? fmtShort(cur.at) : '—'}</td>
           <td class="muted">${esc(a.validation)}</td>
           <td class="act">${reviewerView
-            ? (cur ? '<button class="btn ghost sm" data-act="viewartifact">View</button>' : '<span class="muted">—</span>')
+            ? (!cur ? '<span class="muted">—</span>'
+              : tool && cur.source === 'tool'
+                ? `<button class="btn ghost sm" data-act="mapview" data-sub="${sub.id}">View</button>`
+                : '<button class="btn ghost sm" data-act="viewartifact">View</button>')
+            : tool ? mappingRowActions(sub, cur)
             : `<button class="btn sm" data-act="upload" data-sub="${sub.id}" data-type="${a.id}">${
                 cur ? 'Replace' : 'Upload'}</button>`}</td>
         </tr>`;
@@ -3133,6 +3142,69 @@ function assessmentResultsHTML(r){
   </div>`;
 }
 
+/* ---------------- MAPPING TOOL (Assessments only) ---------------- */
+function mappingRowActions(sub, cur){
+  const id = sub.id;
+  return `<div class="maprowacts">${cur
+    ? `<button class="btn sm" data-act="mapopen" data-sub="${id}">Open in mapping tool</button>
+       <button class="btn ghost sm" data-act="mapimport" data-sub="${id}">Import workbook</button>
+       <button class="btn ghost sm" data-act="upload" data-sub="${id}" data-type="mapping">Replace CSV</button>`
+    : `<button class="btn sm" data-act="mapimport" data-sub="${id}">Import workbook</button>
+       <button class="btn ghost sm" data-act="mapblank" data-sub="${id}">Build from scratch</button>
+       <button class="btn ghost sm" data-act="upload" data-sub="${id}" data-type="mapping">Upload CSV</button>`}</div>`;
+}
+function importModalHTML(sub){
+  const slug = MODELS[sub.model].id;
+  return {body:`
+    <div class="drop">Drag a filled Data Mapping Template workbook here, or</div>
+    <div class="field"><label>File</label><input type="text" id="fileName"
+      value="${esc('vendorb-' + slug + '-mapping-workbook.xlsx')}" /></div>
+    <div class="field"><label>What happens on import</label>
+      <div class="muted">The Product, Assessments, ElementDefinitions and Enumeration tabs are read into the
+        mapping tool. Ed-Fi paths are matched against the v5 model, data types are normalized (every correction
+        is shown), and descriptor values are added to the bank. Nothing is submitted until you generate.</div></div>
+    ${sub.mappingDraft ? `<div class="banner"><h3>Importing replaces your current draft, including its notes.</h3>
+      <p>Generated versions are not affected — they stay in audit history.</p></div>` : ''}
+    <div class="field radios"><label style="font-weight:700;display:block;margin-bottom:8px">
+      Simulate (prototype only — no file is really parsed)</label>
+      <label><input type="radio" name="mapsim" value="clean" /> A clean workbook — every required field mapped</label>
+      <label><input type="radio" name="mapsim" value="vendorb" checked /> The Vendor B Diagnostic workbook as-is —
+        old paths, type typos, missing required fields, placeholders</label>
+      <label><input type="radio" name="mapsim" value="malformed" /> A workbook that isn’t the template —
+        missing tabs and headers</label></div>`,
+    footer:`<button class="btn ghost" data-act="cancel">Cancel</button>
+      <button class="btn" data-act="mapimportconfirm" data-sub="${sub.id}">Import workbook</button>`};
+}
+function importModal(sub){ const m = importModalHTML(sub); modal('Import mapping workbook', m.body, m.footer); }
+function importSummaryHTML(sub, r){
+  const row = (n, label) => `<tr><td class="nowrap"><strong>${n}</strong></td><td>${label}</td></tr>`;
+  return {body:`
+    <div class="banner"><h3>Workbook imported into the mapping tool</h3>
+      <p>Review the flagged items in the editor. Issues never block generating the mapping (D27).</p></div>
+    <table class="t"><tbody>
+      ${row(r.resolved, 'elements resolved to Ed-Fi v5 targets')}
+      ${row(r.needsTarget, 'elements need a target (path not found in v5 — original text kept)')}
+      ${row(r.typesCorrected, 'data types corrected (e.g. “Interger → Integer”)')}
+      ${row(r.valuesAdded, 'descriptor values added to the bank')}
+      ${row(r.standardEnabled, 'standard Ed-Fi descriptor values enabled because the workbook references them')}
+      ${row(r.placeholders.length, 'placeholder enumerations skipped' +
+        (r.placeholders.length ? ': ' + r.placeholders.map(esc).join(', ') : ''))}
+    </tbody></table>`,
+    footer:`<button class="btn" data-act="mapgoeditor" data-sub="${sub.id}">Open mapping tool</button>`};
+}
+function importSummaryModal(sub, r){ const m = importSummaryHTML(sub, r); modal('Import summary', m.body, m.footer); }
+
+function mappingScreen(subId, tab, readOnly){
+  const sub = submission(subId);
+  if (!sub) return placeholder('Mapping tool');
+  const p = product(sub.productId), m = MODELS[sub.model];
+  const head = readOnly
+    ? crumbs([['Home', '#/dashboard'], ['Review queue', '#/queue'], [p.name, '#/review/' + sub.id], ['Mapping tool']])
+    : crumbs([['Home', '#/products'], ['My products', '#/products'], [p.name, '#/application/' + p.id],
+        [m.label, '#/submission/' + sub.id], ['Mapping tool']]);
+  return head + `<div class="pagehead"><div><h1>Mapping tool</h1></div></div>`;
+}
+
 /* ---------------- REVIEWER ---------------- */
 function reviewerScreen(route){
   switch (route.name){
@@ -3140,6 +3212,7 @@ function reviewerScreen(route){
     case 'queue':     return reviewerQueue();
     case 'review':    return reviewerSubmission(route.args[0]);
     case 'run':       return runResults(route.args[0], true);
+    case 'mapping':   return mappingScreen(route.args[0], route.args[1] || 'issues', true);
     default:          return placeholder(route.name.charAt(0).toUpperCase() + route.name.slice(1));
   }
 }
@@ -3417,6 +3490,10 @@ function bind(){
       const sub = node.dataset.sub ? submission(node.dataset.sub) : null;
       switch (act){
         case 'upload': ev.preventDefault(); uploadModal(sub, node.dataset.type); break;
+        case 'mapopen': openMappingDraft(sub); go('#/mapping/' + sub.id); break;
+        case 'mapblank': startBlankMapping(sub); go('#/mapping/' + sub.id); break;
+        case 'mapimport': importModal(sub); break;
+        case 'mapview': go('#/mapping/' + sub.id); break;
         case 'gotorun': go('#/newrun/' + sub.id); break;
         case 'startrun': {
           const mode = $('#outcomeSel') ? $('#outcomeSel').value : 'realistic';
@@ -3567,6 +3644,27 @@ function bindOverlay(){
         return;
       }
       if (act === 'retryupload'){ uploadModal(sub, node.dataset.type); return; }
+      if (act === 'mapimportconfirm'){
+        const picked = $('#overlay').querySelector('input[name=mapsim]:checked');
+        const sim = picked ? picked.value : 'vendorb';
+        const name = ($('#fileName') && $('#fileName').value.trim()) || 'mapping-workbook.xlsx';
+        const res = importWorkbook(sub, sim, {replace:true});
+        if (!res.ok){
+          modal('Mapping workbook rejected', `
+            <div class="banner red"><h3>This workbook is not the Data Mapping Template — ${esc(name)}</h3>
+              <p>Nothing was imported and your draft is unchanged. The rejection is recorded in audit history.</p>
+              <ul>${res.errors.map(e => '<li>' + esc(e) + '</li>').join('')}</ul></div>`,
+            `<button class="btn ghost" data-act="cancel">Close</button>
+             <button class="btn" data-act="mapimportretry" data-sub="${sub.id}">Try another file</button>`);
+          render();
+          return;
+        }
+        importSummaryModal(sub, res.report);
+        render();
+        return;
+      }
+      if (act === 'mapimportretry'){ importModal(sub); return; }
+      if (act === 'mapgoeditor'){ closeModal(); go('#/mapping/' + sub.id); return; }
       if (act === 'dochanges'){
         const text = ($('#commentBox') && $('#commentBox').value.trim()) || '';
         if (!text){ $('#commentErr').textContent = 'A comment is required to request changes (FR14).'; return; }

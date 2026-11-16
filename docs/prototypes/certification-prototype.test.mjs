@@ -802,3 +802,57 @@ test('the reviewer-side seed carries 4 issues, 3 explained', () => {
   assert.deepEqual(cur.summary, {total:4, explained:3});
   assert.match(p.mappingIssueBadge(cur), /4 issues · 3 explained/);
 });
+
+test('the mapping row offers the tool only for Assessments', () => {
+  const p = loadPrototype();
+  const asm = p.artifactCard(asmSub(p), false);
+  assert.match(asm, /data-act="mapopen"/);
+  assert.match(asm, /Replace CSV/);
+  const sis = p.artifactCard(p.APP.submissions.find(s => s.productId === 'p1'), false);
+  assert.doesNotMatch(sis, /data-act="map/);
+  const mtss = p.artifactCard(p.APP.submissions.find(s => s.productId === 'p3'), false);
+  assert.doesNotMatch(mtss, /mapimport/);
+});
+
+test('an Assessments submission with no mapping offers import first', () => {
+  const p = loadPrototype();
+  const s = p.startCertification('p7', 'assessments');
+  const html = p.artifactCard(s, false);
+  assert.match(html, /data-act="mapimport"[^>]*>Import workbook/);
+  assert.match(html, /data-act="mapblank"/);
+  assert.match(html, /Upload CSV/);
+});
+
+test('a reviewer sees the issue badge and a read-only view action', () => {
+  const p = loadPrototype();
+  const html = p.artifactCard(p.APP.submissions.find(s => s.productId === 'p5'), true);
+  assert.match(html, /4 issues · 3 explained/);
+  assert.match(html, /data-act="mapview"/);
+  assert.doesNotMatch(html, /mapimport|mapopen/);
+});
+
+test('the import modal labels its simulate switch as prototype-only', () => {
+  const p = loadPrototype(); const s = asmSub(p);
+  const {body, footer} = p.importModalHTML(s);
+  assert.match(body, /Simulate \(prototype only/);
+  for (const v of ['clean','vendorb','malformed']) assert.match(body, new RegExp(`name="mapsim" value="${v}"`));
+  assert.match(footer, /data-act="mapimportconfirm"/);
+  p.openMappingDraft(s);
+  assert.match(p.importModalHTML(s).body, /replaces your current draft, including its notes/);
+});
+
+test('the import summary shows the counts', () => {
+  const p = loadPrototype(); const s = asmSub(p);
+  const r = p.importWorkbook(s, 'vendorb');
+  const html = p.importSummaryHTML(s, r.report).body;
+  assert.match(html, /need a target/);
+  assert.match(html, /PerformanceLevelDescriptor/);
+});
+
+test('the mapping route resolves for both personas', () => {
+  const p = loadPrototype();
+  assert.match(p.vendorScreen({name:'mapping', args:[asmSub(p).id]}), /Mapping tool/);
+  p.APP.persona = 'reviewer';
+  const f2 = p.APP.submissions.find(s => s.productId === 'p5');
+  assert.match(p.reviewerScreen({name:'mapping', args:[f2.id]}), /Mapping tool/);
+});
