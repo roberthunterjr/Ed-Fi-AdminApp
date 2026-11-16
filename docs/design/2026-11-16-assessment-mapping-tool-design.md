@@ -94,8 +94,11 @@ Resolution rules:
 - **Ed-Fi target.** Column G (Complete Name) is matched against the v5 model. A match fills the target.
   No match (old version paths, typos) leaves the element **Needs target** and keeps the original text
   next to it for reference.
-- **Score row identity.** Column H (JSON descriptor snippet, present in vendor workbooks but not in the
-  template) is parsed to link the element to its reporting-method descriptor value.
+- **Score row identity and datatype.** Column H (a JSON descriptor snippet, present in vendor workbooks but
+  not in the template) is parsed for both `assessmentReportingMethodDescriptor` and
+  `resultDatatypeTypeDescriptor`. Both are set on every score target of that row. A standard value is
+  enabled. A vendor value (e.g. `uri://<vendor>/ResultDatatypeTypeDescriptor#Boolean`) is matched against
+  the bank, where EnumerationItems' `resultDatatypeType` rows have added it. *(Revised 2026-11-16.)*
 - **Data type.** This is normalized to the fixed type list. Every change is recorded as an import correction
   ("Interger → Integer"). Values that cannot be mapped become **Type unknown**.
 - **Placeholders.** `CustomValue` rows are not added to the bank. Each one becomes an import note.
@@ -147,6 +150,13 @@ Each row has the following fields:
   `assessment.scores` and `studentAssessment.scoreResults`.
 - **Row identity**: when a target is a keyed collection (scores, scoreResults, performanceLevels), the
   vendor picks the reporting-method descriptor value from the bank.
+- **Result datatype** (revised 2026-11-16): every score target (`assessment.scores`,
+  `studentAssessment.scoreResults` and the objective equivalents) carries **its own**
+  `ResultDatatypeTypeDescriptor` value, picked on the target chip next to the reporting method. The vendor's
+  data type and the Ed-Fi result datatype are different things: a String in the vendor's system ("Level 5")
+  is reported to Ed-Fi as Level. The Collections view can set the datatype for every target of one entry at
+  once. Vendors may add their own datatype values to the bank (e.g. Boolean). Standard values in use
+  can't be switched off.
 - **Enumeration source**: when the type is Enumeration, the vendor picks a descriptor type from the bank.
   That type must have at least one enabled or vendor value.
 - **Notes**: free text, optional.
@@ -158,7 +168,8 @@ Each row has the following fields:
 - Confirming creates a new Vendor mapping CSV version. Earlier runs that pinned the prior version are
   marked stale (D14, FR11), exactly as Replace does today.
 - **Issue types:** required field unmapped, element needs target, type mismatch, type unknown,
-  enumeration with no values, unused descriptor value, import placeholder skipped.
+  enumeration with no values, unused descriptor value, import placeholder skipped, result datatype not
+  chosen, datatypes disagree, vendor-defined datatype to verify.
 - **Notes** can be attached to an element row or to an individual issue. An issue with a note is
   **Explained**; one without is **Unexplained**. Notes never clear an issue. The reviewer judges.
 - The issue list and notes are stored with the artifact version and are visible in audit history.
@@ -174,8 +185,28 @@ Each row has the following fields:
   `resultDatatypeTypeDescriptor`, `result`.
 - The panel lists every required field as **Mapped** (with the element(s) that cover it) or **Unmapped**,
   per assessment and per reporting method (§8 Q2).
-- **Type check** compares the vendor type with the target type and, for score results, with the
-  `resultDatatypeTypeDescriptor`. For example, Percentile mapped to a target expecting Integer is flagged.
+- **Type check** (revised 2026-11-16) works differently by target:
+  - **Non-score targets:** the vendor type is compared with the target type (e.g. a Descriptor target needs Enumeration).
+  - **Score targets:** the vendor type is compared with **that target's** result datatype, using this table:
+
+    | Vendor type | Fits these Ed-Fi datatypes |
+    |---|---|
+    | String | Level |
+    | Integer | Integer, Decimal |
+    | Decimal | Decimal |
+    | Percent | Percentage |
+    | Percentile | Percentile |
+    | Range | Range |
+    | Level | Level |
+    | Enumeration | Level |
+    | Boolean, Date | none of the standard six |
+
+  - **Vendor-defined datatypes:** the tool can't know what these mean. One counts as compatible only when its
+    code matches the vendor type's name; otherwise it is flagged *to verify*, not as a mismatch.
+  - **No datatype chosen:** a score target with no datatype is flagged *Result datatype not chosen*.
+  - **Datatypes disagree:** when `scores` and `scoreResults` for the same assessment, objective and reporting
+    method declare different datatypes, that is flagged but not blocked.
+  - **Coverage:** `scoreResults.resultDatatypeType` counts as mapped once the `scoreResults` target has a datatype.
 
 ### 5.9 Prototype specifics
 

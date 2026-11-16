@@ -732,8 +732,10 @@ test('type, target, enumeration, placeholder and unused issues are raised', () =
   const p = loadPrototype(); const d = vbDoc(p);
   const id = n => d.elements.find(e => e.name === n).id;
   const keys = p.computeIssues(d).map(i => i.key);
-  assert.ok(keys.includes(`type-mismatch:${id('Placement Level')}:studentAssessment.scoreResults`));
-  assert.ok(keys.includes(`type-mismatch:${id('Baseline Diagnostic (Y/N)')}:studentAssessment.scoreResults`));
+  assert.ok(!keys.some(k => k.startsWith(`type-mismatch:${id('Placement Level')}:`)), 'String reported as Level is valid');
+  assert.ok(!keys.some(k => k.startsWith(`type-mismatch:${id('Relative Placement')}:`)), 'String reported as Level is valid');
+  assert.ok(keys.includes(`datatype-unverified:${id('Baseline Diagnostic (Y/N)')}:studentAssessment.scoreResults`),
+    'vendor-defined Boolean datatype on an Enumeration element is flagged for the reviewer');
   assert.ok(keys.includes(`needs-target:${id('AssessmentID')}`));
   assert.ok(keys.includes(`needs-target:${id('Diagnostic Language')}`), 'one of two parts unresolved');
   assert.ok(keys.includes('placeholder:PerformanceLevelDescriptor'));
@@ -745,10 +747,15 @@ test('type, target, enumeration, placeholder and unused issues are raised', () =
 test('a note on a cleared issue moves to the element, tagged', () => {
   const p = loadPrototype(); const d = vbDoc(p);
   const el = d.elements.find(e => e.name === 'Placement Level');
+  const idx = el.targets.findIndex(t => t.path === 'studentAssessment.scoreResults');
+  const dt = c => d.bank.values.find(v => v.uri === 'uri://ed-fi.org/ResultDatatypeTypeDescriptor#' + c);
+  p.setStandardEnabled(d, dt('Integer').id, true);
+  p.setTargetDatatype(d, el.id, idx, dt('Integer').id);
   const key = `type-mismatch:${el.id}:studentAssessment.scoreResults`;
+  assert.ok(p.computeIssues(d).some(i => i.key === key), 'String reported as Integer is a mismatch');
   d.issueNotes[key] = 'Placement is a label, not a number.';
   assert.deepEqual(p.issueSummary(p.computeIssues(d), d).explained, 1);
-  p.setElementField(d, el.id, 'type', 'Level');
+  p.setTargetDatatype(d, el.id, idx, dt('Level').id);
   p.reconcileNotes(d);
   assert.equal(d.issueNotes[key], undefined);
   assert.match(el.notes, /\[issue resolved\] Placement is a label, not a number\./);
@@ -989,4 +996,98 @@ test('a collection entry key must match the descriptor the collection is keyed b
     keyValueId:eng.id, elementId:el.id});
   assert.equal(r.ok, false);
   assert.match(r.error, /keyed by AssessmentReportingMethodDescriptor/);
+});
+
+/* ---- per-target result datatype ---- */
+const dtVal = (d, ns, code) => d.bank.values.find(v => v.type === 'ResultDatatypeTypeDescriptor' &&
+  v.ns === ns && v.code === code);
+
+test('import reads the result datatype from column H onto every score target', () => {
+  const p = loadPrototype(); const d = vbDoc(p);
+  const el = n => d.elements.find(e => e.name === n);
+  const level = dtVal(d, 'edfi', 'Level');
+  assert.equal(level.enabled, true, 'referenced standard datatype is enabled by import');
+  assert.ok(el('Relative Placement').targets.every(t => t.datatype === level.id));
+  const bool = dtVal(d, 'vendor', 'Boolean');
+  assert.ok(bool, 'vendor-defined datatype is in the bank');
+  assert.ok(el('Baseline Diagnostic (Y/N)').targets.every(t => t.datatype === bool.id));
+  assert.ok(el('Rush Flag').targets.every(t => t.datatype == null), 'non-score targets carry no datatype');
+});
+
+test('each score target keeps its own datatype', () => {
+  const p = loadPrototype(); const d = vbDoc(p);
+  const el = d.elements.find(e => e.name === 'Duration (minutes)');
+  const dec = dtVal(d, 'edfi', 'Decimal');
+  p.setStandardEnabled(d, dec.id, true);
+  p.setTargetDatatype(d, el.id, 0, dec.id);
+  assert.equal(el.targets[0].datatype, dec.id);
+  assert.notEqual(el.targets[1].datatype, dec.id, 'the other target is unchanged');
+});
+
+test('vendor type is checked against each target datatype', () => {
+  const p = loadPrototype(); const d = vbDoc(p);
+  assert.deepEqual(p.DATATYPE_FIT.String, ['Level']);
+  assert.deepEqual(p.DATATYPE_FIT.Integer, ['Integer','Decimal']);
+  const el = d.elements.find(e => e.name === 'Duration (minutes)');
+  const pct = dtVal(d, 'edfi', 'Percentage');
+  p.setStandardEnabled(d, pct.id, true);
+  p.setTargetDatatype(d, el.id, 1, pct.id);
+  const keys = p.computeIssues(d).map(i => i.key);
+  assert.ok(keys.includes(`type-mismatch:${el.id}:${el.targets[1].path}`));
+});
+
+test('a score target without a datatype is flagged', () => {
+  const p = loadPrototype(); const d = vbDoc(p);
+  const ela = d.assessments.find(a => a.type === 'ELA Diagnostic');
+  const el = p.addElement(d, {assessmentId:ela.id, name:'Raw Points', type:'Integer'});
+  const raw = d.bank.values.find(v => v.uri.endsWith('AssessmentReportingMethodDescriptor#Raw score'));
+  p.setStandardEnabled(d, raw.id, true);
+  p.addTarget(d, el.id, 'studentAssessment.scoreResults', raw.id);
+  const issues = p.computeIssues(d);
+  assert.ok(issues.some(i => i.key === `datatype-missing:${el.id}:studentAssessment.scoreResults`));
+  assert.ok(issues.some(i => i.key === `unmapped:${ela.id}:-:${raw.id}:scoreResults.resultDatatypeType`),
+    'coverage needs the scoreResults datatype');
+});
+
+test('scores and scoreResults disagreeing on datatype is flagged, not blocked', () => {
+  const p = loadPrototype(); const d = vbDoc(p);
+  const ela = d.assessments.find(a => a.type === 'ELA Diagnostic');
+  const el = d.elements.find(e => e.name === 'Duration (minutes)');
+  const dec = dtVal(d, 'edfi', 'Decimal');
+  p.setStandardEnabled(d, dec.id, true);
+  p.setTargetDatatype(d, el.id, 0, dec.id);
+  const rm = el.targets[0].entryKey;
+  assert.ok(p.computeIssues(d).some(i => i.key === `datatype-conflict:${ela.id}:-:${rm}`));
+});
+
+test('a datatype in use cannot be switched off', () => {
+  const p = loadPrototype(); const d = vbDoc(p);
+  const r = p.setStandardEnabled(d, dtVal(d, 'edfi', 'Level').id, false);
+  assert.equal(r.ok, false);
+  assert.ok(r.blockedBy.includes('Relative Placement'));
+});
+
+test('the collections tab can set an entry datatype for every target in it', () => {
+  const p = loadPrototype(); const d = vbDoc(p);
+  const ela = d.assessments.find(a => a.type === 'ELA Diagnostic');
+  const el = d.elements.find(e => e.name === 'Duration (minutes)');
+  const dec = dtVal(d, 'edfi', 'Decimal');
+  p.setStandardEnabled(d, dec.id, true);
+  p.setEntryDatatype(d, {assessmentId:ela.id, objective:null, collection:'studentAssessment.scoreResults',
+    keyValueId:el.targets[1].entryKey, datatype:dec.id});
+  assert.equal(el.targets[1].datatype, dec.id);
+  const entry = p.collectionEntries(d, ela.id).find(e => e.collection === 'studentAssessment.scoreResults' &&
+    e.key.id === el.targets[1].entryKey);
+  assert.deepEqual(entry.datatypes.map(v => v.code), ['Decimal']);
+});
+
+test('the elements and collections tabs show datatype controls', () => {
+  const p = loadPrototype(); const s = asmSub(p);
+  p.openMappingDraft(s);
+  assert.match(p.mappingScreen(s.id, 'elements', false), /data-act="mapsetdtype"/);
+  const coll = p.mappingScreen(s.id, 'collections', false);
+  assert.match(coll, /data-act="mapsetentrydtype"/);
+  assert.match(coll, /id="mapEntDt-/);
+  const f2 = p.APP.submissions.find(x => x.productId === 'p5');
+  assert.match(p.mappingScreen(f2.id, 'elements', true), /Integer/);
 });

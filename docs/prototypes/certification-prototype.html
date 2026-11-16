@@ -1051,12 +1051,17 @@ const EDFI_V5_TARGETS = [
 ];
 const SCORE_COLLECTIONS = ['assessment.scores','studentAssessment.scoreResults',
   'objectiveAssessment.scores','studentObjectiveAssessment.scoreResults'];
-/* vendor type → Ed-Fi ResultDatatypeType for a score result */
-const SCORE_TYPES = {Integer:'Integer', Decimal:'Decimal', Percent:'Percentage', Percentile:'Percentile',
-  Range:'Range', Level:'Level'};
+/* Vendor data type → the standard Ed-Fi ResultDatatypeType values it can be reported as.
+   The vendor's own type and the Ed-Fi result datatype are different things: a String
+   in the vendor's system ("Level 5") is reported to Ed-Fi as Level. */
+const DATATYPE_FIT = {String:['Level'], Integer:['Integer','Decimal'], Decimal:['Decimal'],
+  Percent:['Percentage'], Percentile:['Percentile'], Range:['Range'], Level:['Level'],
+  Enumeration:['Level'], Boolean:[], Date:[]};
+const RDT = 'ResultDatatypeTypeDescriptor';
 const STANDARD_DESCRIPTORS = [
   {type:RM, definition:'The method used to report assessment performance.',
-   values:['Scale score','Percentile','Lexile Measure','Quantile Measure','Raw score']},
+   values:['Scale score','Percentile','Lexile Measure','Quantile Measure','Raw score',
+     'Achievement/proficiency level']},
   {type:'AssessmentCategoryDescriptor', definition:'The category of an assessment.',
    values:['Diagnostic','Benchmark test']},
   {type:'AcademicSubjectDescriptor', definition:'The subject area of an assessment.',
@@ -1076,12 +1081,14 @@ const STANDARD_DESCRIPTORS = [
    values:['Advanced','Proficient','Basic','Below Basic']}
 ].map(d => ({type:d.type, definition:d.definition, values:d.values.map(code => ({code, short:code}))}));
 /* Ed-Fi target type → vendor data types that may map to it */
-const TYPE_ACCEPTS = {Score:Object.keys(SCORE_TYPES), Descriptor:['Enumeration'], Date:['Date'],
+const TYPE_ACCEPTS = {Descriptor:['Enumeration'], Date:['Date'],
   Boolean:['Boolean'], Decimal:['Decimal','Integer'], Integer:['Integer'], String:['String','Integer']};
 const ISSUE_KINDS = [
   ['unmapped','Required fields not mapped'], ['needs-target','Needs a target'],
   ['type-mismatch','Type mismatches'], ['type-unknown','Unknown types'],
   ['enum-empty','Enumerations without values'], ['unused-value','Unused descriptor values'],
+  ['datatype-missing','Result datatype not chosen'], ['datatype-conflict','Datatypes disagree'],
+  ['datatype-unverified','Vendor-defined datatypes to verify'],
   ['placeholder','Import placeholders']
 ];
 const DESCRIPTOR_TYPE_ALIASES ={Accomodation:'AccommodationDescriptor', resultDatatypeType:'ResultDatatypeTypeDescriptor'};
@@ -1105,8 +1112,10 @@ const WORKBOOK_FIXTURES = (function(){
   const VB = 'uri://vendor-b.example.com/';
   const SC = 'assessment.scores/studentAssessment.scoreResults';
   const OBJ = 'objectiveAssessment.scores/studentObjectiveAssessment.scoreResults';
-  const rmJson = (ns, code) => '"assessmentReportingMethodDescriptor": "' + ns + RM + '#' + code + '"';
-  const vh = code => rmJson(VB, code), eh = code => rmJson('uri://ed-fi.org/', code);
+  const EF = 'uri://ed-fi.org/';
+  const H = (rmNs, rm, dtNs, dt) => '"assessmentReportingMethodDescriptor": "' + rmNs + RM + '#' + rm + '",\n' +
+    '"resultDatatypeTypeDescriptor": "' + dtNs + RDT + '#' + dt + '"';
+  const vh = (rm, dt) => H(VB, rm, EF, dt), eh = (rm, dt) => H(EF, rm, EF, dt);
   const DIAG = 'uri://ed-fi.org/AssessmentCategoryDescriptor#Diagnostic';
   const el = (asm, name, def, type, path, h) =>
     [asm, name, def, type, 'v6.2', path.split('/').pop().split('.').pop(), path, h || ''];
@@ -1121,38 +1130,39 @@ const WORKBOOK_FIXTURES = (function(){
       ['Math Diagnostic', 'Adaptive diagnostic for mathematics.', 'Vendor B Math Diagnostic',
        'VENDORB-DIAGNOSTIC-MATH', '1', DIAG, 'VENDORB-DIAGNOSTIC', '800']],
     ElementDefinitions: [WB_HEADERS.ElementDefinitions,
-      el(ELA, 'Baseline Diagnostic (Y/N)', 'Whether this is the student’s baseline diagnostic.', 'Enumeration', SC, vh('Is Baseline Diagnostic?')),
+      el(ELA, 'Baseline Diagnostic (Y/N)', 'Whether this is the student’s baseline diagnostic.', 'Enumeration', SC, H(VB, 'Is Baseline Diagnostic?', VB, 'Boolean')),
       el(ELA, 'Most Recent Diagnostic (Y/N)', 'Whether this is the most recent diagnostic.', 'Enumeration', 'studentAssessment.retestIndicatorDescriptor'),
-      el(ELA, 'Duration (minutes)', 'Minutes spent on the diagnostic.', 'Integer', SC, vh('Duration (minutes)')),
+      el(ELA, 'Duration (minutes)', 'Minutes spent on the diagnostic.', 'Integer', SC, vh('Duration (minutes)', 'Integer')),
       el(ELA, 'Rush Flag', 'Whether the student may have rushed.', 'Enumeration', 'studentAssessment.eventCircumstanceDescriptor'),
-      el(ELA, 'Scale Score', 'Scale score achieved (0-800).', 'Integer', SC, eh('Scale score')),
-      el(ELA, 'Placement Level', 'Placement level achieved, e.g. "Level 5".', 'String', SC, vh('Placement Level')),
-      el(ELA, 'Relative Placement', 'Placement relative to grade level.', 'String', SC, vh('Relative Placement')),
-      el(ELA, 'Percentile', 'Normed percentile.', 'Percentile', SC, eh('Percentile')),
-      el(ELA, 'Lexile Measure', 'Lexile measure.', 'Level', SC, eh('Lexile Measure')),
-      el(ELA, 'Lexile Range', 'Recommended text difficulty range.', 'Range', SC, vh('Lexile Range')),
+      el(ELA, 'Scale Score', 'Scale score achieved (0-800).', 'Integer', SC, eh('Scale score', 'Integer')),
+      el(ELA, 'Placement Level', 'Placement level achieved, e.g. "Level 5".', 'String', SC, eh('Achievement/proficiency level', 'Level')),
+      el(ELA, 'Relative Placement', 'Placement relative to grade level.', 'String', SC, vh('Relative Placement', 'Level')),
+      el(ELA, 'Percentile', 'Normed percentile.', 'Percentile', SC, eh('Percentile', 'Percentile')),
+      el(ELA, 'Lexile Measure', 'Lexile measure.', 'Level', SC, eh('Lexile Measure', 'Level')),
+      el(ELA, 'Lexile Range', 'Recommended text difficulty range.', 'Range', SC, vh('Lexile Range', 'Range')),
       el(ELA, 'Diagnostic Language', 'Language the diagnostic was taken in.', 'Enumeration',
         'assessment.languages.studentAssessment/studentAssessment.administrationLanguageDescriptor'),
-      el(ELA, 'Diagnostic Gain', 'Scale score gain from baseline to most recent.', 'Integer', 'studentAssessment.scoreResults', vh('Diagnostic Gain')),
-      el(ELA, 'Annual Typical Growth Measure', 'Typical annual growth for the student.', 'Interger', SC, vh('Typical Growth Measure')),
-      el(ELA, 'Annual Stretch Growth Measure', 'Ambitious annual growth for the student.', 'Interger', SC, vh('Stretch Growth Measure')),
-      el(ELA, 'Percent Progress to Annual Typical Growth (%)', 'Progress toward typical growth.', 'percentage', SC, vh('Progress To Typical Growth')),
-      el(ELA, 'Mid On-Grade Level Score', 'Scale score for mid on-grade level.', 'integer', SC, vh('Mid On-Grade Level Scale Score')),
-      el(ELA, 'Phonics Scale Score', 'Phonics domain scale score.', 'Integer', OBJ, eh('Scale score')),
-      el(ELA, 'Phonics Placement Level', 'Phonics domain placement level.', 'String', OBJ, vh('Placement Level')),
-      el(ELA, 'Vocabulary Scale Score', 'Vocabulary domain scale score.', 'Integer', OBJ, eh('Scale score')),
+      el(ELA, 'Diagnostic Gain', 'Scale score gain from baseline to most recent.', 'Integer', 'studentAssessment.scoreResults', vh('Diagnostic Gain', 'Integer')),
+      el(ELA, 'Annual Typical Growth Measure', 'Typical annual growth for the student.', 'Interger', SC, vh('Typical Growth Measure', 'Integer')),
+      el(ELA, 'Annual Stretch Growth Measure', 'Ambitious annual growth for the student.', 'Interger', SC, vh('Stretch Growth Measure', 'Integer')),
+      el(ELA, 'Percent Progress to Annual Typical Growth (%)', 'Progress toward typical growth.', 'percentage', SC, vh('Progress To Typical Growth', 'Percentage')),
+      el(ELA, 'Mid On-Grade Level Score', 'Scale score for mid on-grade level.', 'integer', SC, vh('Mid On-Grade Level Scale Score', 'Integer')),
+      el(ELA, 'Phonics Scale Score', 'Phonics domain scale score.', 'Integer', OBJ, eh('Scale score', 'Integer')),
+      el(ELA, 'Phonics Placement Level', 'Phonics domain placement level.', 'String', OBJ, eh('Achievement/proficiency level', 'Level')),
+      el(ELA, 'Vocabulary Scale Score', 'Vocabulary domain scale score.', 'Integer', OBJ, eh('Scale score', 'Integer')),
       el(MATH, 'AssessmentID', 'Identifier of the assessment.', 'String', 'assessments.assessment.id'),
-      el(MATH, 'Scale Score', 'Scale score achieved (0-800).', 'Integer', SC, eh('Scale score')),
-      el(MATH, 'Percentile', 'Normed percentile.', 'Percentile', SC, eh('Percentile')),
-      el(MATH, 'Quantile Measure', 'Quantile measure.', 'Level', SC, eh('Quantile Measure')),
-      el(MATH, 'Placement Level', 'Placement level achieved.', 'String', SC, vh('Placement Level')),
-      el(MATH, 'Number and Operations Scale Score', 'Number and Operations domain scale score.', 'Integer', OBJ, eh('Scale score'))],
+      el(MATH, 'Scale Score', 'Scale score achieved (0-800).', 'Integer', SC, eh('Scale score', 'Integer')),
+      el(MATH, 'Percentile', 'Normed percentile.', 'Percentile', SC, eh('Percentile', 'Percentile')),
+      el(MATH, 'Quantile Measure', 'Quantile measure.', 'Level', SC, eh('Quantile Measure', 'Level')),
+      el(MATH, 'Placement Level', 'Placement level achieved.', 'String', SC, eh('Achievement/proficiency level', 'Level')),
+      el(MATH, 'Number and Operations Scale Score', 'Number and Operations domain scale score.', 'Integer', OBJ, eh('Scale score', 'Integer'))],
     EnumerationDefinitions: [WB_HEADERS.EnumerationDefinitions,
       ['AssessmentPeriod', 'The window in which an assessment is administered.'],
       ['Accomodation', 'A variation in how an assessment is presented or taken.'],
       ['AssessmentReportingMethod', 'The method used to report performance.'],
       ['EventCircumstance', 'An unusual event during an administration.'],
       ['RetestIndicator', 'Whether an administration is the latest.'],
+      ['resultDatatypeType', 'The datatype of a score result.'],
       ['PerformanceLevel', 'Performance levels defined for the assessment.']],
     EnumerationItems: [WB_HEADERS.EnumerationItems].concat([
       ['AssessmentReportingMethod','Diagnostic Gain','Gain from baseline to most recent diagnostic'],
@@ -1166,7 +1176,6 @@ const WORKBOOK_FIXTURES = (function(){
       ['AssessmentReportingMethod','Relative Placement','Placement relative to grade level'],
       ['AssessmentReportingMethod','Stretch Growth Measure','Ambitious annual growth'],
       ['AssessmentReportingMethod','Typical Growth Measure','Typical annual growth'],
-      ['AssessmentReportingMethod','Placement Level','Placement level'],
       ['AssessmentPeriod','Spring','Spring norming window'],
       ['AssessmentPeriod','Winter','Winter norming window'],
       ['AssessmentPeriod','Fall','Fall norming window'],
@@ -1178,6 +1187,7 @@ const WORKBOOK_FIXTURES = (function(){
       ['Accomodation','Read Aloud On','Assessment read aloud'],
       ['Accomodation','Read Aloud Directions Questions Answers Passages','Everything read aloud, including passages'],
       ['Accomodation','Read Aloud Off','Assessment not read aloud'],
+      ['resultDatatypeType','Boolean','Boolean (true/false)'],
       ['PerformanceLevel','CustomValue','Custom Value']
     ].map(r => [r[0], r[1], r[2], r[2]]))
   }};
@@ -1193,7 +1203,7 @@ const WORKBOOK_FIXTURES = (function(){
       el('Reading Screener', 'TestDate', 'Date the screener was taken.', 'Date', 'studentAssessment.administrationDate'),
       el('Reading Screener', 'Subject', 'Subject of the screener.', 'Enumeration', 'assessment.academicSubjects'),
       el('Reading Screener', 'Grade', 'Grade the screener is designed for.', 'Enumeration', 'assessment.assessedGradeLevels'),
-      el('Reading Screener', 'Scale Score', 'Scale score achieved.', 'Integer', SC, eh('Scale score'))],
+      el('Reading Screener', 'Scale Score', 'Scale score achieved.', 'Integer', SC, eh('Scale score', 'Integer'))],
     EnumerationDefinitions: [WB_HEADERS.EnumerationDefinitions,
       ['AcademicSubject', 'The subject area of the assessment.'],
       ['GradeLevel', 'The grade level of the assessment.']],
@@ -1757,12 +1767,16 @@ function parseWorkbook(wb){
     const res = resolveTargets(complete);
     const corrections = [];
     if (nt.corrected){ corrections.push(rawType + ' → ' + nt.type); report.typesCorrected++; }
-    const m = /"assessmentReportingMethodDescriptor"\s*:\s*"([^"]+)"/.exec(String(r[7] || ''));
-    let key = null;
-    if (m){
-      key = /^uri:\/\/ed-fi\.org\//.test(m[1]) ? enableStandardByUri(doc, m[1], report)
+    /* Column H names the score row's reporting method and its Ed-Fi result datatype. */
+    const hText = String(r[7] || '');
+    const descriptorIn = prop => {
+      const m = new RegExp('"' + prop + '"\\s*:\\s*"([^"]+)"').exec(hText);
+      if (!m) return null;
+      return /^uri:\/\/ed-fi\.org\//.test(m[1]) ? enableStandardByUri(doc, m[1], report)
         : doc.bank.values.find(v => v.uri === m[1]) || null;
-    }
+    };
+    const key = descriptorIn('assessmentReportingMethodDescriptor');
+    const dtype = descriptorIn('resultDatatypeTypeDescriptor');
     const name = c('Element');
     const isObjective = res.paths.some(p => /^(studentO|o)bjectiveAssessment\./.test(p));
     let objective = null;
@@ -1770,8 +1784,10 @@ function parseWorkbook(wb){
       objective = key && name.toLowerCase().endsWith(key.code.toLowerCase())
         ? name.slice(0, name.length - key.code.length).trim() : name;
     }
+    const score = path => SCORE_COLLECTIONS.includes(path);
     const targets = res.paths.map(path => ({path,
-      entryKey: SCORE_COLLECTIONS.includes(path) && key ? key.id : null}));
+      entryKey: score(path) && key ? key.id : null,
+      datatype: score(path) && dtype ? dtype.id : null}));
     const firstDesc = res.paths.map(targetByPath).find(t => t.type === 'Descriptor');
     const asm = asmFor(c('Assessment Type'));
     doc.elements.push({id:uid('mel'), assessmentId:asm ? asm.id : null, objective, name,
@@ -1780,6 +1796,17 @@ function parseWorkbook(wb){
       targets, notes:'',
       importNote:{originalTarget:complete, unresolved:res.unresolved, corrections}});
     if (res.unresolved.length) report.needsTarget++; else report.resolved++;
+  });
+
+  /* An objective element whose name doesn't end in its reporting method's code
+     ("Phonics Placement Level" / "Achievement/proficiency level") takes its objective
+     from the assessment-level element it shadows ("Placement Level"). */
+  doc.elements.forEach(e => {
+    if (!e.objective || e.objective !== e.name) return;
+    const base = doc.elements.filter(x => x.assessmentId === e.assessmentId && !x.objective &&
+      e.name.toLowerCase().endsWith(' ' + x.name.toLowerCase()))
+      .sort((a, b) => b.name.length - a.name.length)[0];
+    if (base) e.objective = e.name.slice(0, e.name.length - base.name.length).trim();
   });
 
   doc.importReport = report;
@@ -1795,7 +1822,8 @@ function selectableValues(doc, type){
 function valueUsers(doc, valueId){
   const v = bankValue(doc, valueId);
   if (!v) return [];
-  const els = doc.elements.filter(e => e.targets.some(t => t.entryKey === valueId) || e.enumType === v.type)
+  const els = doc.elements.filter(e => e.targets.some(t => t.entryKey === valueId || t.datatype === valueId) ||
+    e.enumType === v.type)
     .map(e => e.name);
   const asms = doc.assessments.filter(a => a.category === v.uri).map(a => a.title || a.type);
   return els.concat(asms);
@@ -1854,14 +1882,14 @@ function setElementField(doc, elementId, field, value){
   el[field] = value === '' && field !== 'notes' && field !== 'definition' ? null : value;
   if (field === 'type' && value !== 'Enumeration') el.enumType = null;
 }
-function addTarget(doc, elementId, path, entryKey){
+function addTarget(doc, elementId, path, entryKey, datatype){
   const el = mapElement(doc, elementId);
   if (!el) return {ok:false, error:'No such element.'};
   if (!targetByPath(path)) return {ok:false, error:'"' + path + '" is not in the Ed-Fi v5 model.'};
   const key = entryKey || null;
   if (el.targets.some(t => t.path === path && t.entryKey === key))
     return {ok:false, error:'That target is already mapped.'};
-  el.targets.push({path, entryKey:key});
+  el.targets.push({path, entryKey:key, datatype:SCORE_COLLECTIONS.includes(path) ? (datatype || null) : null});
   return {ok:true};
 }
 function removeTarget(doc, elementId, index){
@@ -1872,6 +1900,18 @@ function setTargetKey(doc, elementId, index, valueId){
   const el = mapElement(doc, elementId);
   if (el && el.targets[index]) el.targets[index].entryKey = valueId || null;
 }
+/* Each score target carries its own result datatype. */
+function setTargetDatatype(doc, elementId, index, valueId){
+  const el = mapElement(doc, elementId);
+  if (el && el.targets[index]) el.targets[index].datatype = valueId || null;
+}
+/* Collections view: set the datatype on every target that makes up one entry. */
+function setEntryDatatype(doc, o){
+  doc.elements.filter(e => e.assessmentId === o.assessmentId && (e.objective || null) === (o.objective || null))
+    .forEach(e => e.targets.forEach(t => {
+      if (t.path === o.collection && t.entryKey === o.keyValueId) t.datatype = o.datatype || null;
+    }));
+}
 function collectionEntries(doc, assessmentId){
   const groups = {};
   doc.elements.filter(e => e.assessmentId === assessmentId).forEach(e => e.targets.forEach(t => {
@@ -1879,8 +1919,10 @@ function collectionEntries(doc, assessmentId){
     if (!tgt || !tgt.collection || !t.entryKey) return;
     const k = t.path + '|' + (e.objective || '') + '|' + t.entryKey;
     if (!groups[k]) groups[k] = {collection:t.path, objective:e.objective || null,
-      key:bankValue(doc, t.entryKey), elements:[]};
+      key:bankValue(doc, t.entryKey), elements:[], datatypes:[]};
     if (!groups[k].elements.includes(e)) groups[k].elements.push(e);
+    const dv = t.datatype ? bankValue(doc, t.datatype) : null;
+    if (dv && !groups[k].datatypes.includes(dv)) groups[k].datatypes.push(dv);
   }));
   return Object.values(groups).filter(g => g.key).sort((a, b) =>
     a.collection.localeCompare(b.collection) || (a.objective || '').localeCompare(b.objective || '') ||
@@ -1916,7 +1958,8 @@ function coverage(doc){
       const resultEls = feeding(res);
       row('scores', feeding(def).map(e => e.name), g.obj, g.key);
       row('scoreResults.result', resultEls.map(e => e.name), g.obj, g.key);
-      row('scoreResults.resultDatatypeType', resultEls.filter(e => SCORE_TYPES[e.type]).map(e => e.name), g.obj, g.key);
+      row('scoreResults.resultDatatypeType', resultEls.filter(e => e.targets.some(t =>
+        t.path === res && t.entryKey === g.key && t.datatype)).map(e => e.name), g.obj, g.key);
     });
   });
   return rows;
@@ -1943,21 +1986,57 @@ function computeIssues(doc){
         : e.name + ' has no Ed-Fi target';
       add('needs-target', 'needs-target:' + e.id, msg, {elementId:e.id});
     }
-    if (!e.type){
-      add('type-unknown', 'type-unknown:' + e.id, e.name + ': data type is unknown', {elementId:e.id});
-    } else {
-      e.targets.forEach(t => {
-        const tgt = targetByPath(t.path);
-        const ok = tgt && TYPE_ACCEPTS[tgt.type];
-        if (ok && !ok.includes(e.type))
-          add('type-mismatch', 'type-mismatch:' + e.id + ':' + t.path,
-            e.name + ': ' + e.type + ' can’t map to ' + t.path + ' (expects ' + ok.join(', ') + ')',
-            {elementId:e.id});
-      });
-    }
+    if (!e.type) add('type-unknown', 'type-unknown:' + e.id, e.name + ': data type is unknown', {elementId:e.id});
+    e.targets.forEach(t => {
+      const tgt = targetByPath(t.path);
+      if (!tgt) return;
+      if (tgt.type === 'Score'){
+        /* A score target is checked against its own result datatype, not the vendor type alone. */
+        if (!t.datatype){
+          add('datatype-missing', 'datatype-missing:' + e.id + ':' + t.path,
+            e.name + ': pick the result datatype for ' + t.path, {elementId:e.id});
+          return;
+        }
+        const dv = bankValue(doc, t.datatype);
+        if (!dv || !e.type) return;
+        if (dv.ns === 'edfi'){
+          const fit = DATATYPE_FIT[e.type] || [];
+          if (!fit.includes(dv.code))
+            add('type-mismatch', 'type-mismatch:' + e.id + ':' + t.path,
+              e.name + ': ' + e.type + ' can\u2019t be reported as ' + dv.code + ' on ' + t.path + ' (' +
+              (fit.length ? e.type + ' fits ' + fit.join(', ') : 'no standard datatype fits ' + e.type) + ')',
+              {elementId:e.id});
+        } else if (dv.code.toLowerCase() !== e.type.toLowerCase()){
+          add('datatype-unverified', 'datatype-unverified:' + e.id + ':' + t.path,
+            e.name + ': ' + e.type + ' reported as vendor-defined datatype ' + dv.code + ' on ' + t.path +
+            ' \u2014 the reviewer has to verify this', {elementId:e.id});
+        }
+        return;
+      }
+      const ok = e.type && TYPE_ACCEPTS[tgt.type];
+      if (ok && !ok.includes(e.type))
+        add('type-mismatch', 'type-mismatch:' + e.id + ':' + t.path,
+          e.name + ': ' + e.type + ' can\u2019t map to ' + t.path + ' (expects ' + ok.join(', ') + ')',
+          {elementId:e.id});
+    });
     if (e.type === 'Enumeration' && (!e.enumType || !selectableValues(doc, e.enumType).length))
       add('enum-empty', 'enum-empty:' + e.id, e.name + ': ' + (e.enumType
         ? e.enumType + ' has no values in the bank' : 'pick the descriptor this enumeration uses'), {elementId:e.id});
+  });
+  /* The definition (scores) and the results (scoreResults) of one reporting method should agree. */
+  const declared = {};
+  doc.elements.forEach(e => e.targets.forEach(t => {
+    if (!SCORE_COLLECTIONS.includes(t.path) || !t.entryKey || !t.datatype) return;
+    const k = [e.assessmentId, e.objective || '-', t.entryKey].join(':');
+    (declared[k] = declared[k] || []).includes(t.datatype) || declared[k].push(t.datatype);
+  }));
+  Object.keys(declared).filter(k => declared[k].length > 1).forEach(k => {
+    const [aId, obj, rm] = k.split(':');
+    const a = doc.assessments.find(x => x.id === aId);
+    add('datatype-conflict', 'datatype-conflict:' + k,
+      (a ? a.title || a.type : 'Unassigned') + (obj !== '-' ? ' \u203a ' + obj : '') + ' \u203a ' +
+      ((bankValue(doc, rm) || {code:'?'}).code) + ': scores and scoreResults declare different datatypes (' +
+      declared[k].map(id => (bankValue(doc, id) || {code:'?'}).code).join(' vs ') + ')');
   });
   doc.bank.values.filter(v => (v.ns === 'vendor' || v.enabled) && !valueUsers(doc, v.id).length)
     .forEach(v => add('unused-value', 'unused-value:' + v.id,
@@ -1992,7 +2071,7 @@ function addCollectionEntry(doc, o){
   const tgt = targetByPath(o.collection);
   if (tgt && tgt.keyedBy && key.type !== tgt.keyedBy)
     return {ok:false, error:o.collection + ' is keyed by ' + tgt.keyedBy + ', not ' + key.type + '.'};
-  return addTarget(doc, o.elementId, o.collection, o.keyValueId);
+  return addTarget(doc, o.elementId, o.collection, o.keyValueId, o.datatype);
 }
 
 /* ---------- derived state ---------- */
@@ -3349,6 +3428,14 @@ function mapBankHTML(sub, doc, ro){
     }).join('')}`;
 }
 
+/* Datatype choices: enabled Ed-Fi values first, then the vendor's own. */
+function datatypeOptions(doc, selected, blank){
+  return `<option value="">${blank || '\u2014 datatype \u2014'}</option>` +
+    selectableValues(doc, RDT).slice().sort((a, b) => (a.ns === 'vendor') - (b.ns === 'vendor'))
+      .map(v => `<option value="${v.id}"${v.id === selected ? ' selected' : ''}>${esc(v.code)}${
+        v.ns === 'vendor' ? ' (vendor)' : ''}</option>`).join('');
+}
+
 /* ---- elements: element-first, like the workbook ---- */
 function mapElementsHTML(sub, doc, issues, ro){
   const opts = (list, sel, blank) => (blank != null ? `<option value="">${blank}</option>` : '') +
@@ -3361,7 +3448,12 @@ function mapElementsHTML(sub, doc, issues, ro){
         : ` <select data-act="mapsetkey" data-sub="${sub.id}" data-el="${e.id}" data-idx="${i}">${
             opts(selectableValues(doc, tgt.keyedBy).map(v => [v.id, v.code]), t.entryKey, '— pick ' +
               tgt.keyedBy.replace(/Descriptor$/, '') + ' —')}</select>`) : '';
-    return `<span class="mchip" title="${esc(tgt ? tgt.def : '')}">${esc(t.path)}${keyCtl}${ro ? ''
+    const dv = t.datatype ? bankValue(doc, t.datatype) : null;
+    const dtCtl = tgt && tgt.type === 'Score'
+      ? (ro ? ' &middot; ' + (dv ? esc(dv.code) + (dv.ns === 'vendor' ? ' (vendor)' : '') : '<em>no datatype</em>')
+        : ` <select data-act="mapsetdtype" data-sub="${sub.id}" data-el="${e.id}" data-idx="${i}"
+            title="Ed-Fi result datatype for this target">${datatypeOptions(doc, t.datatype)}</select>`) : '';
+    return `<span class="mchip" title="${esc(tgt ? tgt.def : '')}">${esc(t.path)}${keyCtl}${dtCtl}${ro ? ''
       : ` <button class="x" data-act="maprmtarget" data-sub="${sub.id}" data-el="${e.id}" data-idx="${i}"
           title="Remove target">&times;</button>`}</span>`;
   }).join('');
@@ -3427,12 +3519,17 @@ function mapCollectionsHTML(sub, doc, ro){
       const els = doc.elements.filter(e => e.assessmentId === a.id);
       return `<h3 class="mapsubhead">${esc(asmLabel(a))}</h3>
         ${entries.length ? `<table class="t"><thead><tr><th>Collection</th><th>Objective</th><th>Key</th>
-          <th>Vendor element(s)</th><th>scores</th><th>result</th><th>datatype</th></tr></thead><tbody>
+          <th>Vendor element(s)</th><th>Result datatype</th><th>scores</th><th>result</th><th>datatype</th></tr></thead><tbody>
           ${entries.map(e => `<tr><td class="mono" style="font-size:12px">${esc(e.collection)}</td>
             <td>${e.objective ? esc(e.objective) : '<span class="muted">—</span>'}</td>
             <td><strong>${esc(e.key.code)}</strong> <span class="muted" style="font-size:11.5px">${
               e.key.ns === 'edfi' ? 'Ed-Fi' : 'vendor'}</span></td>
             <td>${e.elements.map(x => esc(x.name)).join(', ')}</td>
+            <td>${!targetByPath(e.collection) || targetByPath(e.collection).type !== 'Score' ? '<span class="muted">\u2014</span>'
+              : ro ? (e.datatypes.map(v => esc(v.code)).join(' / ') || '<em>none</em>')
+              : `<select data-act="mapsetentrydtype" data-sub="${sub.id}" data-asm="${a.id}" data-obj="${esc(e.objective || '')}"
+                  data-col="${e.collection}" data-key="${e.key.id}">${datatypeOptions(doc,
+                    e.datatypes.length === 1 ? e.datatypes[0].id : null, e.datatypes.length > 1 ? '\u2014 mixed \u2014' : null)}</select>`}</td>
             <td>${mark(a, e, 'scores')}</td><td>${mark(a, e, 'scoreResults.result')}</td>
             <td>${mark(a, e, 'scoreResults.resultDatatypeType')}</td></tr>`).join('')}</tbody></table>`
           : '<div class="empty">No collection entries yet.</div>'}
@@ -3440,6 +3537,7 @@ function mapCollectionsHTML(sub, doc, ro){
           <select id="mapEntCol-${a.id}">${keyed.map(t => `<option>${t.path}</option>`).join('')}</select>
           <select id="mapEntKey-${a.id}">${keyOpts.map(v => `<option value="${v.id}">${
             esc(v.type.replace(/Descriptor$/, '') + ' #' + v.code)}</option>`).join('')}</select>
+          <select id="mapEntDt-${a.id}" title="Result datatype (score collections)">${datatypeOptions(doc, null)}</select>
           <select id="mapEntEl-${a.id}">${els.map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select>
           <button class="btn sm" data-act="mapaddentry" data-sub="${sub.id}" data-asm="${a.id}">+ Add entry</button></div>`}`;
     }).join('') || '<div class="empty">Add an assessment first.</div>'}`;
@@ -3807,7 +3905,7 @@ function bind(){
      checkbox fires change, so the event is chosen per action. */
   const ACTION_EVENT = {setparam:'input', toggleopenruns:'change', maptoggle:'change', mapsettype:'change',
     mapsetenum:'change', mapsetkey:'change', mapnotes:'change', mapissuenote:'change', mapaddtarget:'change',
-    mapsetproduct:'change', mapsetasm:'change'};
+    mapsetproduct:'change', mapsetasm:'change', mapsetdtype:'change', mapsetentrydtype:'change'};
   main.querySelectorAll('[data-act]').forEach(node => {
     node.addEventListener(ACTION_EVENT[node.dataset.act] || 'click', ev =>
       handleAction(node.dataset.act, node.dataset.sub ? submission(node.dataset.sub) : null, node, ev));
@@ -3965,6 +4063,9 @@ function mapAction(act, sub, node){
     case 'mapaddtarget': if (!val) return; r = addTarget(doc, ds.el, val, null); break;
     case 'maprmtarget': removeTarget(doc, ds.el, +ds.idx); break;
     case 'mapsetkey': setTargetKey(doc, ds.el, +ds.idx, val); break;
+    case 'mapsetdtype': setTargetDatatype(doc, ds.el, +ds.idx, val); break;
+    case 'mapsetentrydtype': setEntryDatatype(doc, {assessmentId:ds.asm, objective:ds.obj || null,
+      collection:ds.col, keyValueId:ds.key, datatype:val}); break;
     case 'mapaddelement':
       if (!v('mapNewElName').trim()){ toast('Give the element a name first.'); return; }
       addElement(doc, {assessmentId:v('mapNewElAsm'), name:v('mapNewElName').trim(), type:v('mapNewElType')});
@@ -3972,7 +4073,7 @@ function mapAction(act, sub, node){
     case 'maprmelement': removeElement(doc, ds.el); break;
     case 'mapaddentry':
       r = addCollectionEntry(doc, {assessmentId:ds.asm, objective:null, collection:v('mapEntCol-' + ds.asm),
-        keyValueId:v('mapEntKey-' + ds.asm), elementId:v('mapEntEl-' + ds.asm)});
+        keyValueId:v('mapEntKey-' + ds.asm), elementId:v('mapEntEl-' + ds.asm), datatype:v('mapEntDt-' + ds.asm)});
       break;
     default: return;
   }
