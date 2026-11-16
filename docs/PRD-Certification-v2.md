@@ -1,10 +1,10 @@
 # Certification Automation Platform PRD
 
 **Owner:** Robert H on behalf of Nathan G
-**Status:** Draft — Revision 4
-**Last Updated:** August 13, 2026
+**Status:** Draft — Revision 5
+**Last Updated:** November 16, 2026
 
-> **Revision note:** Revision 2 incorporated feedback content additively, in place, inside the original PRD structure. Revision 3 restructures the document so the feedback's own logic drives the outline: Scope → **Confirmed Product Decisions** → **Certification Decision Ownership** → **Feature Requirements** (organized so each "Decision Requiring Documentation" is traceable to a specific feature) → **Workflow Assumptions** → **Nice to Have** → **Out of Scope**. No content from Revision 2 was dropped — supporting context (Personas, JTBD, NFRs, Architecture) is retained but now sits around this policy spine rather than alongside it as parallel structure. Revision 4 (2026-08-13) adds three things without changing that spine: **Intervention/MTSS Certification** as a third certification model (§5.2, §7.10, §9); the **Certifying Agent** pre-review determination gate and Run Report structure, derived from a real agent output (§7.5, §7.7.2, §15 OQ13); and a terminology/consistency pass reconciling "Certification Agent" → "Certifying Agent," "deny" → "reject," and the Ready for Review → Under Review transition across all sequence diagrams.
+> **Revision note:** Revision 2 incorporated feedback content additively, in place, inside the original PRD structure. Revision 3 restructures the document so the feedback's own logic drives the outline: Scope → **Confirmed Product Decisions** → **Certification Decision Ownership** → **Feature Requirements** (organized so each "Decision Requiring Documentation" is traceable to a specific feature) → **Workflow Assumptions** → **Nice to Have** → **Out of Scope**. No content from Revision 2 was dropped — supporting context (Personas, JTBD, NFRs, Architecture) is retained but now sits around this policy spine rather than alongside it as parallel structure. Revision 4 (2026-08-13) adds three things without changing that spine: **Intervention/MTSS Certification** as a third certification model (§5.2, §7.10, §9); the **Certifying Agent** pre-review determination gate and Run Report structure, derived from a real agent output (§7.5, §7.7.2, §15 OQ13); and a terminology/consistency pass reconciling "Certification Agent" → "Certifying Agent," "deny" → "reject," and the Ready for Review → Under Review transition across all sequence diagrams. Revision 5 (2026-11-16) adds the **Assessment Mapping Tool** (§7.4) and, with it, a deliberate revision of a feedback-sourced decision: artifact ownership is now *vendor-authored, platform-assisted* (§5.5, §12), and two proposed decisions D27/D28 are recorded (§5.7). The revised wording is marked inline; design: `docs/design/2026-11-16-assessment-mapping-tool-design.md`.
 >
 > **Fidelity note:** Everything in §5 (Confirmed Product Decisions), §6 (Ownership Matrix), and the feedback-sourced bullet lists throughout §7/§10/§11/§12 is a direct transcription of the first-round feedback — treated as authoritative and not reworded for substance. A small number of places in §7.7, §7.8, and §12 extended the feedback's literal wording to make the PRD internally consistent (e.g., giving workflow states entry/exit criteria, since the feedback only named the labels). Those gaps were resolved on 2026-08-10 (workflow state diagram and gating logic, §7.7/§7.7.1; notification event consolidation, §7.8; renewal-workflow deferral, §12/§13) and are marked "confirmed 2026-08-10" inline, tracked in §15 (OQ8–OQ11) for traceability back to the original feedback.
 
@@ -157,10 +157,11 @@ The reviewer remains the certification decision-maker and is responsible for:
 *(Implemented in §7.6, FT6: Reviewer Workbench.)*
 
 ## 5.5 Artifact Ownership
-- Certification artifacts are vendor-owned.
-- Vendors create and upload mappings, reports, documentation, and sample data.
-- The platform stores and presents artifacts.
-- The platform does not generate certification artifacts.
+*(Revised 2026-11-16 — vendor-authored, platform-assisted; see `docs/design/2026-11-16-assessment-mapping-tool-design.md`. This replaces the first-round feedback wording, which said "The platform does not generate certification artifacts.")*
+
+- Certification artifacts are vendor-owned and vendor-authored.
+- Vendors may upload artifacts or author them with platform-provided tools, such as the Assessment Mapping Tool (§7.4).
+- The platform stores and presents artifacts, and may assist authoring with structure, pickers and checks, but never makes mapping choices on a vendor's behalf.
 
 *(See also §12 Out of Scope: Artifact Generation.)*
 
@@ -170,6 +171,12 @@ The reviewer remains the certification decision-maker and is responsible for:
 - Certification remains at reviewer discretion based on submitted evidence.
 
 *(Implemented in §7.3, FT3, and §7.5, FT5.)*
+
+## 5.7 Assessment Mapping Tool Decisions (proposed 2026-11-16)
+- **D27 (proposed):** Mapping issues are flagged for the reviewer and never block generating a mapping version.
+- **D28 (proposed):** The descriptor bank is the only source of selectable descriptor values in the mapping tool; standard Ed-Fi values start disabled.
+
+*(Implemented in §7.4, Assessment Mapping Tool. Proposed, not yet confirmed by the certification workgroup.)*
 
 ---
 
@@ -352,7 +359,7 @@ The artifact upload loop is now explicit in the diagram, rather than assumed: a 
 
 **Goal:** Provide management of product mappings, reports, sample data, and validation results, so reviewers can compare mappings, sample data, reports, and API responses using a common structure.
 
-**Ownership and generation boundary** (§5.5): Certification artifacts are vendor-owned. The platform stores and presents but does not generate them.
+**Ownership and authoring boundary** (§5.5, revised 2026-11-16): Certification artifacts are vendor-owned and vendor-authored. The platform stores and presents them, and may provide authoring tools (the Assessment Mapping Tool below) in which the vendor makes every choice.
 
 **"Decision Requiring Documentation" — Artifact Updates During Review** (feedback verbatim):
 - Vendors may replace artifacts during review.
@@ -391,6 +398,22 @@ sequenceDiagram
 ```
 
 This is the same three-artifact set (Certification Mapping, Score Report, Sample Data) referenced generically in §5.5/§7.7.1 — here shown as the specific fields the vendor sees on screen. The "Domain API selected" branch is the entry point into §7.3's domain-selection step; Assessments is called out as the first domain available, with other domains following the same resource/endpoint pattern.
+
+### Assessment Mapping Tool (added 2026-11-16)
+
+An authoring path for the **Vendor mapping CSV** of an Assessments submission. It replaces hand-filling the Data Mapping Template workbook's free-text Ed-Fi columns with pickers over the Assessments v5 model, plus checks. Design: `docs/design/2026-11-16-assessment-mapping-tool-design.md`; clickable in `docs/prototypes/certification-prototype.html`.
+
+**Conditions of Satisfaction:**
+- **Entry point:** the Vendor mapping CSV row of Required artifacts offers *Import workbook* (primary), *Build from scratch* and *Upload CSV* when no version exists, and *Open in mapping tool*, *Import workbook* and *Replace CSV* once one does. Assessments submissions only.
+- **Import:** a filled Data Mapping Template workbook is read tab by tab. Ed-Fi paths are matched against the v5 model; unmatched paths are flagged *Needs target* with the original text kept. Data types are normalized, and every correction is shown. `CustomValue` placeholders are skipped and flagged. Standard Ed-Fi descriptors the workbook references are enabled. A workbook that is not the template is rejected and nothing is imported. An import summary shows the counts.
+- **Build from scratch:** opens the same editor with an empty mapping.
+- **Descriptor bank (D28):** vendor descriptor values under the product namespace, plus Ed-Fi standard values listed but disabled until the vendor enables them. Only enabled or vendor values are selectable. A value in use cannot be removed or disabled, and unused values are flagged.
+- **Multi-target elements:** one vendor element can map to several Ed-Fi fields (e.g. *Scale Score* → `assessment.scores` and `studentAssessment.scoreResults`). Keyed-collection targets take a reporting-method descriptor from the bank.
+- **Collection entries:** an Ed-Fi-first view lists each keyed entry of `scores` / `scoreResults` / `performanceLevels` per assessment, with the feeding elements and their coverage. Entries can be added from the bank.
+- **Checks:** required-field coverage comes from the v5 model and is checked **per assessment and per reporting method** (and per objective assessment when one is targeted). Vendor data types are checked against the target type.
+- **Generate with issues (D27):** generating is always allowed. A summary lists open issues first. The new version carries its issues and notes, and runs pinned to the prior version are marked stale (D14).
+- **Notes:** the vendor can attach notes to elements and to individual issues (*Explained* / *Unexplained*). Notes never clear an issue. A note on an issue that no longer applies moves to the element, tagged "issue resolved", and is never dropped.
+- **Draft:** edits are kept in a working draft per submission. Only Generate creates a version, and reviewers see only generated versions.
 
 ## 7.5 FT5: Validation Engine
 
@@ -472,6 +495,8 @@ Validation here is primarily field-presence and type-matching against the sample
 - Exercise final certification judgment
 - Leave feedback
 - Approve or reject certifications
+
+**Mapping review (added 2026-11-16, §7.4 Assessment Mapping Tool):** for a mapping generated in the mapping tool, the reviewer opens a read-only view of exactly the submitted version. It shows the issue list grouped by kind, each issue's *Explained* / *Unexplained* state with the vendor's note inline, and the coverage and collection views. The Required artifacts row shows an issue badge (e.g. "4 issues · 3 explained").
 
 **"Decision Requiring Documentation" — Reviewer Landing Page** (feedback verbatim): The reviewer homepage must prominently display, per certification run:
 - Certification Type (SIS, Domain, or Intervention/MTSS — the feedback named the first two; the third follows from §5.2)
@@ -683,6 +708,7 @@ flowchart LR
 - Reviewer identity
 - Reviewer decision date
 - Approval/rejection history
+- **Mapping tool events** — added 2026-11-16 (§7.4): mapping workbook imported (with resolved / needs-target counts), mapping workbook rejected, mapping started from scratch, and mapping generated (version number, issue count, explained count).
 - **Run Report** — added 2026-08-10, structure revised 2026-08-13 (§7.5, §7.7.2): the Certifying Agent's structured determination for an automated validation run — per-area PASS/FAIL/PASS WITH CLARIFICATION results, blocking deficiencies (if any), recommended reviewer note, and readiness decision — handed to the reviewer at the start of Under Review. Distinct from "Validation execution history" above (which is the raw execution log); the Run Report is the reviewer-facing comparison artifact and should be retained alongside it, not folded into it.
 
 ## 7.10 FT10: Intervention / MTSS Certification Workflow
@@ -878,7 +904,7 @@ flowchart TD
 
 *(Feedback verbatim list; §15 OQ11 flags the one place Rev 3 added a characterization not stated by the feedback.)*
 
-- **Artifact generation.** Vendors are solely responsible for creating certification artifacts. Neither the platform nor reviewers generate artifacts on a vendor's behalf (§5.5).
+- **Authoring artifact content on a vendor's behalf** *(revised 2026-11-16, was "Artifact generation")*. The platform and reviewers do not author artifact content on a vendor's behalf — no auto-mapping, no reviewer edits. Platform-provided authoring tools in which the vendor makes every choice (§5.5, §7.4 Assessment Mapping Tool) are in scope.
 - **AI-generated recommendations.** The platform does not produce AI-generated certification recommendations — i.e., no automated approve/reject judgment. The Certifying Agent (JTBD 5, §7.5, §7.7.2) is a non-AI, rules-based evidence checker; its "readiness to proceed" output is not a certification recommendation and is not affected by this boundary. See §15 OQ13 for the open question on how far this distinction can be pushed before it needs reviewer re-confirmation.
 - **Certification confidence/risk scoring.** The platform does not produce a computed confidence or risk score for a submission.
 - **Renewal workflows.** Out of scope for the current release, **deferred** (confirmed 2026-08-10) — not a permanent exclusion. Tracked separately under "Automated Re-Certification" in Future Enhancements (§13). Renewal is expected to closely resemble the original certification workflow, so the deferral is a sequencing decision rather than a signal that a materially different workflow needs to be designed later.
