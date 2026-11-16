@@ -1047,7 +1047,16 @@ const STANDARD_DESCRIPTORS = [
   {type:'PerformanceLevelDescriptor', definition:'A performance level.',
    values:['Advanced','Proficient','Basic','Below Basic']}
 ].map(d => ({type:d.type, definition:d.definition, values:d.values.map(code => ({code, short:code}))}));
-const DESCRIPTOR_TYPE_ALIASES = {Accomodation:'AccommodationDescriptor', resultDatatypeType:'ResultDatatypeTypeDescriptor'};
+/* Ed-Fi target type → vendor data types that may map to it */
+const TYPE_ACCEPTS = {Score:Object.keys(SCORE_TYPES), Descriptor:['Enumeration'], Date:['Date'],
+  Boolean:['Boolean'], Decimal:['Decimal','Integer'], Integer:['Integer'], String:['String','Integer']};
+const ISSUE_KINDS = [
+  ['unmapped','Required fields not mapped'], ['needs-target','Needs a target'],
+  ['type-mismatch','Type mismatches'], ['type-unknown','Unknown types'],
+  ['enum-empty','Enumerations without values'], ['unused-value','Unused descriptor values'],
+  ['placeholder','Import placeholders']
+];
+const DESCRIPTOR_TYPE_ALIASES ={Accomodation:'AccommodationDescriptor', resultDatatypeType:'ResultDatatypeTypeDescriptor'};
 
 /* Workbook fixtures, in the Data Mapping Template's tab and header layout. The
    Vendor B Diagnostic workbook is an anonymized stand-in for a real vendor's filled
@@ -1822,6 +1831,105 @@ function collectionEntries(doc, assessmentId){
   return Object.values(groups).filter(g => g.key).sort((a, b) =>
     a.collection.localeCompare(b.collection) || (a.objective || '').localeCompare(b.objective || '') ||
     a.key.code.localeCompare(b.key.code));
+}
+/* ---- checks (design §5.8, §8 Q2): per assessment and per reporting method ---- */
+function coverage(doc){
+  const rows = [];
+  doc.assessments.forEach(a => {
+    const els = doc.elements.filter(e => e.assessmentId === a.id);
+    const by = path => els.filter(e => e.targets.some(t => t.path === path)).map(e => e.name);
+    const row = (field, names, objective, rm) => rows.push({assessmentId:a.id, objective:objective || null,
+      reportingMethodId:rm || null, field, mapped:names.length > 0, by:names});
+    EDFI_V5_TARGETS.filter(t => t.required).forEach(t => {
+      let names = by(t.path);
+      if (t.path === 'assessment.assessmentIdentifier' && a.identifier) names = ['Assessment row'].concat(names);
+      if (t.path === 'assessment.assessmentTitle' && a.title) names = ['Assessment row'].concat(names);
+      if (t.path === 'assessment.namespace' && doc.product.namespace) names = ['Product'].concat(names);
+      row(t.path, names);
+    });
+    /* every (objective, reporting method) a score target uses */
+    const groups = [];
+    els.forEach(e => e.targets.forEach(t => {
+      if (!SCORE_COLLECTIONS.includes(t.path) || !t.entryKey) return;
+      const obj = e.objective || null;
+      if (!groups.some(g => g.obj === obj && g.key === t.entryKey)) groups.push({obj, key:t.entryKey});
+    }));
+    groups.forEach(g => {
+      const def = g.obj ? 'objectiveAssessment.scores' : 'assessment.scores';
+      const res = g.obj ? 'studentObjectiveAssessment.scoreResults' : 'studentAssessment.scoreResults';
+      const feeding = path => els.filter(e => (e.objective || null) === g.obj &&
+        e.targets.some(t => t.path === path && t.entryKey === g.key));
+      const resultEls = feeding(res);
+      row('scores', feeding(def).map(e => e.name), g.obj, g.key);
+      row('scoreResults.result', resultEls.map(e => e.name), g.obj, g.key);
+      row('scoreResults.resultDatatypeType', resultEls.filter(e => SCORE_TYPES[e.type]).map(e => e.name), g.obj, g.key);
+    });
+  });
+  return rows;
+}
+function computeIssues(doc){
+  const issues = [];
+  const add = (kind, key, message, extra) => issues.push(Object.assign({key, kind, message}, extra || {}));
+  if (!doc.assessments.length)
+    add('unmapped', 'unmapped:-:-:-:assessments', 'No assessments defined — every required field is unmapped');
+  coverage(doc).filter(r => !r.mapped).forEach(r => {
+    const a = doc.assessments.find(x => x.id === r.assessmentId);
+    const key = r.reportingMethodId ? bankValue(doc, r.reportingMethodId) : null;
+    add('unmapped', ['unmapped', r.assessmentId, r.objective || '-', r.reportingMethodId || '-', r.field].join(':'),
+      (a.title || a.type) + (r.objective ? ' › ' + r.objective : '') + (key ? ' › ' + key.code : '') +
+      ': ' + r.field + ' is not mapped');
+  });
+  doc.elements.forEach(e => {
+    const keyless = e.targets.filter(t => SCORE_COLLECTIONS.includes(t.path) && !t.entryKey);
+    const unresolved = (e.importNote && e.importNote.unresolved) || [];
+    if (!e.targets.length || unresolved.length || keyless.length){
+      const msg = keyless.length ? 'Pick the reporting method for ' + keyless[0].path
+        : unresolved.length ? e.name + ': ' + unresolved.length + ' of ' + (unresolved.length + e.targets.length) +
+          ' targets not found in Ed-Fi v5 (' + unresolved.join(', ') + ')'
+        : e.name + ' has no Ed-Fi target';
+      add('needs-target', 'needs-target:' + e.id, msg, {elementId:e.id});
+    }
+    if (!e.type){
+      add('type-unknown', 'type-unknown:' + e.id, e.name + ': data type is unknown', {elementId:e.id});
+    } else {
+      e.targets.forEach(t => {
+        const tgt = targetByPath(t.path);
+        const ok = tgt && TYPE_ACCEPTS[tgt.type];
+        if (ok && !ok.includes(e.type))
+          add('type-mismatch', 'type-mismatch:' + e.id + ':' + t.path,
+            e.name + ': ' + e.type + ' can’t map to ' + t.path + ' (expects ' + ok.join(', ') + ')',
+            {elementId:e.id});
+      });
+    }
+    if (e.type === 'Enumeration' && (!e.enumType || !selectableValues(doc, e.enumType).length))
+      add('enum-empty', 'enum-empty:' + e.id, e.name + ': ' + (e.enumType
+        ? e.enumType + ' has no values in the bank' : 'pick the descriptor this enumeration uses'), {elementId:e.id});
+  });
+  doc.bank.values.filter(v => (v.ns === 'vendor' || v.enabled) && !valueUsers(doc, v.id).length)
+    .forEach(v => add('unused-value', 'unused-value:' + v.id,
+      v.type + '#' + v.code + ' is in the bank but no element uses it', {valueId:v.id}));
+  ((doc.importReport && doc.importReport.placeholders) || []).forEach(type => {
+    if (!selectableValues(doc, type).length)
+      add('placeholder', 'placeholder:' + type, type + ' only had a CustomValue placeholder — add real values');
+  });
+  return issues;
+}
+function issueSummary(issues, doc){
+  return {total:issues.length,
+    explained:issues.filter(i => String(doc.issueNotes[i.key] || '').trim()).length};
+}
+function reconcileNotes(doc){
+  const live = new Set(computeIssues(doc).map(i => i.key));
+  Object.keys(doc.issueNotes).forEach(k => {
+    if (live.has(k)) return;
+    const text = doc.issueNotes[k];
+    if (text){
+      const el = doc.elements.find(e => k.split(':').includes(e.id));
+      if (el) el.notes = (el.notes ? el.notes + '\n' : '') + '[issue resolved] ' + text;
+      else doc.orphanNotes.push({from:k, text});
+    }
+    delete doc.issueNotes[k];
+  });
 }
 function addCollectionEntry(doc, o){
   const key = bankValue(doc, o.keyValueId);

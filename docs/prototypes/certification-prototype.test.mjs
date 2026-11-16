@@ -705,3 +705,51 @@ test('removing an element keeps its notes as orphan notes', () => {
   p.removeElement(d, el.id);
   assert.deepEqual(d.orphanNotes, [{from:'Rush Flag', text:'Yellow means possible rush.'}]);
 });
+
+test('the clean workbook has no issues', () => {
+  const p = loadPrototype();
+  const {doc} = p.parseWorkbook(p.WORKBOOK_FIXTURES.clean);
+  assert.deepEqual(p.computeIssues(doc), []);
+});
+
+test('coverage is per assessment and per reporting method', () => {
+  const p = loadPrototype(); const d = vbDoc(p);
+  const keys = p.computeIssues(d).map(i => i.key);
+  for (const a of d.assessments){
+    assert.ok(keys.includes(`unmapped:${a.id}:-:-:studentAssessment.administrationDate`), a.type);
+    assert.ok(keys.includes(`unmapped:${a.id}:-:-:assessment.academicSubjects`), a.type);
+  }
+  const ela = d.assessments.find(a => a.type === 'ELA Diagnostic');
+  const gain = d.bank.values.find(v => v.code === 'Diagnostic Gain');
+  assert.ok(keys.includes(`unmapped:${ela.id}:-:${gain.id}:scores`),
+    'Diagnostic Gain has a result but no assessment.scores definition');
+  const scale = d.bank.values.find(v => v.uri.endsWith('AssessmentReportingMethodDescriptor#Scale score'));
+  assert.ok(!keys.some(k => k.startsWith(`unmapped:${ela.id}:-:${scale.id}:`)), 'Scale Score is fully covered');
+  assert.ok(!keys.includes(`unmapped:${ela.id}:-:-:assessment.assessmentIdentifier`), 'covered by the assessment row');
+});
+
+test('type, target, enumeration, placeholder and unused issues are raised', () => {
+  const p = loadPrototype(); const d = vbDoc(p);
+  const id = n => d.elements.find(e => e.name === n).id;
+  const keys = p.computeIssues(d).map(i => i.key);
+  assert.ok(keys.includes(`type-mismatch:${id('Placement Level')}:studentAssessment.scoreResults`));
+  assert.ok(keys.includes(`type-mismatch:${id('Baseline Diagnostic (Y/N)')}:studentAssessment.scoreResults`));
+  assert.ok(keys.includes(`needs-target:${id('AssessmentID')}`));
+  assert.ok(keys.includes(`needs-target:${id('Diagnostic Language')}`), 'one of two parts unresolved');
+  assert.ok(keys.includes('placeholder:PerformanceLevelDescriptor'));
+  const acc = d.bank.values.find(v => v.type === 'AccommodationDescriptor');
+  assert.ok(keys.includes(`unused-value:${acc.id}`));
+  assert.ok(!keys.includes(`enum-empty:${id('Rush Flag')}`));
+});
+
+test('a note on a cleared issue moves to the element, tagged', () => {
+  const p = loadPrototype(); const d = vbDoc(p);
+  const el = d.elements.find(e => e.name === 'Placement Level');
+  const key = `type-mismatch:${el.id}:studentAssessment.scoreResults`;
+  d.issueNotes[key] = 'Placement is a label, not a number.';
+  assert.deepEqual(p.issueSummary(p.computeIssues(d), d).explained, 1);
+  p.setElementField(d, el.id, 'type', 'Level');
+  p.reconcileNotes(d);
+  assert.equal(d.issueNotes[key], undefined);
+  assert.match(el.notes, /\[issue resolved\] Placement is a label, not a number\./);
+});
