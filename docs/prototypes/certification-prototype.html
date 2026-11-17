@@ -1406,6 +1406,9 @@ const SAMPLE_ELA = {name:'vendorb-ela-sample.csv',
     ["EdFiCertification","Student155","EdFiCertificationStudent155","11","2024-2025","Grand Bend High School","Enrolled","","","255901001","","","","EdFiCertificationStudent155","female","N","White","N","N","","","HOMEROOM-396100000000502; LA/READ GR 5-39615010046R502; LA/READ GR 5-39615010046R502B; LA/READ GR 5-39615010046R502C; LANG ARTS GR 5-396150100460502; LIB SKLS/INFO LIT 5-396150110500502","","","9/1/24","9/1/24","Fall (Beginning of Year - November 15)","Y","Y","83","","Off","470","Grade 11","1 Grade Level Below","Approaching Grade 11","52","1","425L","325L-475L","474","Grade 10","1 Grade Level Below","Approaching Grade 11","479","Grade 10","1 Grade Level Below","Approaching Grade 11","439","Grade 10","1 Grade Level Below","Approaching Grade 11","482","Grade 10","1 Grade Level Below","Approaching Grade 11","454","Grade 10","1 Grade Level Below","Approaching Grade 11","454","Grade 10","1 Grade Level Below","Approaching Grade 11","458","Grade 10","1 Grade Level Below","Approaching Grade 11","English","0","39","53","0","0","513","Not Provided","","","","VB-ACT-0155"],
     ["EdFiCertification","Student156","EdFiCertificationStudent156","12","2024-2025","Grand Bend High School","Enrolled","","","255901001","","","","EdFiCertificationStudent156","male","Y","White","Y","Y","","","FUN READ 3-223150100260301T; HOMEROOM-223100000000305; LA/READ GR 3-22315010044R305; LANG ARTS GR 3-223150100440305A","","","9/1/24","9/1/24","Fall (Beginning of Year - November 15)","Y","Y","83","","Off","470","Grade 9","3 or More Grade Levels Below","Needs Improvement","3","1","425L","325L-475L","474","Grade 9","3 or More Grade Levels Below","Needs Improvement","479","Grade 9","3 or More Grade Levels Below","Needs Improvement","439","Grade 9","3 or More Grade Levels Below","Needs Improvement","482","Grade 9","3 or More Grade Levels Below","Needs Improvement","454","Grade 9","3 or More Grade Levels Below","Needs Improvement","454","Grade 9","3 or More Grade Levels Below","Needs Improvement","458","Grade 9","3 or More Grade Levels Below","Needs Improvement","Spanish","0","18","50","0","0","642","Not Provided","","","","VB-ACT-0156"]
   ]};
+/* Mapping docs read back from uploaded (non-tool) mapping CSVs, per version, so
+   their ids stay stable across calls. */
+const MAPPING_DOC_CACHE = new WeakMap();
 /* Date formats a vendor can declare for a Date element's sample column. */
 const DATE_FORMATS = ['M/D/YY', 'M/D/YYYY', 'YYYY-MM-DD'];
 /* First index of a column (the export repeats "Student ID"), or -1. */
@@ -1494,8 +1497,12 @@ function hist(sub, what, who, when){
   const s2 = mkSubmission({productId:'p2', model:'assessments', status:'incomplete',
     artifacts:artifactSet([
       ['mapping','vendorb-assessments-mapping-v1.csv',V,d(9,10,15)],
-      ['sample','assessment-sample-data.csv',V2,d(9,10,52)]
+      ['sample','vendorb-ela-sample.csv',V2,d(9,10,52)]
     ]), created:d(9,10,0)});
+  /* Assessments sample data is one slot per assessment (run-scope design §5.2):
+     s2 has the ELA sample only, so its Math slot is missing. */
+  Object.assign(s2.artifacts.sample[0], {assessment:'VENDORB-DIAGNOSTIC-ELA',
+    columns:SAMPLE_ELA.columns.slice(), rows:SAMPLE_ELA.rows.map(r => r.slice())});
 
   /* p3 / MTSS v5 — nothing uploaded: Draft */
   mkSubmission({productId:'p3', model:'mtss', status:'draft',
@@ -1551,11 +1558,11 @@ function hist(sub, what, who, when){
     started:d(7,13,0), ended:d(7,13,9), results:seededBrunoResults('sis','pass')});
 
   mkRun({submissionId:s2.id, productId:'p2', model:'assessments', state:'completed', outcome:'auth-error',
-    completeness:'Incomplete', pinned:{mapping:1, sample:null, docs:null},
+    completeness:'Incomplete', pinned:{mapping:1, sample:{'VENDORB-DIAGNOSTIC-ELA':null, 'VENDORB-DIAGNOSTIC-MATH':null}, docs:null},
     tag:MODELS.assessments.tag, sha:MODELS.assessments.sha, initiator:V, env:'Vendor_B',
     started:d(9,11,0), ended:d(9,11,1)});
   mkRun({submissionId:s2.id, productId:'p2', model:'assessments', state:'completed', outcome:'failed',
-    completeness:'Incomplete', pinned:{mapping:1, sample:1, docs:null},
+    completeness:'Incomplete', pinned:{mapping:1, sample:{'VENDORB-DIAGNOSTIC-ELA':1, 'VENDORB-DIAGNOSTIC-MATH':null}, docs:null},
     tag:MODELS.assessments.tag, sha:MODELS.assessments.sha, initiator:V2, env:'Vendor_B',
     started:d(13,15,20), ended:d(13,15,26), results:assessmentResults('realistic')});
 
@@ -2431,6 +2438,46 @@ const currentVersion = (sub, type) => {
   const list = sub.artifacts[type];
   return list && list.length ? list[list.length - 1] : null;
 };
+const isAssessments = sub => MODELS[sub.model].kind === 'assessments';
+/* The mapping a version stands for. Tool versions carry their doc; an uploaded
+   CSV is read back in the tool's export format (prototype: the Vendor B seed). */
+function mappingDocFor(sub, version){
+  if (!version) return null;
+  if (version.source === 'tool') return version.doc;
+  if (!MAPPING_DOC_CACHE.has(version)) MAPPING_DOC_CACHE.set(version, parseWorkbook(WORKBOOK_FIXTURES.vendorb).doc);
+  return MAPPING_DOC_CACHE.get(version);
+}
+/* Assessments: one sample-data slot per assessment in the current mapping. */
+function sampleSlots(sub){
+  const doc = mappingDocFor(sub, currentVersion(sub, 'mapping'));
+  if (!doc) return [];
+  return doc.assessments.map(a => {
+    const versions = sub.artifacts.sample.filter(v => v.assessment === a.identifier);
+    return {identifier:a.identifier, title:a.title || a.type, versions,
+      current:versions.length ? versions[versions.length - 1] : null};
+  });
+}
+function currentSample(sub, identifier){
+  const s = sampleSlots(sub).find(x => x.identifier === identifier);
+  return s ? s.current : null;
+}
+function currentSamples(sub){
+  const out = {};
+  sampleSlots(sub).forEach(s => { out[s.identifier] = s.current; });
+  return out;
+}
+function pinnedSampleMap(sub){
+  const out = {};
+  sampleSlots(sub).forEach(s => { out[s.identifier] = s.current ? s.current.v : null; });
+  return out;
+}
+/* "v2" for a plain pin, "ELA v1 · MATH —" for an Assessments sample map. */
+function pinnedLabel(r, type){
+  const pin = r.pinned ? r.pinned[type] : null;
+  if (pin && typeof pin === 'object')
+    return Object.keys(pin).map(k => k.split('-').pop() + ' ' + (pin[k] ? 'v' + pin[k] : '—')).join(' · ') || '—';
+  return pin ? 'v' + pin : '—';
+}
 const mySubmissions = () => APP.submissions.filter(s => !product(s.productId).foreign);
 
 /* FR13 — deterministic readiness gate. */
@@ -2441,7 +2488,13 @@ const isFinished = r => r.state === 'sealed' || r.state === 'completed';
 const isQualifying = r => r.completeness === 'Complete' &&
   (r.state === 'sealed' || r.state === 'completed');
 function gate(sub){
-  const missing = ARTIFACTS.filter(a => !currentVersion(sub, a.id));
+  const missing = ARTIFACTS.filter(a => !(isAssessments(sub) && a.id === 'sample') && !currentVersion(sub, a.id));
+  if (isAssessments(sub)){
+    const slots = sampleSlots(sub);
+    if (!slots.length) missing.splice(ARTIFACTS.findIndex(a => a.id === 'sample'), 0, ARTIFACTS.find(a => a.id === 'sample'));
+    slots.filter(s => !s.current).forEach(s => missing.push(Object.assign({}, ARTIFACTS.find(a => a.id === 'sample'),
+      {label:'Sample data — ' + s.title, assessment:s.identifier})));
+  }
   const qualifying = runsFor(sub).find(isQualifying);
   return {missing, qualifying, artifactsComplete: missing.length === 0,
           met: missing.length === 0 && !!qualifying};
@@ -2458,6 +2511,8 @@ const busyEnv = env => APP.runs.find(r => r.env === env &&
 /* FR11 — a run is stale when its pinned versions are no longer current. */
 function isStale(sub, r){
   return ARTIFACTS.some(a => {
+    if (a.id === 'sample' && isAssessments(sub))
+      return JSON.stringify(pinnedSampleMap(sub)) !== JSON.stringify((r.pinned && r.pinned.sample) || {});
     const cur = currentVersion(sub, a.id);
     return (cur ? cur.v : null) !== (r.pinned ? r.pinned[a.id] : null);
   });
@@ -2491,7 +2546,7 @@ function startCertification(appId, model){
   return sub;
 }
 
-function uploadArtifact(sub, type, name, malformed){
+function uploadArtifact(sub, type, name, malformed, assessment){
   if (type === 'mapping' && malformed){
     hist(sub, 'Vendor mapping CSV upload rejected — structural validation failed (' + name + ')');
     return {ok:false, errors:[
@@ -2502,6 +2557,20 @@ function uploadArtifact(sub, type, name, malformed){
     ]};
   }
   const list = sub.artifacts[type];
+  if (type === 'sample' && isAssessments(sub)){
+    /* One slot per assessment, versioned within its slot (run-scope design §5.2).
+       Prototype: every simulated upload carries the embedded ELA sample. */
+    const slot = sampleSlots(sub).find(s => s.identifier === assessment);
+    if (!slot) return {ok:false, errors:['Pick the assessment this sample data is for.']};
+    const v = slot.versions.length + 1;
+    list.push({v, name, by:me(), at:tick(), source:'upload', assessment,
+      columns:SAMPLE_ELA.columns.slice(), rows:SAMPLE_ELA.rows.map(r => r.slice())});
+    hist(sub, (v > 1 ? 'Artifact replaced: Sample data — ' + slot.title + ' → v' + v
+      : 'Artifact uploaded: Sample data — ' + slot.title + ' v1') + ' (' + name + ')');
+    sub.artifactsChangedAt = tick();
+    recomputeStatus(sub);
+    return {ok:true};
+  }
   const replacing = list.length > 0;
   list.push({v:list.length + 1, name, by:me(), at:tick(), source:'upload'});
   if (type === 'mapping' && sub.mappingDraft){
@@ -2562,8 +2631,9 @@ function importWorkbook(sub, sim, opts){
 function markDraftDirty(sub){ if (sub.mappingDraft) sub.mappingDraft.dirty = true; }
 function generateMapping(sub){
   const draft = sub.mappingDraft;
-  reconcileNotes(draft.doc);
-  const issues = computeIssues(draft.doc);
+  const samples = currentSamples(sub);
+  reconcileNotes(draft.doc, samples);
+  const issues = computeIssues(draft.doc, samples);
   const summary = issueSummary(issues, draft.doc);
   const list = sub.artifacts.mapping;
   const version = {v:list.length + 1, name:suggestName(sub, 'mapping', currentVersion(sub, 'mapping')),
@@ -2592,6 +2662,7 @@ function startRun(sub, outcomeMode){
     started:tick(), ended:null, results:null, mode:outcomeMode
   };
   ARTIFACTS.forEach(a => { const c = currentVersion(sub, a.id); r.pinned[a.id] = c ? c.v : null; });
+  if (isAssessments(sub)) r.pinned.sample = pinnedSampleMap(sub);
   /* A Bruno run is worked through by the vendor, so it opens and waits. An
      Assessments run is a batch the platform executes, so it keeps its timers. */
   if (MODELS[sub.model].kind === 'bruno'){
@@ -3008,6 +3079,7 @@ function artifactCard(sub, reviewerView){
       <thead><tr><th>Artifact</th><th>Current version</th><th>Uploaded by</th><th>Uploaded</th>
         <th>Validated on upload</th><th class="act">Action</th></tr></thead>
       <tbody>${ARTIFACTS.map(a => {
+        if (a.id === 'sample' && isAssessments(sub)) return sampleSlotRows(sub, a, reviewerView);
         const cur = currentVersion(sub, a.id);
         const versions = sub.artifacts[a.id].length;
         const tool = a.id === 'mapping' && MODELS[sub.model].kind === 'assessments';
@@ -3036,6 +3108,32 @@ function artifactCard(sub, reviewerView){
       Reviewers do not upload artifacts on a vendor’s behalf (§8).</div>` : ''}`;
 }
 
+/* Assessments: one Required-artifacts row per sample slot (run-scope design §5.2). */
+function sampleSlotRows(sub, a, reviewerView){
+  const slots = sampleSlots(sub);
+  if (!slots.length) return `<tr><td><strong>${esc(a.label)}</strong><div class="muted" style="font-size:12px">
+      One file per assessment in the mapping. Add a mapping first.</div></td>
+    <td><span class="badge b-amber">Missing</span></td><td class="muted">—</td><td class="muted">—</td>
+    <td class="muted">${esc(a.validation)}</td><td class="act"><span class="muted">—</span></td></tr>`;
+  return slots.map(s => {
+    const cur = s.current;
+    return `<tr>
+      <td><strong>${esc(a.label)} — ${esc(s.title)}</strong><div class="muted" style="font-size:12px">${esc(a.note)}</div></td>
+      <td>${cur ? `v${cur.v} <span class="muted">${esc(cur.name)}</span>${cur.rows
+          ? ` <span class="muted">(${cur.rows.length} rows)</span>` : ''}${s.versions.length > 1
+          ? `<div class="muted" style="font-size:12px">${s.versions.length} versions — prior versions retained in audit history</div>` : ''}`
+        : '<span class="badge b-amber">Missing</span>'}</td>
+      <td class="muted">${cur ? esc(cur.by) : '—'}</td>
+      <td class="muted nowrap">${cur ? fmtShort(cur.at) : '—'}</td>
+      <td class="muted">${esc(a.validation)}</td>
+      <td class="act">${reviewerView
+        ? (cur ? '<button class="btn ghost sm" data-act="viewartifact">View</button>' : '<span class="muted">—</span>')
+        : `<button class="btn sm" data-act="upload" data-sub="${sub.id}" data-type="sample"
+            data-assessment="${esc(s.identifier)}">${cur ? 'Replace' : 'Upload'}</button>`}</td>
+    </tr>`;
+  }).join('');
+}
+
 function runTable(rows, opts){
   opts = opts || {};
   if (!rows.length) return '<div class="empty">No runs yet.</div>';
@@ -3061,7 +3159,7 @@ function runTable(rows, opts){
             (t2.notAttempted ? `, ${t2.notAttempted} not attempted` : '') + '</div>';
         })()}</td>
         <td class="mono muted">${ARTIFACTS.map(a =>
-          a.id + ':' + (r.pinned && r.pinned[a.id] ? 'v' + r.pinned[a.id] : '—')).join('<br/>')}</td>
+          a.id + ':' + pinnedLabel(r, a.id)).join('<br/>')}</td>
         <td><span class="tag">${esc(r.tag)}</span><div class="mono muted">${esc(r.sha)}</div></td>
         <td class="muted">${esc(r.initiator)}<div style="font-size:12px">${fmtShort(r.started)}
           ${r.ended ? ' · ' + dur(r.started, r.ended) : ''}</div></td>
@@ -3301,14 +3399,22 @@ function runResults(id, reviewerView){
     </div>
     ${r.completeness === 'Incomplete' ? `<div class="banner amber">
       <h3>${completenessBadge('Incomplete')} Trial run — not admissible as certification evidence</h3>
-      <p>Artifacts missing when this run started: <strong>${ARTIFACTS.filter(a => !r.pinned[a.id])
-        .map(a => esc(a.label)).join(', ') || 'none recorded'}</strong>.
+      <p>Artifacts missing when this run started: <strong>${ARTIFACTS.flatMap(a => {
+          const pin = r.pinned[a.id];
+          if (pin && typeof pin === 'object'){
+            const gaps = Object.keys(pin).filter(k => !pin[k]);
+            return gaps.map(k => a.label + ' — ' + k);
+          }
+          return pin ? [] : [a.label];
+        }).map(esc).join(', ') || 'none recorded'}</strong>.
       Results below carry the same level of detail as a qualifying run — they simply cannot satisfy the
       readiness gate (§8.1).</p></div>` : ''}
     ${stale ? `<div class="banner"><h3><span class="badge b-gray">Stale</span> Artifacts have changed since this run</h3>
-      <p>This run pinned ${ARTIFACTS.map(a => esc(a.label) + ' ' +
-        (r.pinned[a.id] ? 'v' + r.pinned[a.id] : '—')).join(', ')}. The submission now carries
+      <p>This run pinned ${ARTIFACTS.map(a => esc(a.label) + ' ' + esc(pinnedLabel(r, a.id))).join(', ')}.
+        The submission now carries
         ${ARTIFACTS.map(a => { const c = currentVersion(sub, a.id);
+          if (a.id === 'sample' && isAssessments(sub))
+            return esc(a.label) + ' ' + esc(pinnedLabel({pinned:{sample:pinnedSampleMap(sub)}}, 'sample'));
           return esc(a.label) + ' ' + (c ? 'v' + c.v : '—'); }).join(', ')}.
         A reviewer should not treat it as evidence for artifacts it never saw (FR11).</p></div>` : ''}
     <div class="card">
@@ -4190,9 +4296,12 @@ function toast(msg){
   toastTimer = setTimeout(() => t.remove(), 4200);
 }
 
-function uploadModal(sub, type){
-  const a = ARTIFACTS.find(x => x.id === type);
-  const cur = currentVersion(sub, type);
+function uploadModal(sub, type, assessment){
+  const slot = type === 'sample' && isAssessments(sub)
+    ? sampleSlots(sub).find(s => s.identifier === assessment) : null;
+  const a = slot ? Object.assign({}, ARTIFACTS.find(x => x.id === type),
+    {label:'Sample data — ' + slot.title}) : ARTIFACTS.find(x => x.id === type);
+  const cur = slot ? slot.current : currentVersion(sub, type);
   const isMapping = type === 'mapping';
   modal((cur ? 'Replace ' : 'Upload ') + esc(a.label), `
     <div class="drop">Drag a file here, or</div>
@@ -4213,14 +4322,15 @@ function uploadModal(sub, type){
       <p>Prior versions remain visible in audit history, and any run that pinned v${cur.v} keeps pointing at
       v${cur.v} — it will simply be marked stale (D14, FR11).</p></div>` : ''}
   `, `<button class="btn ghost" data-act="cancel">Cancel</button>
-      <button class="btn" data-act="douploadconfirm" data-sub="${sub.id}" data-type="${type}">
+      <button class="btn" data-act="douploadconfirm" data-sub="${sub.id}" data-type="${type}"
+        data-assessment="${esc(assessment || '')}">
         ${cur ? 'Replace artifact' : 'Upload artifact'}</button>`);
 }
 function suggestName(sub, type, cur){
   const slug = MODELS[sub.model].id;
   const n = (sub.artifacts[type].length + 1);
   return {mapping:'vendorb-' + slug + '-mapping-v' + n + '.csv',
-          sample:'vendorb-' + slug + '-sample-data.json',
+          sample:'vendorb-' + slug + (isAssessments(sub) ? '-sample-data.csv' : '-sample-data.json'),
           docs:'VendorB-' + slug.toUpperCase() + '-Score-Report.pdf'}[type];
 }
 
@@ -4264,7 +4374,7 @@ function bind(){
 function handleAction(act, sub, node, ev){
   ev = ev || {preventDefault(){}};
   switch (act){
-    case 'upload': ev.preventDefault(); uploadModal(sub, node.dataset.type); break;
+    case 'upload': ev.preventDefault(); uploadModal(sub, node.dataset.type, node.dataset.assessment); break;
     case 'mapopen': openMappingDraft(sub); go('#/mapping/' + sub.id); break;
     case 'mapblank': startBlankMapping(sub); go('#/mapping/' + sub.id); break;
     case 'mapimport': importModal(sub); break;
@@ -4428,7 +4538,7 @@ function bindOverlay(){
         const type = node.dataset.type;
         const name = ($('#fileName') && $('#fileName').value.trim()) || 'upload.dat';
         const simBad = !!$('#overlay').querySelector('input[name=sim][value=bad]:checked');
-        const res = uploadArtifact(sub, type, name, simBad);
+        const res = uploadArtifact(sub, type, name, simBad, node.dataset.assessment || undefined);
         if (!res.ok){
           modal('Mapping CSV rejected', `
             <div class="banner red"><h3>Structural validation failed — ${esc(name)}</h3>

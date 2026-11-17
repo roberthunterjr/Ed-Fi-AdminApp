@@ -1169,3 +1169,33 @@ test('dates parse under the chosen format and flag misfits', () => {
   assert.equal(p.parseSampleDate('9/1/24', 'M/D/YY'), '2024-09-01');
   assert.equal(p.parseSampleDate('2024-09-01', 'M/D/YY'), null);
 });
+
+test('assessments sample data is one slot per mapped assessment', () => {
+  const p = loadPrototype();
+  const sub = byProduct(p, 'p2');
+  const slots = p.sampleSlots(sub);
+  assert.deepEqual(slots.map(s => s.identifier), ['VENDORB-DIAGNOSTIC-ELA', 'VENDORB-DIAGNOSTIC-MATH']);
+  assert.ok(p.gate(sub).missing.some(a => a.label === 'Sample data — Vendor B Math Diagnostic'));
+  p.uploadArtifact(sub, 'sample', 'math.csv', false, 'VENDORB-DIAGNOSTIC-MATH');
+  assert.ok(!p.gate(sub).missing.some(a => /^Sample data/.test(a.label)));
+});
+test('replacing one slot stales runs pinned to it', () => {
+  const p = loadPrototype();
+  const sub = byProduct(p, 'p2');
+  const r = p.startRun(sub, 'pass');
+  assert.equal(typeof r.pinned.sample, 'object');
+  assert.equal(p.isStale(sub, r), false);
+  p.uploadArtifact(sub, 'sample', 'ela-v2.csv', false, 'VENDORB-DIAGNOSTIC-ELA');
+  assert.equal(p.isStale(sub, r), true);
+});
+test('SIS sample data is unchanged', () => {
+  const p = loadPrototype();
+  const sub = p.APP.submissions.find(s => s.model === 'sis');
+  assert.equal(typeof p.startRun(sub, 'pass').pinned.sample, 'number');
+});
+test('a simulated sample upload gets its own copy of the rows', () => {
+  const p = loadPrototype(), sub = byProduct(p, 'p2');
+  p.uploadArtifact(sub, 'sample', 'ela-v2.csv', false, 'VENDORB-DIAGNOSTIC-ELA');
+  p.currentSample(sub, 'VENDORB-DIAGNOSTIC-ELA').rows.splice(10);
+  assert.equal(p.SAMPLE_ELA.rows.length, 156);
+});
