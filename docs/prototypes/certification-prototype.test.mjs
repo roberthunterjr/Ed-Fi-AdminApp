@@ -629,3 +629,141 @@ test('reference data names required tabs, targets and pre-arranged columns', () 
   assert.equal(p.targetByPath('nope.nothing'), null);
   assert.deepEqual(p.PREARRANGED_COLUMNS.map(c => c.column), ['Student ID', 'Activity Id']);
 });
+
+/* Test helpers for the mapping validator. linkAll stands in for the production
+   corrections (Task 5): it fixes the Assessment Type names and renames sample
+   headers to the workbook element names, so link and value rules can run. */
+const findings = (r, pred) => r.findings.filter(pred);
+const original = p => structuredClone(p.FIXTURES['vendorb-original']);
+const validate = (p, fx) => p.validateMapping(fx.workbook, fx.samples);
+const LINK_FIXES = [['Scale Score', 'Overall Scale Score'], ['Placement Level', 'Overall Placement'],
+  ['Relative Placement', 'Overall Relative Placement'], ['Duration (minutes)', 'Duration (min)'],
+  ['Most Recent Diagnostic (Y/N)', 'Most Recent Diagnostic YTD (Y/N)'],
+  ['Mid On-Grade Level Score', 'Mid On Grade Level Scale Score'], ['Date', 'Completion Date'],
+  ['Grade', 'Student Grade']];
+function linkAll(fx){
+  fx.workbook.ElementDefinitions.forEach(r => { r['Assessment Type'] = r['Assessment Type'].replace(/^Vendor B /, ''); });
+  const s = fx.samples['ELA Diagnostic'];
+  const rename = (from, to) => { const i = s.columns.indexOf(from); if (i >= 0) s.columns[i] = to; };
+  LINK_FIXES.forEach(([el, col]) => rename(col, el));
+  fx.workbook.ElementDefinitions.filter(r => r['Assessment Type'] === 'ELA Diagnostic' && !s.columns.includes(r.Element))
+    .forEach(r => rename(r.Element.replace(/^Reading /, '').replace(/\s+/g, ' ').replace(/ Placement Level$/, ' Placement'), r.Element));
+  return fx;
+}
+
+test('missing tab makes the workbook malformed', () => {
+  const p = loadPrototype(); const fx = original(p);
+  delete fx.workbook.EnumerationItems;
+  const r = validate(p, fx);
+  assert.equal(r.verdict, 'malformed'); assert.equal(r.model, null);
+  assert.match(r.findings[0].message, /EnumerationItems/);
+});
+
+test('original files are not ready', () => {
+  const p = loadPrototype(); const r = validate(p, original(p));
+  assert.equal(r.verdict, 'not-ready'); assert.ok(r.errors > 0);
+  assert.deepEqual(r.categories.map(c => c.label),
+    ['Assessments', 'Element ↔ column links', 'Ed-Fi targets', 'Values', 'Pre-arranged columns', 'Objectives']);
+});
+
+test('assessment type mismatch suggests the Assessments tab name', () => {
+  const p = loadPrototype(); const r = validate(p, original(p));
+  assert.ok(findings(r, x => x.category === 'assessments' && x.file === 'Workbook' &&
+    x.hint === 'Did you mean `ELA Diagnostic`?').length);
+});
+
+test('assessment with no sample is an error', () => {
+  const p = loadPrototype(); const r = validate(p, original(p));
+  assert.ok(findings(r, x => x.category === 'assessments' && /Math Diagnostic/.test(x.where) && x.severity === 'error').length);
+});
+
+test('unlinked element suggests a column', () => {
+  const p = loadPrototype(); const fx = original(p);
+  fx.workbook.ElementDefinitions.forEach(r => { r['Assessment Type'] = r['Assessment Type'].replace(/^Vendor B /, ''); });
+  const x = findings(validate(p, fx), x => x.category === 'links' && /Most Recent Diagnostic \(Y\/N\)/.test(x.message))[0];
+  assert.equal(x.hint, 'Did you mean `Most Recent Diagnostic YTD (Y/N)`?');
+  assert.equal(x.file, 'Workbook'); assert.equal(x.row, 3);
+});
+
+test('accommodation enumeration misspelling is an error with a suggestion', () => {
+  const p = loadPrototype(); const r = validate(p, linkAll(original(p)));
+  assert.ok(findings(r, x => x.severity === 'error' && /AccommodationDescriptor/.test(x.message) &&
+    x.hint === 'Did you mean `Accomodation`?').length);
+});
+
+test('grade values are checked against the standard list', () => {
+  const p = loadPrototype(); const r = validate(p, linkAll(original(p)));
+  const x = findings(r, x => x.category === 'values' && x.file === 'Sample' && /`3`/.test(x.message))[0];
+  assert.equal(x.hint, 'Closest: `Third grade`'); assert.ok(x.count > 0);
+});
+
+test('Y/N in a Boolean result is an error', () => {
+  const p = loadPrototype(); const r = validate(p, linkAll(original(p)));
+  assert.ok(findings(r, x => x.category === 'values' && x.severity === 'error' &&
+    /`Y`/.test(x.message) && /Boolean/.test(x.message)).length);
+});
+
+test('M/D/YY date is an error with the ISO hint', () => {
+  const p = loadPrototype(); const r = validate(p, linkAll(original(p)));
+  assert.ok(findings(r, x => x.category === 'values' && x.hint === 'expected YYYY-MM-DD').length);
+});
+
+test('missing pre-arranged column is an error', () => {
+  const p = loadPrototype(); const fx = linkAll(original(p));
+  const s = fx.samples['ELA Diagnostic'];
+  const i = s.columns.indexOf('Activity Id');
+  s.columns.splice(i, 1); s.rows.forEach(row => row.splice(i, 1));
+  assert.ok(findings(validate(p, fx), x => x.category === 'prearranged' && x.severity === 'error' &&
+    /Activity Id/.test(x.message)).length);
+});
+
+test('duplicate sample header uses the first and warns', () => {
+  const p = loadPrototype(); const r = validate(p, linkAll(original(p)));
+  const w = findings(r, x => x.severity === 'warning' && /Student ID/.test(x.message));
+  assert.equal(w.length, 1);
+  assert.equal(r.model.assessments[0].idColumns.student, p.FIXTURES['vendorb-original'].samples['ELA Diagnostic'].columns.indexOf('Student ID'));
+});
+
+test('validator trims headers and skips blank rows', () => {
+  const p = loadPrototype();
+  const base = validate(p, original(p));
+  const fx = original(p);
+  fx.workbook.ElementDefinitions = fx.workbook.ElementDefinitions.map(r => {
+    const o = {}; Object.keys(r).forEach(k => { o[k === 'Element' ? ' Element ' : k] = r[k]; }); return o;
+  });
+  fx.workbook.ElementDefinitions.push({});
+  fx.workbook.EnumerationItems.push({Enumeration:' ', 'Code Value':''});
+  assert.deepEqual(validate(p, fx).findings, base.findings);
+});
+
+test('empty assessment and empty sample are findings, not exceptions', () => {
+  const p = loadPrototype(); const fx = linkAll(original(p));
+  fx.samples['ELA Diagnostic'].rows = [];
+  fx.workbook.ElementDefinitions = fx.workbook.ElementDefinitions.filter(r => r['Assessment Type'] !== 'Math Diagnostic');
+  const r = validate(p, fx);
+  assert.equal(r.verdict, 'not-ready');
+  assert.ok(findings(r, x => x.category === 'assessments' && /no rows/.test(x.message)).length);
+  assert.ok(findings(r, x => x.category === 'assessments' && /Math Diagnostic/.test(x.message) && /no elements/i.test(x.message)).length);
+});
+
+test('values are reported once per distinct value with a row count', () => {
+  const p = loadPrototype(); const fx = linkAll(original(p));
+  /* Read Aloud values are only checked once its enumeration resolves. */
+  ['EnumerationDefinitions', 'EnumerationItems'].forEach(t => fx.workbook[t].forEach(r => {
+    if (r.Enumeration === 'Accomodation') r.Enumeration = 'Accommodation'; }));
+  const r = validate(p, fx);
+  const xs = findings(r, x => x.category === 'values' && /`Off`/.test(x.message));
+  assert.equal(xs.length, 1); assert.ok(xs[0].count > 1);
+});
+
+test('an assessment type mismatch is one finding per name and does not hide other checks', () => {
+  const p = loadPrototype(); const r = validate(p, original(p));
+  const xs = findings(r, x => x.category === 'assessments' && /Vendor B ELA Diagnostic/.test(x.message));
+  assert.equal(xs.length, 1); assert.ok(xs[0].count > 1);
+  assert.ok(findings(r, x => x.category === 'links').length > 0);
+});
+
+test('a missing enumeration needed by two assessments is reported once', () => {
+  const p = loadPrototype(); const r = validate(p, original(p));
+  assert.equal(findings(r, x => /No enumeration for `AccommodationDescriptor`/.test(x.message)).length, 1);
+});

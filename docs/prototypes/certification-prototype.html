@@ -1081,7 +1081,8 @@ function editDistance(a, b){
 }
 /* The candidate nearest to target, or null when none is close. Distance is on
    normKey forms, relative to the longer one; a candidate containing the target
-   (or the reverse) counts as close. Ties go to the earlier candidate. */
+   (or the reverse) counts as close, more so the nearer its length. Ties go to
+   the earlier candidate. */
 function closest(target, candidates){
   const t = normKey(target);
   if (!t) return null;
@@ -1090,7 +1091,8 @@ function closest(target, candidates){
     const k = normKey(c);
     if (!k) return;
     const contains = k.includes(t) || t.includes(k);
-    const score = contains ? 0.1 : editDistance(t, k) / Math.max(t.length, k.length);
+    const longer = Math.max(t.length, k.length);
+    const score = contains ? 0.3 * Math.abs(t.length - k.length) / longer : editDistance(t, k) / longer;
     if (score < bestScore){ best = c; bestScore = score; }
   });
   return bestScore <= 0.4 ? best : null;
@@ -1602,6 +1604,318 @@ function recomputeStatus(sub){
       ? 'Status changed to Ready for Review (readiness gate met)'
       : 'Status changed to ' + STATUS[next].label + ' (readiness gate not met)', 'Platform');
   }
+}
+
+/* ---------- mapping validation (design §3–§4) ----------
+   validateMapping(workbook, samples) reads a vendor's Data Mapping Template
+   tabs and the per-assessment samples and returns a report: a verdict, findings
+   with fix locations, per-category status and, unless the workbook is malformed,
+   the model the expected payloads are built from. Nothing is corrected silently. */
+const MAPPING_CATEGORIES = [
+  {id:'assessments', label:'Assessments'},
+  {id:'links',       label:'Element ↔ column links'},
+  {id:'targets',     label:'Ed-Fi targets'},
+  {id:'values',      label:'Values'},
+  {id:'prearranged', label:'Pre-arranged columns'},
+  {id:'objectives',  label:'Objectives'}
+];
+const GRADE_ORDINALS = ['Kindergarten', 'First grade', 'Second grade', 'Third grade', 'Fourth grade',
+  'Fifth grade', 'Sixth grade', 'Seventh grade', 'Eighth grade', 'Ninth grade', 'Tenth grade',
+  'Eleventh grade', 'Twelfth grade'];
+const didYouMean = s => s == null ? null : 'Did you mean `' + s + '`?';
+const closestHint = s => s == null ? null : 'Closest: `' + s + '`';
+const sameText = (a, b) => String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
+
+/* A tab's rows with trimmed keys and values; rows with nothing in them are
+   dropped, but each row keeps its workbook row number (header is row 1). */
+function tabRows(workbook, name){
+  return (workbook[name] || []).map((r, i) => {
+    const o = {__row:i + 2};
+    Object.keys(r).forEach(k => { o[k.trim()] = String(r[k] == null ? '' : r[k]).trim(); });
+    return o;
+  }).filter(o => Object.keys(o).some(k => k !== '__row' && o[k] !== ''));
+}
+/* Closest allowed code for a failing value. Grade numbers map to grade names. */
+function closestCode(value, codes, descriptorType){
+  if (descriptorType === 'GradeLevelDescriptor'){
+    const v = String(value).trim().toUpperCase();
+    const n = v === 'K' || v === 'KG' ? 0 : /^\d{1,2}$/.test(v) ? +v : -1;
+    if (n >= 0 && n < GRADE_ORDINALS.length && codes.includes(GRADE_ORDINALS[n])) return GRADE_ORDINALS[n];
+  }
+  return closest(value, codes);
+}
+const RESULT_RULES = {
+  Boolean:   {ok:v => /^(true|false)$/i.test(v), what:'a Boolean (true or false)'},
+  Integer:   {ok:v => /^-?\d+$/.test(v), what:'an Integer'},
+  Decimal:   {ok:v => /^-?\d+(\.\d+)?$/.test(v), what:'a Decimal'},
+  Percentage:{ok:v => /^-?\d+(\.\d+)?$/.test(v), what:'a Percentage (a number)'},
+  Percentile:{ok:v => /^\d+(\.\d+)?$/.test(v), what:'a Percentile (a number)'}
+};
+const ISO_DATE = v => /^\d{4}-\d{2}-\d{2}(T[\d:.]+(Z|[+-]\d{2}:?\d{2})?)?$/.test(v) && !isNaN(new Date(v));
+
+function validateMapping(workbook, samples){
+  const findings = [];
+  /* A finding with no row that repeats one already made (the same missing
+     enumeration needed by two assessments) is reported once. */
+  const add = f => {
+    const o = Object.assign({severity:'error', row:null, hint:null, count:null}, f);
+    const dup = o.row == null && findings.find(x => x.row == null && x.file === o.file &&
+      x.where === o.where && x.message === o.message);
+    if (dup) return dup;
+    findings.push(o);
+    return o;
+  };
+  workbook = workbook || {};
+  samples = samples || {};
+
+  /* Malformed: a required tab or header is missing (§3.1). */
+  Object.keys(REQUIRED_TABS).forEach(tab => {
+    if (!Array.isArray(workbook[tab])){
+      add({category:'assessments', file:'Workbook', where:tab, message:'Required tab `' + tab + '` is missing'});
+      return;
+    }
+    const rows = tabRows(workbook, tab);
+    if (!rows.length) return;
+    const headers = new Set();
+    rows.forEach(r => Object.keys(r).forEach(k => headers.add(k)));
+    REQUIRED_TABS[tab].forEach(h => {
+      if (!headers.has(h)) add({category:'assessments', file:'Workbook', where:tab,
+        message:'Required column `' + h + '` is missing from `' + tab + '`'});
+    });
+  });
+  if (findings.length) return finishReport(findings, null, {}, {});
+
+  const product = tabRows(workbook, 'Product')[0] || {};
+  const namespace = product.Namespace || '';
+  const model = {product:{name:product['Vendor Product'] || '', namespace}, assessments:[]};
+
+  /* Enumerations: vendor ones from the workbook, by name (ignoring case). */
+  const items = tabRows(workbook, 'EnumerationItems');
+  const enumNames = [];
+  tabRows(workbook, 'EnumerationDefinitions').concat(items).forEach(r => {
+    if (r.Enumeration && !enumNames.some(n => sameText(n, r.Enumeration))) enumNames.push(r.Enumeration);
+  });
+  const enumCodes = name => items.filter(r => sameText(r.Enumeration, name) && r['Code Value']).map(r => r['Code Value']);
+  /* §4.3a — which allowed values a descriptor type has. */
+  function resolveEnumeration(descriptorType){
+    const base = descriptorType.replace(/Descriptor$/, '');
+    const vendor = enumNames.find(n => sameText(n, base));
+    if (vendor) return {source:'vendor', name:vendor, codes:enumCodes(vendor)};
+    if (STANDARD_DESCRIPTORS[descriptorType]) return {source:'standard', name:descriptorType, codes:STANDARD_DESCRIPTORS[descriptorType]};
+    return {source:null, name:base, codes:null, hint:closest(base, enumNames)};
+  }
+  /* A descriptor URI resolves when it names a known value in the vendor
+     namespace or a standard Ed-Fi value. */
+  function resolveUri(uri){
+    const m = String(uri || '').match(/^(.*\/)([A-Za-z]+Descriptor)#(.+)$/);
+    if (!m) return {ok:false, hint:null};
+    const [, ns, type, code] = m;
+    if (ns === 'uri://ed-fi.org/'){
+      const codes = STANDARD_DESCRIPTORS[type] || [];
+      const hit = codes.find(c => sameText(c, code));
+      return hit ? {ok:true, source:'standard', type, code:hit} : {ok:false, hint:closest(code, codes)};
+    }
+    if (namespace && ns === namespace){
+      const en = resolveEnumeration(type);
+      if (en.source !== 'vendor') return {ok:false, hint:null};
+      const hit = en.codes.find(c => sameText(c, code));
+      return hit ? {ok:true, source:'vendor', type, code:hit} : {ok:false, hint:closest(code, en.codes)};
+    }
+    return {ok:false, hint:null};
+  }
+
+  /* §4.1 — assessments. */
+  tabRows(workbook, 'Assessments').forEach(r => {
+    const a = {type:r['Assessment Type'], identifier:r.assessmentIdentifier, title:r.assessmentTitle,
+      category:r.assessmentCategoryDescriptor, adaptive:/^(1|true|y|yes)$/i.test(r.adaptiveAssessment || ''),
+      family:r.assessmentFamily || '', maxRawScore:r.maxRawScore || '', row:r.__row,
+      sample:null, elements:[], idColumns:{student:-1, activity:-1}};
+    ['Assessment Type', 'assessmentIdentifier', 'assessmentTitle', 'assessmentCategoryDescriptor'].forEach(h => {
+      if (!r[h]) add({category:'assessments', file:'Workbook', where:'Assessments', row:r.__row,
+        message:'`' + h + '` is blank'});
+    });
+    if (a.category && !resolveUri(a.category).ok)
+      add({category:'assessments', file:'Workbook', where:'Assessments', row:r.__row,
+        message:'`' + a.category + '` isn\'t a known AssessmentCategoryDescriptor'});
+    if (a.type) model.assessments.push(a);
+  });
+  if (!namespace) add({category:'assessments', file:'Workbook', where:'Product', row:2, message:'`Namespace` is blank'});
+
+  /* An unmatched Assessment Type is one error per distinct name. Its rows are
+     still checked against the suggested assessment, so one misnamed type does not
+     hide every other finding; the error alone keeps the report not ready. */
+  const types = model.assessments.map(a => a.type);
+  const unmatched = new Map();
+  tabRows(workbook, 'ElementDefinitions').forEach(r => {
+    let a = model.assessments.find(x => sameText(x.type, r['Assessment Type']));
+    if (!a){
+      const name = r['Assessment Type'];
+      const guess = closest(name, types);
+      const u = unmatched.get(name);
+      if (u) u.count++;
+      else {
+        const f = {category:'assessments', file:'Workbook', where:'ElementDefinitions', row:r.__row,
+          message:'Assessment Type `' + name + '` isn\'t in the Assessments tab', hint:didYouMean(guess), count:1};
+        unmatched.set(name, add(f));
+      }
+      a = guess ? model.assessments.find(x => x.type === guess) : null;
+      if (!a) return;
+    }
+    a.elements.push({row:r.__row, name:r.Element || '', dataType:r['Data Type'] || '',
+      completeName:r['Ed-Fi ODS/API Element Complete Name'] || '', snippet:r.H || '',
+      targets:[], column:-1, reportingMethod:null, resultDatatype:null,
+      descriptorType:null, descriptorSource:null, enumeration:null, codes:null, objective:null});
+  });
+
+  model.assessments.forEach(a => {
+    const sampleKey = Object.keys(samples).find(k => sameText(k, a.type));
+    const raw = sampleKey ? samples[sampleKey] : null;
+    if (!a.elements.length)
+      add({category:'assessments', file:'Workbook', where:'ElementDefinitions',
+        message:'`' + a.type + '` has no elements in ElementDefinitions'});
+    if (!raw)
+      add({category:'assessments', file:'Sample', where:'Sample data — ' + a.type,
+        message:'No sample uploaded for `' + a.type + '`, so it can\'t be validated'});
+    else {
+      a.sample = {name:raw.name, columns:raw.columns.map(c => String(c).trim()), rows:raw.rows};
+      if (!a.sample.rows.length)
+        add({category:'assessments', file:'Sample', where:'Sample data — ' + a.type,
+          message:'The sample for `' + a.type + '` has no rows'});
+    }
+
+    /* §4.3 — Ed-Fi targets and the score snippet; §4.3a — enumerations. */
+    a.elements.forEach(e => {
+      const parts = e.completeName.split('/').map(s => s.trim()).filter(Boolean);
+      if (!parts.length)
+        add({category:'targets', file:'Workbook', where:'ElementDefinitions', row:e.row,
+          message:'`' + e.name + '` has no Ed-Fi target'});
+      parts.forEach(part => {
+        if (targetByPath(part)) e.targets.push(part);
+        else add({category:'targets', file:'Workbook', where:'ElementDefinitions', row:e.row,
+          message:'`' + part + '` isn\'t a known Ed-Fi v5 target',
+          hint:didYouMean(closest(part, EDFI_V5_TARGETS.map(t => t.path)))});
+      });
+      if (e.targets.some(t => SCORE_COLLECTIONS.includes(t))){
+        const rm = (e.snippet.match(/"assessmentReportingMethodDescriptor"\s*:\s*"([^"]+)"/) || [])[1];
+        const dt = (e.snippet.match(/"resultDatatypeTypeDescriptor"\s*:\s*"([^"]+)"/) || [])[1];
+        if (!rm || !dt)
+          add({category:'targets', file:'Workbook', where:'ElementDefinitions column H', row:e.row,
+            message:'`' + e.name + '` needs both assessmentReportingMethodDescriptor and resultDatatypeTypeDescriptor'});
+        [rm, dt].filter(Boolean).forEach(uri => {
+          const res = resolveUri(uri);
+          if (!res.ok) add({category:'targets', file:'Workbook', where:'ElementDefinitions column H', row:e.row,
+            message:'`' + uri + '` doesn\'t resolve to a known descriptor value', hint:closestHint(res.hint)});
+        });
+        if (rm && resolveUri(rm).ok) e.reportingMethod = rm;
+        if (dt){ const res = resolveUri(dt); if (res.ok) e.resultDatatype = res.code; }
+      }
+      const dtarget = e.targets.map(targetByPath).find(t => t.type === 'Descriptor' && t.descriptor);
+      if (dtarget){
+        e.descriptorType = dtarget.descriptor;
+        const en = resolveEnumeration(dtarget.descriptor);
+        if (en.source){ e.descriptorSource = en.source; e.enumeration = en.name; e.codes = en.codes; }
+        else add({category:'targets', file:'Workbook', where:'EnumerationDefinitions',
+          message:'No enumeration for `' + dtarget.descriptor + '` (needed by `' + e.name + '`)',
+          hint:didYouMean(en.hint)});
+      }
+    });
+
+    if (!a.sample) return;
+    const s = a.sample;
+
+    /* Duplicate headers: the first one is used (§3.3). */
+    const seen = new Set();
+    s.columns.forEach(c => {
+      const k = c.toLowerCase();
+      if (seen.has(k)){
+        if (!findings.some(f => f.severity === 'warning' && f.where === 'column `' + c + '`' && f.file === 'Sample'))
+          add({severity:'warning', category:PREARRANGED_COLUMNS.some(p => sameText(p.column, c)) ? 'prearranged' : 'links',
+            file:'Sample', where:'column `' + c + '`',
+            message:'`' + c + '` appears more than once; the first one is used'});
+      } else seen.add(k);
+    });
+    const colOf = name => s.columns.findIndex(c => sameText(c, name));
+
+    /* §3.3 — pre-arranged identity columns. */
+    PREARRANGED_COLUMNS.forEach(pc => {
+      const i = colOf(pc.column);
+      if (i < 0){
+        add({category:'prearranged', file:'Sample', where:'Sample data — ' + a.type,
+          message:'Required sample column `' + pc.column + '` is missing',
+          hint:didYouMean(closest(pc.column, s.columns))});
+        return;
+      }
+      if (pc.path === 'studentAssessment.studentReference') a.idColumns.student = i;
+      else a.idColumns.activity = i;
+      const blanks = s.rows.filter(row => !String(row[i] == null ? '' : row[i]).trim()).length;
+      if (blanks) add({category:'prearranged', file:'Sample', where:'column `' + pc.column + '`',
+        message:'`' + pc.column + '` is blank', count:blanks});
+    });
+
+    /* §4.2 — links. */
+    const preCols = PREARRANGED_COLUMNS.map(pc => pc.column.toLowerCase());
+    a.elements.forEach(e => { e.column = colOf(e.name); });
+    const claimed = new Set(a.elements.map(e => e.column).filter(i => i >= 0));
+    const unclaimed = s.columns.filter((c, i) => !claimed.has(i) && !preCols.includes(c.toLowerCase()));
+    a.elements.filter(e => e.column < 0).forEach(e => add({category:'links', file:'Workbook',
+      where:'ElementDefinitions', row:e.row, message:'`' + e.name + '` has no sample column',
+      hint:didYouMean(closest(e.name, unclaimed))}));
+
+    /* §4.4 — values, once per distinct failing value. */
+    a.elements.filter(e => e.column >= 0 && e.targets.length).forEach(e => {
+      const header = s.columns[e.column];
+      const counts = new Map();
+      s.rows.forEach(row => {
+        const v = String(row[e.column] == null ? '' : row[e.column]).trim();
+        if (v) counts.set(v, (counts.get(v) || 0) + 1);
+      });
+      const isScore = e.targets.some(t => SCORE_COLLECTIONS.includes(t));
+      const isDate = e.targets.some(t => targetByPath(t).type === 'Date');
+      counts.forEach((count, v) => {
+        if (isScore){
+          const rule = RESULT_RULES[e.resultDatatype];
+          if (rule && !rule.ok(v)) add({category:'values', file:'Sample', where:'column `' + header + '`',
+            message:'`' + v + '` isn\'t ' + rule.what, count});
+        } else if (isDate){
+          if (!ISO_DATE(v)) add({category:'values', file:'Sample', where:'column `' + header + '`',
+            message:'`' + v + '` isn\'t an ISO 8601 date', hint:'expected YYYY-MM-DD', count});
+        } else if (e.codes){
+          if (!e.codes.some(c => sameText(c, v))){
+            const vendor = e.descriptorSource === 'vendor';
+            add({category:'values', file:vendor ? 'Workbook' : 'Sample',
+              where:vendor ? 'EnumerationItems (' + e.enumeration + ')' : 'column `' + header + '`',
+              message:vendor
+                ? 'sample value `' + v + '` in `' + header + '` isn\'t a code value'
+                : '`' + v + '` isn\'t a ' + e.descriptorType,
+              hint:closestHint(closestCode(v, e.codes, e.descriptorType)), count});
+          }
+        }
+      });
+    });
+  });
+
+  const notChecked = {};
+  model.assessments.filter(a => a.sample).forEach(a => {
+    const used = new Set(a.elements.map(e => e.column).filter(i => i >= 0));
+    if (a.idColumns.student >= 0) used.add(a.idColumns.student);
+    if (a.idColumns.activity >= 0) used.add(a.idColumns.activity);
+    notChecked[a.type] = a.sample.columns.filter((c, i) => !used.has(i) &&
+      !(a.sample.columns.findIndex(x => sameText(x, c)) !== i));
+  });
+  return finishReport(findings, model, notChecked, {});
+}
+
+function finishReport(findings, model, notChecked, objectives){
+  const errors = findings.filter(f => f.severity === 'error').length;
+  const warnings = findings.length - errors;
+  const categories = MAPPING_CATEGORIES.map(c => {
+    const fs = findings.filter(f => f.category === c.id);
+    const e = fs.filter(f => f.severity === 'error').length;
+    return {id:c.id, label:c.label, errors:e, warnings:fs.length - e,
+      status:e ? 'error' : fs.length ? 'warning' : 'ok'};
+  });
+  return {verdict:!model ? 'malformed' : errors ? 'not-ready' : 'ready',
+    errors, warnings, findings, categories, model, notChecked, objectives};
 }
 
 /* ---------- actions ---------- */
