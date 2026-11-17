@@ -4,7 +4,7 @@
 **Status:** Draft — Revision 5
 **Last Updated:** November 16, 2026
 
-> **Revision note:** Revision 2 incorporated feedback content additively, in place, inside the original PRD structure. Revision 3 restructures the document so the feedback's own logic drives the outline: Scope → **Confirmed Product Decisions** → **Certification Decision Ownership** → **Feature Requirements** (organized so each "Decision Requiring Documentation" is traceable to a specific feature) → **Workflow Assumptions** → **Nice to Have** → **Out of Scope**. No content from Revision 2 was dropped — supporting context (Personas, JTBD, NFRs, Architecture) is retained but now sits around this policy spine rather than alongside it as parallel structure. Revision 4 (2026-08-13) adds three things without changing that spine: **Intervention/MTSS Certification** as a third certification model (§5.2, §7.10, §9); the **Certifying Agent** pre-review determination gate and Run Report structure, derived from a real agent output (§7.5, §7.7.2, §15 OQ13); and a terminology/consistency pass reconciling "Certification Agent" → "Certifying Agent," "deny" → "reject," and the Ready for Review → Under Review transition across all sequence diagrams. Revision 5 (2026-11-16) adds the **Assessment Mapping Tool** (§7.4) and, with it, a deliberate revision of a feedback-sourced decision: artifact ownership is now *vendor-authored, platform-assisted* (§5.5, §12), and two proposed decisions D27/D28 are recorded (§5.7). The revised wording is marked inline; design: `docs/design/2026-11-16-assessment-mapping-tool-design.md`.
+> **Revision note:** Revision 2 incorporated feedback content additively, in place, inside the original PRD structure. Revision 3 restructures the document so the feedback's own logic drives the outline: Scope → **Confirmed Product Decisions** → **Certification Decision Ownership** → **Feature Requirements** (organized so each "Decision Requiring Documentation" is traceable to a specific feature) → **Workflow Assumptions** → **Nice to Have** → **Out of Scope**. No content from Revision 2 was dropped — supporting context (Personas, JTBD, NFRs, Architecture) is retained but now sits around this policy spine rather than alongside it as parallel structure. Revision 4 (2026-08-13) adds three things without changing that spine: **Intervention/MTSS Certification** as a third certification model (§5.2, §7.10, §9); the **Certifying Agent** pre-review determination gate and Run Report structure, derived from a real agent output (§7.5, §7.7.2, §15 OQ13); and a terminology/consistency pass reconciling "Certification Agent" → "Certifying Agent," "deny" → "reject," and the Ready for Review → Under Review transition across all sequence diagrams. Revision 5 (2026-11-16) adds the **Assessment Mapping Tool** (§7.4) and, with it, a deliberate revision of a feedback-sourced decision: artifact ownership is now *vendor-authored, platform-assisted* (§5.5, §12), and two proposed decisions D27/D28 are recorded (§5.7). The revised wording is marked inline; design: `docs/design/2026-11-16-assessment-mapping-tool-design.md`. Revision 6 (2026-11-17) makes Assessments validation sample-driven: runs check the shape **and values** of GET responses against expected payloads built from the vendor's sample data through the mapping, on a coverage-based subset of rows, within a **reviewer-owned run scope** (§7.3, §7.4, §7.5, §7.6, §7.9); proposed decisions D29–D31 are recorded (§5.8). Design: `docs/design/2026-11-17-assessment-run-scope-design.md`.
 >
 > **Fidelity note:** Everything in §5 (Confirmed Product Decisions), §6 (Ownership Matrix), and the feedback-sourced bullet lists throughout §7/§10/§11/§12 is a direct transcription of the first-round feedback — treated as authoritative and not reworded for substance. A small number of places in §7.7, §7.8, and §12 extended the feedback's literal wording to make the PRD internally consistent (e.g., giving workflow states entry/exit criteria, since the feedback only named the labels). Those gaps were resolved on 2026-08-10 (workflow state diagram and gating logic, §7.7/§7.7.1; notification event consolidation, §7.8; renewal-workflow deferral, §12/§13) and are marked "confirmed 2026-08-10" inline, tracked in §15 (OQ8–OQ11) for traceability back to the original feedback.
 
@@ -177,6 +177,19 @@ The reviewer remains the certification decision-maker and is responsible for:
 - **D28 (proposed):** The descriptor bank is the only source of selectable descriptor values in the mapping tool; standard Ed-Fi values start disabled.
 
 *(Implemented in §7.4, Assessment Mapping Tool. Proposed, not yet confirmed by the certification workgroup.)*
+
+## 5.8 Assessments Run Scope Decisions (proposed 2026-11-17)
+- **D29 (proposed):** The run scope of an Assessments submission is **reviewer-owned and per submission**. It is derived from the current mapping and sample data, and the reviewer can only **narrow** it (exclude endpoints, adjust rows). Every change needs a reason, is visible to the vendor, is kept in audit history, and makes earlier runs stale.
+- **D30 (proposed):** Translating raw sample values into Ed-Fi values is **vendor-authored in the mapping tool** (value translations, sample-column bindings, date formats). The platform may list the values that need translating and suggest a column on an exact name match, but never fills in the Ed-Fi side.
+- **D31 (proposed):** An Assessments run checks a **coverage-based subset** of sample rows (the smallest set that shows every distinct enumerated value, translated or not, and every objective with a score), which the reviewer can adjust.
+
+**Considered and set aside (2026-11-17), with when to revisit:**
+- *Vendor uploads sample data already in Ed-Fi values.* Simplest for the platform, but sample data would no longer be the raw data as posted, so the mapping's translations would never be tested. Revisit if vendors find translation tables too costly to author.
+- *Platform infers translations and a reviewer confirms each.* Least vendor effort, but the platform would author part of the mapping, against §5.5. Revisit only as *suggestions the vendor accepts*, and only if §5.5 is relaxed.
+- *Shape-only checks* (presence, types, descriptor resolution). Cheaper and less brittle, but blind to a value in the wrong place.
+- *Checking every sample row.* Complete but slow and noisy; the coverage subset shows every case at a fraction of the requests.
+
+*(Implemented in §7.3, §7.4, §7.5, §7.6. Proposed, not yet confirmed by the certification workgroup.)*
 
 ---
 
@@ -355,6 +368,8 @@ sequenceDiagram
 
 The artifact upload loop is now explicit in the diagram, rather than assumed: a vendor must successfully add the required artifacts (score report, sample data, data mapping) and reach "Ready for Review" *before* domain selection begins — domain selection is not a substitute path around the artifact gate in §7.7.1. The GET-shape verification loop that follows domain selection is a distinct, later automated check against the resources/endpoints for the *selected domains*, not a re-check of artifact presence. The live PUT/POST verification step also raises the same question flagged in §15 OQ12 for §7.2: whether "live verification" of write endpoints should be its own workflow state distinct from "Under Review."
 
+**Assessments automated validation (added 2026-11-17, D29–D31):** for the Assessments domain the "required resources and endpoints" are **derived**, not selected: `assessments`, `objectiveAssessments`, `studentAssessments` and one descriptor endpoint per descriptor type the expected payloads use. Each selected sample row, put through the vendor's mapping, becomes the payload `GET studentAssessments?studentUniqueId=…` should return, matched by the mapped administration identifier. Before a run starts, the vendor and reviewer see exactly what it will check: each endpoint, its fields and descriptors, the rows used and why each was picked, and the expected payload for any record. Design: `docs/design/2026-11-17-assessment-run-scope-design.md`.
+
 ## 7.4 FT4: Certification Artifact Management
 
 **Goal:** Provide management of product mappings, reports, sample data, and validation results, so reviewers can compare mappings, sample data, reports, and API responses using a common structure.
@@ -414,6 +429,12 @@ An authoring path for the **Vendor mapping CSV** of an Assessments submission. I
 - **Generate with issues (D27):** generating is always allowed. A summary lists open issues first. The new version carries its issues and notes, and runs pinned to the prior version are marked stale (D14).
 - **Notes:** the vendor can attach notes to elements and to individual issues (*Explained* / *Unexplained*). Notes never clear an issue. A note on an issue that no longer applies moves to the element, tagged "issue resolved", and is never dropped.
 - **Draft:** edits are kept in a working draft per submission. Only Generate creates a version, and reviewers see only generated versions.
+- **Sample columns (added 2026-11-17, D30):** each element names the sample column that feeds it. When a column name matches the element name exactly, the tool shows it as a *Suggested* binding with **Confirm** and **Confirm all suggestions**; a suggestion counts only once confirmed.
+- **Value translations (added 2026-11-17, D30):** enumerated and Boolean elements carry a table of *sample value → Ed-Fi value*, pre-listed from the distinct values in the current sample. The Ed-Fi side depends on the **target**: a descriptor target takes a bank value; a score target takes the result its datatype calls for (Baseline `Y` → `true`). Date elements declare a format (`M/D/YY`, `M/D/YYYY`, `YYYY-MM-DD`).
+- **Objective codes (added 2026-11-17):** each objective assessment carries the vendor's `identificationCode`; expected objective payloads are keyed by it.
+- **Sample issues (added 2026-11-17):** *Untranslated sample value*, *No sample column*, *Objective code missing* and *Sample value doesn't fit the date format* — flagged, never blocking (D27). They are raised only for an assessment that has sample data.
+
+**Sample data per assessment (added 2026-11-17):** for an Assessments submission, Sample data is **one slot per assessment** in the current mapping (e.g. *Sample data — ELA Diagnostic*, *Sample data — Math Diagnostic*), each versioned on its own. The sample requirement is met only when every mapped assessment has a sample. Runs pin each slot's version; replacing any one marks earlier runs stale. Sample data is parsed, not just stored, because it is the expected-result set.
 
 ## 7.5 FT5: Validation Engine
 
@@ -481,7 +502,9 @@ sequenceDiagram
 
 The Run Report is separate from the vendor-provided artifacts it's compared against (score report, sample data, mapping — §5.5), gives the reviewer a tangible, comprehensive basis for comparison rather than relying on the live run state or scattered logs, and is retained under §7.9's Audit History requirements.
 
-Validation here is primarily field-presence and type-matching against the sample data/report artifacts, not deep semantic checks (semantic alignment remains a manual reviewer activity per §5.4/§7.6). The three reviewer dispositions shown — Changes Requested, Rejected, or scheduling a live session before Approved — sharpen OQ12: a "schedule live session" action implies a *waiting* period between Under Review and Approved that isn't well represented by either state today, reinforcing the case for a distinct **Pending Live Review** (or similarly named) state rather than treating live verification as instantaneous within Under Review.
+Validation here is primarily field-presence and type-matching against the sample data/report artifacts, not deep semantic checks (semantic alignment remains a manual reviewer activity per §5.4/§7.6). *(Revised 2026-11-17 for Assessments: presence, type **and value** reconciliation against expected payloads; see below.)* The three reviewer dispositions shown — Changes Requested, Rejected, or scheduling a live session before Approved — sharpen OQ12: a "schedule live session" action implies a *waiting* period between Under Review and Approved that isn't well represented by either state today, reinforcing the case for a distinct **Pending Live Review** (or similarly named) state rather than treating live verification as instantaneous within Under Review.
+
+**Assessments results (added 2026-11-17):** results are grouped by endpoint → record (sample row) → field, comparing *expected (sample through mapping)* with *observed (API response)* after the §9.1 normalization (trimmed strings, numbers parsed, dates as instants, descriptor codes case-insensitive, keyed collections matched by key). Result kinds add *Record not found* (a selected row's student assessment isn't returned), *Descriptor not loaded*, **Cannot check** (untranslated value, no sample column, unparseable date, or no sample for the assessment) and *Excluded by reviewer*. **Cannot check never fails a run or stops it qualifying**, but it is always visibly flagged: an amber badge per field, a count beside pass/fail (e.g. *Passed · 3 cannot check*), a banner listing the reasons, and the same count on the reviewer's view.
 
 ## 7.6 FT6: Reviewer Workbench
 
@@ -497,6 +520,8 @@ Validation here is primarily field-presence and type-matching against the sample
 - Approve or reject certifications
 
 **Mapping review (added 2026-11-16, §7.4 Assessment Mapping Tool):** for a mapping generated in the mapping tool, the reviewer opens a read-only view of exactly the submitted version. It shows the issue list grouped by kind, each issue's *Explained* / *Unexplained* state with the vendor's note inline, and the coverage and collection views. The Required artifacts row shows an issue badge (e.g. "4 issues · 3 explained").
+
+**Run scope (added 2026-11-17, D29):** an Assessments submission's reviewer view has a *Run scope* card showing the In-scope resources. The reviewer can switch an endpoint off, remove a coverage row or add any sample row; each change requires a reason, which the vendor sees on the Start-a-run screen. Reviewers cannot add endpoints the mapping does not imply, and cannot edit the mapping or sample data. The card also shows the qualifying run's *Cannot check* count.
 
 **"Decision Requiring Documentation" — Reviewer Landing Page** (feedback verbatim): The reviewer homepage must prominently display, per certification run:
 - Certification Type (SIS, Domain, or Intervention/MTSS — the feedback named the first two; the third follows from §5.2)
@@ -709,6 +734,7 @@ flowchart LR
 - Reviewer decision date
 - Approval/rejection history
 - **Mapping tool events** — added 2026-11-16 (§7.4): mapping workbook imported (with resolved / needs-target counts), mapping workbook rejected, mapping started from scratch, and mapping generated (version number, issue count, explained count).
+- **Run scope events** — added 2026-11-17 (§7.6, D29): endpoint excluded or included again, row added, row removed, and adjustment undone, each with the reviewer and reason. Each Assessments run records the scope it pinned, so a later scope change marks it stale.
 - **Run Report** — added 2026-08-10, structure revised 2026-08-13 (§7.5, §7.7.2): the Certifying Agent's structured determination for an automated validation run — per-area PASS/FAIL/PASS WITH CLARIFICATION results, blocking deficiencies (if any), recommended reviewer note, and readiness decision — handed to the reviewer at the start of Under Review. Distinct from "Validation execution history" above (which is the raw execution log); the Run Report is the reviewer-facing comparison artifact and should be retained alongside it, not folded into it.
 
 ## 7.10 FT10: Intervention / MTSS Certification Workflow
@@ -962,13 +988,13 @@ flowchart TD
 
 | ID | Question | Answers / Notes |
 | --- | --- | --- |
-| 1 | Should Domain API automation be driven by sample data? | Open. |
+| 1 | Should Domain API automation be driven by sample data? | **Partly answered for Assessments (2026-11-17)** — yes: expected payloads come from sample data through the mapping, on a coverage subset, within a reviewer-owned scope (§5.8, §7.3). Open for other domains. |
 | 2 | Do Admin and Security databases require isolated environments? | Open. |
 | 3 | What is the authoritative source of certification definitions? | **Resolved** — see §5.1. |
 | 4 | Can certification definitions be generated from Data Standard metadata? | Open. |
 | 5 | Should vendors self-register? | Open (see §13, Vendor Self-Service Registration). |
 | 6 | How much semantic validation can be automated? | **Partially resolved** — baseline is manual reviewer evaluation (§5.4); automation is Nice to Have only (§11), assisting rather than replacing judgment. |
-| 7 | What is the standard format for mappings, reports, and sample data? | Open. |
+| 7 | What is the standard format for mappings, reports, and sample data? | **Partly answered for Assessments (2026-11-17)** — sample data is the vendor's raw export, one file per assessment, bound to the mapping by explicit column bindings and value translations (§7.4). Mapping format: the mapping tool's export. Reports: open. |
 | 8 | Does "documentation must be present before review activities begin" (feedback, Submission Model) mean the specific "documentation" artifact type, or all required artifact types collectively? | **Resolved 2026-08-10** — means all required artifact types collectively; a vendor cannot enter "Ready for Review" until every required artifact type is present. See §7.7.1 flowchart. §10.1 carried an "unconfirmed" note past this resolution date; corrected 2026-08-11 to match. |
 | 9 | What should the entry/exit criteria be for each workflow state (In Progress, Submission Incomplete, Ready for Review, Under Review, Changes Requested, Approved, Rejected)? | **Resolved 2026-08-10** — see state diagram in §7.7. |
 | 10 | Should "artifact replaced/updated by vendor during review" be added as an explicit 7th event in the Notification Requirements list (§7.8), or is it already covered by the general Artifact Updates notification rule? | **Resolved 2026-08-10** — added as a distinct "Artifact Change" event, separate from "Artifact updates are requested" (§7.8): the requested-update event fires when the reviewer asks for changes; the Artifact Change event fires when the vendor actually makes a change. A persistent "review in progress" status indicator is also required but does not need its own notification event. |
