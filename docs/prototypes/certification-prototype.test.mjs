@@ -796,7 +796,7 @@ test('an objective element that does not end in its score name is an error', () 
 });
 
 test('expected student assessment carries pre-arranged identity and vendor descriptor URIs', () => {
-  const p = loadPrototype(); const r = validate(p, linkAll(original(p))); const a = ela(r);
+  const p = loadPrototype(); const r = validate(p, p.fixtureVariant('vendorb-corrected')); const a = ela(r);
   const col = a.sample.columns.indexOf('Rush Flag');
   const i = a.sample.rows.findIndex(row => row[col] === 'Red Rush Flag');
   const pl = p.expectedStudentAssessment(r.model, a, i);
@@ -808,7 +808,7 @@ test('expected student assessment carries pre-arranged identity and vendor descr
 });
 
 test('expected assessment and objectives come from the workbook', () => {
-  const p = loadPrototype(); const r = validate(p, linkAll(original(p))); const a = ela(r);
+  const p = loadPrototype(); const r = validate(p, p.fixtureVariant('vendorb-corrected')); const a = ela(r);
   const asm = p.expectedAssessment(r.model, a);
   assert.equal(asm.assessmentIdentifier, 'VENDORB-DIAGNOSTIC-ELA');
   assert.equal(asm.adaptiveAssessment, true);
@@ -819,7 +819,7 @@ test('expected assessment and objectives come from the workbook', () => {
 });
 
 test('row selection covers every distinct descriptor value and objective', () => {
-  const p = loadPrototype(); const r = validate(p, linkAll(original(p))); const a = ela(r);
+  const p = loadPrototype(); const r = validate(p, p.fixtureVariant('vendorb-corrected')); const a = ela(r);
   const rows = p.selectRows(r.model, a);
   assert.ok(rows.length > 0 && rows.length < a.sample.rows.length);
   assert.ok(rows.every(x => x.why && x.key.studentId && x.key.activityId));
@@ -828,9 +828,46 @@ test('row selection covers every distinct descriptor value and objective', () =>
 });
 
 test('endpoints are derived in order', () => {
-  const p = loadPrototype(); const r = validate(p, linkAll(original(p)));
+  const p = loadPrototype(); const r = validate(p, p.fixtureVariant('vendorb-corrected'));
   const eps = p.deriveEndpoints(r.model);
   assert.deepEqual(eps.slice(0, 3).map(e => e.id), ['assessments', 'objectiveAssessments', 'studentAssessments']);
   assert.ok(eps.some(e => e.id === 'descriptor:EventCircumstanceDescriptor'));
   assert.ok(eps.every(e => e.recordCount > 0));
+});
+
+/* Task 5 — corrected, malformed and renamed variants. */
+test('corrected Vendor B files are ready to run', () => {
+  const p = loadPrototype(); const r = validate(p, p.fixtureVariant('vendorb-corrected'));
+  assert.deepEqual(r.findings.filter(x => x.severity === 'error').map(x => x.message), []);
+  assert.equal(r.verdict, 'ready');
+});
+
+test('corrections do not mutate the original fixture', () => {
+  const p = loadPrototype();
+  p.fixtureVariant('vendorb-corrected');
+  assert.equal(validate(p, p.FIXTURES['vendorb-original']).verdict, 'not-ready');
+  assert.equal(p.fixtureVariant('vendorb-original').workbook.Assessments.length, 2);
+});
+
+test('corrected workbook has no Math Diagnostic', () => {
+  const p = loadPrototype(); const fx = p.fixtureVariant('vendorb-corrected');
+  assert.ok(!fx.workbook.Assessments.some(r => /Math/.test(r['Assessment Type'])));
+  assert.ok(!fx.workbook.ElementDefinitions.some(r => /Math/.test(r['Assessment Type'])));
+});
+
+test('malformed variant is missing EnumerationItems', () => {
+  const p = loadPrototype(); assert.equal(validate(p, p.fixtureVariant('vendorb-malformed')).verdict, 'malformed');
+});
+
+test('every correction says why', () => {
+  const p = loadPrototype();
+  const all = [...p.CORRECTIONS.workbook, ...p.CORRECTIONS.sample];
+  assert.ok(all.length > 5 && all.every(c => c.why && typeof c.apply === 'function'));
+});
+
+test('renamed fixture keeps the verdict', () => {
+  const p = loadPrototype();
+  const fx = p.renameFixture(p.fixtureVariant('vendorb-corrected'), [['Vendor B', 'Northwind'], ['vendorb', 'northwind'], ['VENDORB', 'NORTHWIND']]);
+  const r = validate(p, fx);
+  assert.equal(r.verdict, 'ready'); assert.equal(r.model.product.namespace, 'uri://northwind.example/');
 });
