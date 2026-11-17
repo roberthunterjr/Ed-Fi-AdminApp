@@ -1042,6 +1042,11 @@ const EDFI_V5_TARGETS = [
    descriptor:'RetestIndicatorDescriptor', def:'Whether this administration is a retest.'},
   {path:'studentAssessment.whenAssessedGradeLevelDescriptor', entity:'StudentAssessment', type:'Descriptor',
    descriptor:'GradeLevelDescriptor', def:'The student’s grade level when assessed.'},
+  {path:'studentAssessment.accommodations', entity:'StudentAssessment', type:'Descriptor', collection:true,
+   keyedBy:'AccommodationDescriptor', descriptor:'AccommodationDescriptor',
+   def:'Accommodations the student received for this administration.'},
+  {path:'studentAssessment.period', entity:'StudentAssessment', type:'Descriptor',
+   descriptor:'AssessmentPeriodDescriptor', def:'The period or window in which the student was assessed.'},
   {path:'studentAssessment.scoreResults', entity:'StudentAssessment', type:'Score', collection:true, keyedBy:RM,
    def:'A score the student achieved, keyed by reporting method.'},
   {path:'studentAssessment.performanceLevels', entity:'StudentAssessment', type:'Descriptor', collection:true,
@@ -1068,7 +1073,7 @@ const STANDARD_DESCRIPTORS = [
    values:['English Language Arts','Mathematics','Reading']},
   {type:'GradeLevelDescriptor', definition:'A grade level.',
    values:['Kindergarten','First grade','Second grade','Third grade','Fourth grade','Fifth grade',
-     'Sixth grade','Seventh grade','Eighth grade']},
+     'Sixth grade','Seventh grade','Eighth grade','Ninth grade','Tenth grade','Eleventh grade','Twelfth grade']},
   {type:'LanguageDescriptor', definition:'A language.', values:['English','Spanish']},
   {type:'ResultDatatypeTypeDescriptor', definition:'The datatype of a score result.',
    values:['Decimal','Integer','Level','Percentage','Percentile','Range']},
@@ -1129,7 +1134,7 @@ const WORKBOOK_FIXTURES = (function(){
        'VENDORB-DIAGNOSTIC-ELA', '1', DIAG, 'VENDORB-DIAGNOSTIC', '800'],
       ['Math Diagnostic', 'Adaptive diagnostic for mathematics.', 'Vendor B Math Diagnostic',
        'VENDORB-DIAGNOSTIC-MATH', '1', DIAG, 'VENDORB-DIAGNOSTIC', '800']],
-    ElementDefinitions: [WB_HEADERS.ElementDefinitions,
+    ElementDefinitions: [WB_HEADERS.ElementDefinitions].concat([
       el(ELA, 'Baseline Diagnostic (Y/N)', 'Whether this is the student’s baseline diagnostic.', 'Enumeration', SC, H(VB, 'Is Baseline Diagnostic?', VB, 'Boolean')),
       el(ELA, 'Most Recent Diagnostic (Y/N)', 'Whether this is the most recent diagnostic.', 'Enumeration', 'studentAssessment.retestIndicatorDescriptor'),
       el(ELA, 'Duration (minutes)', 'Minutes spent on the diagnostic.', 'Integer', SC, vh('Duration (minutes)', 'Integer')),
@@ -1146,16 +1151,31 @@ const WORKBOOK_FIXTURES = (function(){
       el(ELA, 'Annual Typical Growth Measure', 'Typical annual growth for the student.', 'Interger', SC, vh('Typical Growth Measure', 'Integer')),
       el(ELA, 'Annual Stretch Growth Measure', 'Ambitious annual growth for the student.', 'Interger', SC, vh('Stretch Growth Measure', 'Integer')),
       el(ELA, 'Percent Progress to Annual Typical Growth (%)', 'Progress toward typical growth.', 'percentage', SC, vh('Progress To Typical Growth', 'Percentage')),
-      el(ELA, 'Mid On-Grade Level Score', 'Scale score for mid on-grade level.', 'integer', SC, vh('Mid On-Grade Level Scale Score', 'Integer')),
-      el(ELA, 'Phonics Scale Score', 'Phonics domain scale score.', 'Integer', OBJ, eh('Scale score', 'Integer')),
-      el(ELA, 'Phonics Placement Level', 'Phonics domain placement level.', 'String', OBJ, eh('Achievement/proficiency level', 'Level')),
-      el(ELA, 'Vocabulary Scale Score', 'Vocabulary domain scale score.', 'Integer', OBJ, eh('Scale score', 'Integer')),
+      el(ELA, 'Percent Progress to Annual Stretch Growth (%)', 'Progress toward stretch growth.', 'percentage', SC, vh('Progress To Stretch Growth', 'Percentage')),
+      el(ELA, 'Mid On-Grade Level Score', 'Scale score for mid on-grade level.', 'integer', SC, vh('Mid On-Grade Level Scale Score', 'Integer'))
+    ].concat(
+      /* Seven reading domains, each reported as an objective assessment. The
+         double space in the Literature rows is the reference workbook's own. */
+      [['Phonological Awareness', ' '], ['Phonics', ' '], ['High-Frequency Words', ' '], ['Vocabulary', ' '],
+       ['Reading Comprehension: Overall', ' '], ['Reading Comprehension: Literature', '  '],
+       ['Reading Comprehension: Informational Text', ' ']].flatMap(([dom, gap]) => [
+        el(ELA, dom + ' Scale Score', dom + ' domain scale score.', 'Integer', OBJ, eh('Scale score', 'Integer')),
+        el(ELA, dom + gap + 'Placement Level', dom + ' domain placement level.', 'String', OBJ,
+          eh('Achievement/proficiency level', 'Level')),
+        el(ELA, dom + gap + 'Relative Placement', dom + ' placement relative to grade level.', 'String', OBJ,
+          vh('Relative Placement', 'Level'))]),
+      [
+      el(ELA, 'Norming Window', 'Norming window the diagnostic fell in.', 'Enumeration', 'studentAssessment.period'),
+      el(ELA, 'Read Aloud', 'Read-aloud support the student received.', 'Enumeration', 'studentAssessment.accommodations'),
+      el(ELA, 'Date', 'Date the diagnostic was completed.', 'Date', 'studentAssessment.administrationDate'),
+      el(ELA, 'Grade', 'Student grade when the diagnostic was taken.', 'Enumeration',
+        'studentAssessment.whenAssessedGradeLevelDescriptor'),
       el(MATH, 'AssessmentID', 'Identifier of the assessment.', 'String', 'assessments.assessment.id'),
       el(MATH, 'Scale Score', 'Scale score achieved (0-800).', 'Integer', SC, eh('Scale score', 'Integer')),
       el(MATH, 'Percentile', 'Normed percentile.', 'Percentile', SC, eh('Percentile', 'Percentile')),
       el(MATH, 'Quantile Measure', 'Quantile measure.', 'Level', SC, eh('Quantile Measure', 'Level')),
       el(MATH, 'Placement Level', 'Placement level achieved.', 'String', SC, eh('Achievement/proficiency level', 'Level')),
-      el(MATH, 'Number and Operations Scale Score', 'Number and Operations domain scale score.', 'Integer', OBJ, eh('Scale score', 'Integer'))],
+      el(MATH, 'Number and Operations Scale Score', 'Number and Operations domain scale score.', 'Integer', OBJ, eh('Scale score', 'Integer'))])),
     EnumerationDefinitions: [WB_HEADERS.EnumerationDefinitions,
       ['AssessmentPeriod', 'The window in which an assessment is administered.'],
       ['Accomodation', 'A variation in how an assessment is presented or taken.'],
@@ -1176,9 +1196,9 @@ const WORKBOOK_FIXTURES = (function(){
       ['AssessmentReportingMethod','Relative Placement','Placement relative to grade level'],
       ['AssessmentReportingMethod','Stretch Growth Measure','Ambitious annual growth'],
       ['AssessmentReportingMethod','Typical Growth Measure','Typical annual growth'],
-      ['AssessmentPeriod','Spring','Spring norming window'],
-      ['AssessmentPeriod','Winter','Winter norming window'],
-      ['AssessmentPeriod','Fall','Fall norming window'],
+      ['AssessmentPeriod','Spring (March 2 - End of Year)','Spring norming window'],
+      ['AssessmentPeriod','Winter (November 16 - March 1)','Winter norming window'],
+      ['AssessmentPeriod','Fall (Beginning of Year - November 15)','Fall norming window'],
       ['EventCircumstance','Yellow Rush Flag','The student may have rushed'],
       ['EventCircumstance','Red Rush Flag','The student rushed'],
       ['RetestIndicator','Latest Diagnostic','The most recently completed diagnostic'],
@@ -1384,6 +1404,8 @@ const SAMPLE_ELA = {name:'vendorb-ela-sample.csv',
     ["EdFiCertification","Student155","EdFiCertificationStudent155","11","2024-2025","Grand Bend High School","Enrolled","","","255901001","","","","EdFiCertificationStudent155","female","N","White","N","N","","","HOMEROOM-396100000000502; LA/READ GR 5-39615010046R502; LA/READ GR 5-39615010046R502B; LA/READ GR 5-39615010046R502C; LANG ARTS GR 5-396150100460502; LIB SKLS/INFO LIT 5-396150110500502","","","9/1/24","9/1/24","Fall (Beginning of Year - November 15)","Y","Y","83","","Off","470","Grade 11","1 Grade Level Below","Approaching Grade 11","52","1","425L","325L-475L","474","Grade 10","1 Grade Level Below","Approaching Grade 11","479","Grade 10","1 Grade Level Below","Approaching Grade 11","439","Grade 10","1 Grade Level Below","Approaching Grade 11","482","Grade 10","1 Grade Level Below","Approaching Grade 11","454","Grade 10","1 Grade Level Below","Approaching Grade 11","454","Grade 10","1 Grade Level Below","Approaching Grade 11","458","Grade 10","1 Grade Level Below","Approaching Grade 11","English","0","39","53","0","0","513","Not Provided","","","","VB-ACT-0155"],
     ["EdFiCertification","Student156","EdFiCertificationStudent156","12","2024-2025","Grand Bend High School","Enrolled","","","255901001","","","","EdFiCertificationStudent156","male","Y","White","Y","Y","","","FUN READ 3-223150100260301T; HOMEROOM-223100000000305; LA/READ GR 3-22315010044R305; LANG ARTS GR 3-223150100440305A","","","9/1/24","9/1/24","Fall (Beginning of Year - November 15)","Y","Y","83","","Off","470","Grade 9","3 or More Grade Levels Below","Needs Improvement","3","1","425L","325L-475L","474","Grade 9","3 or More Grade Levels Below","Needs Improvement","479","Grade 9","3 or More Grade Levels Below","Needs Improvement","439","Grade 9","3 or More Grade Levels Below","Needs Improvement","482","Grade 9","3 or More Grade Levels Below","Needs Improvement","454","Grade 9","3 or More Grade Levels Below","Needs Improvement","454","Grade 9","3 or More Grade Levels Below","Needs Improvement","458","Grade 9","3 or More Grade Levels Below","Needs Improvement","Spanish","0","18","50","0","0","642","Not Provided","","","","VB-ACT-0156"]
   ]};
+/* Date formats a vendor can declare for a Date element's sample column. */
+const DATE_FORMATS = ['M/D/YY', 'M/D/YYYY', 'YYYY-MM-DD'];
 /* First index of a column (the export repeats "Student ID"), or -1. */
 function sampleCol(sample, name){ return sample.columns.indexOf(name); }
 
@@ -1853,7 +1875,8 @@ function descriptorTypeName(raw){
 }
 function emptyMappingDoc(){
   const doc = {product:{name:'', namespace:'', description:''}, assessments:[],
-    bank:{types:[], values:[]}, elements:[], issueNotes:{}, orphanNotes:[], importReport:null};
+    bank:{types:[], values:[]}, elements:[], issueNotes:{}, orphanNotes:[], importReport:null,
+    objectiveCodes:{}};
   STANDARD_DESCRIPTORS.forEach(d => {
     doc.bank.types.push({type:d.type, definition:d.definition});
     d.values.forEach(v => doc.bank.values.push({id:uid('mval'), type:d.type, ns:'edfi',
@@ -1961,7 +1984,8 @@ function parseWorkbook(wb){
       definition:c('Definition'), type:nt.type,
       enumType: nt.type === 'Enumeration' && firstDesc ? firstDesc.descriptor : null,
       targets, notes:'',
-      importNote:{originalTarget:complete, unresolved:res.unresolved, corrections}});
+      importNote:{originalTarget:complete, unresolved:res.unresolved, corrections},
+      sampleColumn:null, translations:[], dateFormat:null});
     if (res.unresolved.length) report.needsTarget++; else report.resolved++;
   });
 
@@ -2029,7 +2053,7 @@ function removeBankValue(doc, valueId){
 function addElement(doc, o){
   const el = {id:uid('mel'), assessmentId:o.assessmentId || null, objective:o.objective || null,
     name:o.name || 'New element', definition:o.definition || '', type:o.type || null, enumType:null,
-    targets:[], notes:'', importNote:null};
+    targets:[], notes:'', importNote:null, sampleColumn:null, translations:[], dateFormat:null};
   doc.elements.push(el);
   return el;
 }
@@ -2042,6 +2066,75 @@ function removeElement(doc, elementId){
     delete doc.issueNotes[k];
   });
   doc.elements.splice(doc.elements.indexOf(el), 1);
+}
+/* ---- sample bindings and value translations (run-scope design §5.3) ----
+   The vendor says which sample column feeds each element and how each raw
+   sample value becomes an Ed-Fi value. The tool may suggest a column on an
+   exact name match, but a suggestion is not a binding until confirmed. */
+function objectivesOf(doc, assessmentId){
+  const out = [];
+  doc.elements.forEach(e => {
+    if (e.assessmentId === assessmentId && e.objective && !out.includes(e.objective)) out.push(e.objective);
+  });
+  return out;
+}
+function suggestSampleColumns(doc, assessmentId, columns){
+  const norm = s => String(s).trim().toLowerCase();
+  let n = 0;
+  doc.elements.filter(e => e.assessmentId === assessmentId && !e.sampleColumn).forEach(e => {
+    const col = columns.find(c => norm(c) === norm(e.name));
+    if (col){ e.sampleColumn = {name:col, confirmed:false}; n++; }
+  });
+  return n;
+}
+function setSampleColumn(doc, elementId, name){
+  const el = mapElement(doc, elementId);
+  if (el) el.sampleColumn = name ? {name, confirmed:true} : null;
+}
+function confirmSampleColumn(doc, elementId){
+  const el = mapElement(doc, elementId);
+  if (el && el.sampleColumn) el.sampleColumn.confirmed = true;
+}
+function confirmAllSuggestions(doc, assessmentId){
+  let n = 0;
+  doc.elements.filter(e => e.assessmentId === assessmentId && e.sampleColumn && !e.sampleColumn.confirmed)
+    .forEach(e => { e.sampleColumn.confirmed = true; n++; });
+  return n;
+}
+/* What kind of Ed-Fi value a raw sample value must be translated to, decided
+   by the element's targets: a descriptor target takes a bank value, a score
+   target takes a result string (Baseline "Y" → "true"). Only enumerated and
+   Boolean elements need translating; other values pass through. */
+function translationKinds(doc, el){
+  if (el.type !== 'Enumeration' && el.type !== 'Boolean') return [];
+  const kinds = [];
+  el.targets.forEach(t => {
+    const tgt = targetByPath(t.path);
+    const kind = SCORE_COLLECTIONS.includes(t.path) ? 'result'
+      : tgt && tgt.type === 'Descriptor' ? 'descriptor'
+      : tgt && tgt.type === 'Boolean' ? 'result' : null;
+    if (kind && !kinds.includes(kind)) kinds.push(kind);
+  });
+  return kinds;
+}
+function setTranslation(doc, elementId, kind, sample, value){
+  const el = mapElement(doc, elementId);
+  if (!el) return;
+  const i = el.translations.findIndex(x => x.kind === kind && x.sample === sample);
+  if (i >= 0) el.translations.splice(i, 1);
+  if (value != null && value !== '') el.translations.push({kind, sample, value});
+}
+function setDateFormat(doc, elementId, fmt){
+  const el = mapElement(doc, elementId);
+  if (!el) return {ok:false, error:'No such element.'};
+  if (fmt != null && !DATE_FORMATS.includes(fmt)) return {ok:false, error:'Unknown date format "' + fmt + '".'};
+  el.dateFormat = fmt || null;
+  return {ok:true};
+}
+function setObjectiveCode(doc, assessmentId, objective, code){
+  doc.objectiveCodes = doc.objectiveCodes || {};
+  const m = doc.objectiveCodes[assessmentId] = doc.objectiveCodes[assessmentId] || {};
+  m[objective] = String(code || '').trim();
 }
 function setElementField(doc, elementId, field, value){
   const el = mapElement(doc, elementId);

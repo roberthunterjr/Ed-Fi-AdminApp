@@ -715,11 +715,12 @@ test('the clean workbook has no issues', () => {
 test('coverage is per assessment and per reporting method', () => {
   const p = loadPrototype(); const d = vbDoc(p);
   const keys = p.computeIssues(d).map(i => i.key);
-  for (const a of d.assessments){
-    assert.ok(keys.includes(`unmapped:${a.id}:-:-:studentAssessment.administrationDate`), a.type);
+  for (const a of d.assessments)
     assert.ok(keys.includes(`unmapped:${a.id}:-:-:assessment.academicSubjects`), a.type);
-  }
   const ela = d.assessments.find(a => a.type === 'ELA Diagnostic');
+  const math = d.assessments.find(a => a.type === 'Math Diagnostic');
+  assert.ok(keys.includes(`unmapped:${math.id}:-:-:studentAssessment.administrationDate`), 'Math has no Date element');
+  assert.ok(!keys.includes(`unmapped:${ela.id}:-:-:studentAssessment.administrationDate`), 'ELA maps Date');
   const gain = d.bank.values.find(v => v.code === 'Diagnostic Gain');
   assert.ok(keys.includes(`unmapped:${ela.id}:-:${gain.id}:scores`),
     'Diagnostic Gain has a result but no assessment.scores definition');
@@ -739,8 +740,8 @@ test('type, target, enumeration, placeholder and unused issues are raised', () =
   assert.ok(keys.includes(`needs-target:${id('AssessmentID')}`));
   assert.ok(keys.includes(`needs-target:${id('Diagnostic Language')}`), 'one of two parts unresolved');
   assert.ok(keys.includes('placeholder:PerformanceLevelDescriptor'));
-  const acc = d.bank.values.find(v => v.type === 'AccommodationDescriptor');
-  assert.ok(keys.includes(`unused-value:${acc.id}`));
+  const quantile = d.bank.values.find(v => v.code === 'Quantile Range');
+  assert.ok(keys.includes(`unused-value:${quantile.id}`), 'no element reports a Quantile Range');
   assert.ok(!keys.includes(`enum-empty:${id('Rush Flag')}`));
 });
 
@@ -1107,4 +1108,36 @@ test('embedded ELA sample is anonymized and complete', () => {
   assert.equal(new Set(s.rows.map(r => r[a])).size, 156);
   assert.equal(s.rows[0][p.sampleCol(s, 'Student ID')], 'EdFiCertificationStudent1');
   assert.equal(p.sampleCol(s, 'Nope'), -1);
+});
+
+test('vendorb fixture carries all 42 ELA elements and the new slice targets', () => {
+  const p = loadPrototype();
+  const doc = p.parseWorkbook(p.WORKBOOK_FIXTURES.vendorb).doc;
+  const ela = doc.assessments.find(a => a.identifier === 'VENDORB-DIAGNOSTIC-ELA');
+  assert.equal(doc.elements.filter(e => e.assessmentId === ela.id).length, 42);
+  assert.equal(p.objectivesOf(doc, ela.id).length, 7);
+  assert.ok(doc.elements.find(e => e.name === 'Read Aloud').targets
+    .some(t => t.path === 'studentAssessment.accommodations'));
+  assert.ok(p.STANDARD_DESCRIPTORS.find(d => d.type === 'GradeLevelDescriptor').values
+    .some(v => v.code === 'Twelfth grade'));
+});
+test('exact-name columns are suggested, not bound, until confirmed', () => {
+  const p = loadPrototype();
+  const doc = p.parseWorkbook(p.WORKBOOK_FIXTURES.vendorb).doc;
+  const ela = doc.assessments.find(a => a.identifier === 'VENDORB-DIAGNOSTIC-ELA');
+  p.suggestSampleColumns(doc, ela.id, p.SAMPLE_ELA.columns);
+  const el = n => doc.elements.find(e => e.assessmentId === ela.id && e.name === n);
+  assert.deepEqual(el('Phonics Scale Score').sampleColumn, {name:'Phonics Scale Score', confirmed:false});
+  assert.equal(el('Scale Score').sampleColumn, null);
+  assert.equal(el('Duration (minutes)').sampleColumn, null);
+  p.confirmAllSuggestions(doc, ela.id);
+  assert.equal(el('Phonics Scale Score').sampleColumn.confirmed, true);
+});
+test('translation kinds follow the target, not the element type', () => {
+  const p = loadPrototype();
+  const doc = p.parseWorkbook(p.WORKBOOK_FIXTURES.vendorb).doc;
+  const el = n => doc.elements.find(e => e.name === n);
+  assert.deepEqual(p.translationKinds(doc, el('Baseline Diagnostic (Y/N)')), ['result']);
+  assert.deepEqual(p.translationKinds(doc, el('Rush Flag')), ['descriptor']);
+  assert.equal(p.setDateFormat(doc, el('Date').id, 'DD.MM.YYYY').ok, false);
 });
