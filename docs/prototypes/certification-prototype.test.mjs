@@ -1141,3 +1141,31 @@ test('translation kinds follow the target, not the element type', () => {
   assert.deepEqual(p.translationKinds(doc, el('Rush Flag')), ['descriptor']);
   assert.equal(p.setDateFormat(doc, el('Date').id, 'DD.MM.YYYY').ok, false);
 });
+
+test('untranslated values and missing columns are flagged only when a sample exists', () => {
+  const p = loadPrototype();
+  const doc = p.parseWorkbook(p.WORKBOOK_FIXTURES.vendorb).doc;
+  const rush = doc.elements.find(e => e.name === 'Rush Flag');
+  p.setSampleColumn(doc, rush.id, 'Rush Flag');
+  const none = p.computeIssues(doc);
+  assert.ok(!none.some(i => i.kind === 'untranslated' || i.kind === 'no-sample-column'));
+  const sample = Object.assign({v:1, assessment:'VENDORB-DIAGNOSTIC-ELA'}, p.SAMPLE_ELA);
+  const issues = p.computeIssues(doc, {'VENDORB-DIAGNOSTIC-ELA': sample});
+  assert.equal(issues.filter(i => i.kind === 'untranslated' && i.elementId === rush.id).length, 2);
+  assert.ok(issues.some(i => i.kind === 'no-sample-column'));
+  assert.ok(issues.some(i => i.kind === 'objective-code'));
+});
+test('a bound column missing from a new sample version raises No sample column', () => {
+  const p = loadPrototype();
+  const doc = p.parseWorkbook(p.WORKBOOK_FIXTURES.vendorb).doc;
+  const el = doc.elements.find(e => e.name === 'Percentile');
+  p.setSampleColumn(doc, el.id, 'Percentile');
+  const s = {v:2, assessment:'VENDORB-DIAGNOSTIC-ELA', name:'x.csv', columns:['Student ID'], rows:[['A']]};
+  assert.ok(p.computeIssues(doc, {'VENDORB-DIAGNOSTIC-ELA': s})
+    .some(i => i.kind === 'no-sample-column' && i.elementId === el.id));
+});
+test('dates parse under the chosen format and flag misfits', () => {
+  const p = loadPrototype();
+  assert.equal(p.parseSampleDate('9/1/24', 'M/D/YY'), '2024-09-01');
+  assert.equal(p.parseSampleDate('2024-09-01', 'M/D/YY'), null);
+});

@@ -1094,7 +1094,9 @@ const ISSUE_KINDS = [
   ['enum-empty','Enumerations without values'], ['unused-value','Unused descriptor values'],
   ['datatype-missing','Result datatype not chosen'], ['datatype-conflict','Datatypes disagree'],
   ['datatype-unverified','Vendor-defined datatypes to verify'],
-  ['placeholder','Import placeholders']
+  ['placeholder','Import placeholders'],
+  ['untranslated','Untranslated sample value'], ['no-sample-column','No sample column'],
+  ['objective-code','Objective code missing'], ['date-format','Sample value doesn’t fit the date format']
 ];
 const DESCRIPTOR_TYPE_ALIASES ={Accomodation:'AccommodationDescriptor', resultDatatypeType:'ResultDatatypeTypeDescriptor'};
 
@@ -2224,7 +2226,8 @@ function coverage(doc){
   });
   return rows;
 }
-function computeIssues(doc){
+function computeIssues(doc, samples){
+  samples = samples || {};
   const issues = [];
   const add = (kind, key, message, extra) => issues.push(Object.assign({key, kind, message}, extra || {}));
   if (!doc.assessments.length)
@@ -2305,14 +2308,77 @@ function computeIssues(doc){
     if (!selectableValues(doc, type).length)
       add('placeholder', 'placeholder:' + type, type + ' only had a CustomValue placeholder — add real values');
   });
+  sampleIssues(doc, samples).forEach(i => issues.push(i));
   return issues;
+}
+/* Issues that need the sample data (run-scope design §5.3). They are raised
+   only for an assessment that has a sample, so a mapping built before any
+   sample is uploaded isn't flooded with them. Objective codes are needed
+   whatever the sample, because the expected objective payload is keyed by them. */
+function sampleIssues(doc, samples){
+  const out = [];
+  const add = (kind, key, message, extra) => out.push(Object.assign({key, kind, message}, extra || {}));
+  doc.assessments.forEach(a => {
+    const name = a.title || a.type;
+    objectivesOf(doc, a.id).forEach(obj => {
+      const code = ((doc.objectiveCodes || {})[a.id] || {})[obj];
+      if (!code) add('objective-code', 'objective-code:' + a.id + ':' + obj,
+        name + ' › ' + obj + ': enter the objective assessment identification code');
+    });
+    const s = samples[a.identifier];
+    if (!s) return;
+    doc.elements.filter(e => e.assessmentId === a.id && e.targets.length).forEach(e => {
+      const col = e.sampleColumn && e.sampleColumn.confirmed ? sampleCol(s, e.sampleColumn.name) : -1;
+      if (col < 0){
+        add('no-sample-column', 'no-sample-column:' + e.id,
+          e.name + ': ' + (!e.sampleColumn ? 'pick the sample column that feeds it'
+            : !e.sampleColumn.confirmed ? 'confirm the suggested sample column "' + e.sampleColumn.name + '"'
+            : 'sample column "' + e.sampleColumn.name + '" is not in ' + s.name), {elementId:e.id});
+        return;
+      }
+      const values = distinctSampleValues(s, e.sampleColumn.name);
+      translationKinds(doc, e).forEach(kind => values.forEach(v => {
+        if (!e.translations.some(x => x.kind === kind && x.sample === v))
+          add('untranslated', 'untranslated:' + e.id + ':' + kind + ':' + v,
+            e.name + ': sample value "' + v + '" has no Ed-Fi ' + (kind === 'descriptor' ? 'descriptor' : 'result') +
+            ' value', {elementId:e.id});
+      }));
+      if (e.type === 'Date'){
+        const bad = e.dateFormat ? values.filter(v => !parseSampleDate(v, e.dateFormat)) : values;
+        if (bad.length)
+          add('date-format', 'date-format:' + e.id, e.name + ': ' + (e.dateFormat
+            ? bad.length + ' sample value(s) don’t fit ' + e.dateFormat + ' (e.g. "' + bad[0] + '")'
+            : 'pick the date format of "' + e.sampleColumn.name + '"'), {elementId:e.id});
+      }
+    });
+  });
+  return out;
+}
+function distinctSampleValues(sample, column){
+  const i = sampleCol(sample, column);
+  if (i < 0) return [];
+  const out = [];
+  sample.rows.forEach(r => { const v = String(r[i] == null ? '' : r[i]).trim(); if (v && !out.includes(v)) out.push(v); });
+  return out;
+}
+/* A sample date under the vendor's declared format → ISO YYYY-MM-DD, or null. */
+function parseSampleDate(raw, fmt){
+  const s = String(raw == null ? '' : raw).trim();
+  let y, m, d, x;
+  if (fmt === 'M/D/YY' && (x = /^(\d{1,2})\/(\d{1,2})\/(\d{2})$/.exec(s))){ m = +x[1]; d = +x[2]; y = 2000 + +x[3]; }
+  else if (fmt === 'M/D/YYYY' && (x = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(s))){ m = +x[1]; d = +x[2]; y = +x[3]; }
+  else if (fmt === 'YYYY-MM-DD' && (x = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s))){ y = +x[1]; m = +x[2]; d = +x[3]; }
+  else return null;
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  if (dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return null;
+  return dt.toISOString().slice(0, 10);
 }
 function issueSummary(issues, doc){
   return {total:issues.length,
     explained:issues.filter(i => String(doc.issueNotes[i.key] || '').trim()).length};
 }
-function reconcileNotes(doc){
-  const live = new Set(computeIssues(doc).map(i => i.key));
+function reconcileNotes(doc, samples){
+  const live = new Set(computeIssues(doc, samples).map(i => i.key));
   Object.keys(doc.issueNotes).forEach(k => {
     if (live.has(k)) return;
     const text = doc.issueNotes[k];
