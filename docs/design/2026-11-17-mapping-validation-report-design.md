@@ -136,6 +136,20 @@ location**. An error blocks the run. A warning doesn't.
   - In `uri://ed-fi.org/`, it must be a standard Ed-Fi value.
   - Otherwise it's an **error**.
 
+### 4.3a Which enumeration a descriptor element uses (added 2026-11-17 while planning)
+
+An element row doesn't name its enumeration, so the platform resolves it from the target's descriptor type,
+for example `studentAssessment.accommodations` → `AccommodationDescriptor`. In order:
+
+1. The vendor enumeration whose name equals the descriptor type without `Descriptor`, ignoring case
+   (`AccommodationDescriptor` → `Accommodation`).
+2. Otherwise, the prototype's standard Ed-Fi list for that descriptor type (`GradeLevelDescriptor`).
+3. Otherwise, an **error**: *Workbook › EnumerationDefinitions: no enumeration for
+   `AccommodationDescriptor`. Did you mean `Accomodation`?*
+
+The reference workbook spells it `Accomodation`, so this is one of its real errors. Vendor descriptor URIs
+are built as `<namespace><DescriptorType>#<Code Value>`.
+
 ### 4.4 Values
 
 Applied to every value in a linked column, across all sample rows. Blank cells are allowed and produce no
@@ -158,9 +172,13 @@ per row.
 The vendor's posted `identificationCode` isn't in either file, so the platform derives it. Comparison
 against live data relies on **normalized matching**, not exact codes:
 
-- **Derive:** the code is the element name with the score suffix removed. The suffix is the reporting
-  method's name from column H, for example `Scale Score`, `Placement Level` or `Relative Placement`. So
-  `Phonics Scale Score` becomes `Phonics`.
+- **Derive:** the code is the element name with the score suffix removed. *(Corrected 2026-11-17 while
+  planning: the reporting method's name isn't the suffix. `Phonics Scale Score` reports `Raw Score`.)* The
+  suffix is the name of the **assessment-level element with the same reporting method** in the same
+  assessment. `Raw Score` is reported by `Scale Score`, so `Phonics Scale Score` becomes `Phonics`.
+  - When no assessment-level element shares the reporting method, the suffix is the longest common
+    trailing run of words among the objective elements with that reporting method.
+  - If neither rule yields a non-empty prefix, it's an **error**.
 - **Normalized key:** lowercase, with whitespace and punctuation removed.
   `Reading Comprehension:  Literature` and `Reading Comprehension - Literature` produce the same key.
 - **Errors:**
