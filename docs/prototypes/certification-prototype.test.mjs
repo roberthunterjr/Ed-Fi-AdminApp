@@ -806,7 +806,7 @@ test('generating from a blank mapping is allowed and stales older runs', () => {
 test('the reviewer-side seed carries 4 issues, 3 explained', () => {
   const p = loadPrototype();
   const f2 = p.APP.submissions.find(s => s.productId === 'p5');
-  const cur = p.currentVersion(f2, 'mapping');
+  const cur = f2.artifacts.mapping[2];   /* v3; the run-scope seed adds v4 on top */
   assert.equal(cur.source, 'tool');
   assert.deepEqual(cur.summary, {total:4, explained:3});
   assert.match(p.mappingIssueBadge(cur), /4 issues · 3 explained/);
@@ -834,8 +834,11 @@ test('an Assessments submission with no mapping offers import first', () => {
 
 test('a reviewer sees the issue badge and a read-only view action', () => {
   const p = loadPrototype();
-  const html = p.artifactCard(p.APP.submissions.find(s => s.productId === 'p5'), true);
-  assert.match(html, /4 issues · 3 explained/);
+  const f2 = p.APP.submissions.find(s => s.productId === 'p5');
+  const {total, explained} = p.currentVersion(f2, 'mapping').summary;
+  assert.ok(explained > 0 && explained < total, 'the seed shows explained and unexplained issues');
+  const html = p.artifactCard(f2, true);
+  assert.match(html, new RegExp(total + ' issues · ' + explained + ' explained'));
   assert.match(html, /data-act="mapview"/);
   assert.doesNotMatch(html, /mapimport|mapopen/);
 });
@@ -1341,4 +1344,29 @@ test('a finished run is computed from its pinned scope and passes despite cannot
   assert.equal(r.outcome, 'passed');
   assert.ok(p.resultTally(r.results).cannot > 0);
   assert.throws(() => p.ASSESSMENT_RESULTS, ReferenceError, 'the fixed fixture is gone');
+});
+
+test('s2 seed: mapping v2 from the tool, ELA sample only, Passages untranslated', () => {
+  const p = loadPrototype(), sub = byProduct(p, 'p2');
+  const cur = p.currentVersion(sub, 'mapping');
+  assert.equal(cur.v, 2); assert.equal(cur.source, 'tool');
+  assert.ok(cur.issues.some(i => i.kind === 'untranslated' && /Passages/.test(i.message)));
+  assert.equal(p.wouldStamp(sub), 'Incomplete');
+});
+test('f2 seed: v3 intact, v4 current, one exclusion before a current passed run', () => {
+  const p = loadPrototype(), sub = byProduct(p, 'p5');
+  assert.deepEqual(sub.artifacts.mapping[2].summary, {total:4, explained:3}, 'v3 unchanged');
+  assert.equal(p.currentVersion(sub, 'mapping').v, 4);
+  assert.equal(p.effectiveScope(sub).endpoints.find(e => e.id === 'accommodationDescriptors').on, false);
+  assert.ok(sub.history.some(h => /Run scope: excluded accommodationDescriptors/.test(h.what)));
+  const q = p.gate(sub).qualifying;
+  assert.ok(q && !p.isStale(sub, q) && q.outcome === 'passed');
+  assert.ok(p.sampleSlots(sub).every(s => s.current));
+});
+test('f4 seed: approved submission passes against the demo mapping', () => {
+  const p = loadPrototype(), sub = p.APP.submissions.find(s => s.productId === 'p4' && s.model === 'assessments');
+  assert.equal(p.currentVersion(sub, 'mapping').source, 'tool');
+  const r = p.APP.runs.find(x => x.submissionId === sub.id);
+  assert.equal(r.outcome, 'passed');
+  assert.ok(p.resultTally(r.results).pass > 100);
 });

@@ -1517,6 +1517,20 @@ function hist(sub, what, who, when){
     ]), created:d(1,7,30)});
   f4.decision = {kind:'approved', by:R, at:d(8,16,0), reason:''};
   f4.reviewerSeenAt = d(8,16,0);
+  /* f4 — approved against a tool-built mapping and both samples, so its seeded
+     run passes on real comparisons (run-scope design §5.9). */
+  (function(){
+    const A = 'dev@acme.example.com';
+    const doc = buildDemoMapping({name:'Acme Assessments', namespace:'uri://acme.example.com/', idPrefix:'ACME'});
+    f4.artifacts.sample = doc.assessments.map(a => ({v:1, name:'acme-' + a.type.split(' ')[0].toLowerCase() + '-sample.csv',
+      by:A, at:d(1,8,10), source:'upload', assessment:a.identifier,
+      columns:SAMPLE_ELA.columns.slice(), rows:SAMPLE_ELA.rows.map(r => r.slice())}));
+    const samples = {};
+    f4.artifacts.sample.forEach(s => { samples[s.assessment] = s; });
+    const issues = computeIssues(doc, samples);
+    f4.artifacts.mapping = [{v:1, name:'acme-assessments-mapping.csv', by:A, at:d(1,8,0), source:'tool',
+      doc, issues, summary:issueSummary(issues, doc)}];
+  })();
 
   /* seeded runs */
   const mkRun = o => { const r = Object.assign({id:uid('run'), results:null}, o); APP.runs.push(r); return r; };
@@ -1628,6 +1642,49 @@ function hist(sub, what, who, when){
     f2.artifactsChangedAt = at;
     f2.history.unshift({what:'Mapping generated in mapping tool: Vendor mapping CSV v3 (' + issues.length +
       ' issues, ' + issueSummary(issues, doc).explained + ' explained)', who:NW, at});
+  })();
+  /* f2 — v4 is the full ELA mapping (run-scope design §5.9). v3 and its issues stay
+     as they were. The reviewer then narrowed the scope, and the vendor ran again,
+     so the reviewer opens to a current qualifying run with a non-default scope. */
+  (function(){
+    const NW = 'eng@northwind.example.com';
+    const v3 = f2.artifacts.mapping[2];
+    const doc = buildDemoMapping({name:'Northwind Assess', namespace:'uri://northwind.example.com/', idPrefix:'NORTHWIND'});
+    /* v3's issue notes are kept visible; their issues don't exist in v4. */
+    Object.keys(v3.doc.issueNotes).forEach(k => {
+      if (v3.doc.issueNotes[k]) doc.orphanNotes.push({from:'v3 issue note', text:v3.doc.issueNotes[k]});
+    });
+    const samples = {};
+    doc.assessments.forEach(a => {
+      const s = {v:1, name:'nw-' + a.type.split(' ')[0].toLowerCase() + '-sample.csv', by:NW, at:d(15,9,10),
+        source:'upload', assessment:a.identifier, columns:SAMPLE_ELA.columns.slice(), rows:SAMPLE_ELA.rows.map(r => r.slice())};
+      f2.artifacts.sample.push(s);
+      samples[a.identifier] = s;
+      f2.history.unshift({what:'Artifact uploaded: Sample data \u2014 ' + a.title + ' v1 (' + s.name + ')', who:NW, at:s.at});
+    });
+    const at = d(15,9,30);
+    const issues = computeIssues(doc, samples);
+    const note = (pred, text) => { const i = issues.find(pred); if (i) doc.issueNotes[i.key] = text; };
+    note(i => i.kind === 'untranslated' && /Passages/.test(i.message),
+      'Read-aloud with passages is a new accommodation; we are adding the descriptor value in our next release.');
+    note(i => i.kind === 'unmapped',
+      'Math reports through the same pipeline; we will map it once the ELA review is done.');
+    const summary = issueSummary(issues, doc);
+    f2.artifacts.mapping.push({v:4, name:'nw-assessments-mapping-v4.csv', by:NW, at, source:'tool', doc, issues, summary});
+    f2.artifactsChangedAt = at;
+    f2.history.unshift({what:'Mapping generated in mapping tool: Vendor mapping CSV v4 (' + summary.total +
+      ' issues, ' + summary.explained + ' explained)', who:NW, at});
+    const reason = 'Accommodation descriptors are loaded by the district, not the vendor.';
+    runScopeOf(f2).excluded.accommodationDescriptors = {reason, by:R, at:d(15,10,0)};
+    f2.scopeChangedAt = d(15,10,0);
+    f2.history.unshift({what:'Run scope: excluded accommodationDescriptors \u2014 "' + reason + '"', who:R, at:d(15,10,0)});
+    const r = asmRun(f2, {submissionId:f2.id, productId:'p5', model:'assessments', state:'completed',
+      completeness:'Complete', pinned:{mapping:4, docs:1},
+      tag:MODELS.assessments.tag, sha:MODELS.assessments.sha, initiator:NW,
+      env:'Northwind_Cert', started:d(15,10,20), ended:d(15,10,27)}, 'pass');
+    const tl = resultTally(r.results);
+    f2.history.unshift({what:'Run ' + r.id + ' completed \u2014 Complete \u2014 all field checks passed \u00b7 ' +
+      tl.cannot + ' cannot check', who:'Platform', at:d(15,10,27)});
   })();
   f3.history = [
     {what:'Run run-113 failed — infrastructure error (executor could not reach Larkspur_Cert)', who:'Platform', at:d(14,17,41)},
