@@ -1199,3 +1199,56 @@ test('a simulated sample upload gets its own copy of the rows', () => {
   p.currentSample(sub, 'VENDORB-DIAGNOSTIC-ELA').rows.splice(10);
   assert.equal(p.SAMPLE_ELA.rows.length, 156);
 });
+
+/* The demo mapping as the vendor would leave it: columns bound, values
+   translated (except Read Aloud's "…and Passages"), objective codes entered. */
+function demo(p){
+  const doc = p.buildDemoMapping({name:'Vendor B Diagnostic', namespace:'uri://vendor-b.example.com/', idPrefix:'VENDORB'});
+  const ela = doc.assessments.find(a => a.identifier === 'VENDORB-DIAGNOSTIC-ELA');
+  const sample = Object.assign({v:1, assessment:ela.identifier}, p.SAMPLE_ELA);
+  return {doc, ela, sample};
+}
+test('coverage selects 12 rows from the ELA sample, starting with Student3', () => {
+  const p = loadPrototype(), {doc, ela, sample} = demo(p);
+  const rows = p.selectRows(doc, ela, sample);
+  assert.equal(rows.length, 12);
+  assert.equal(rows[0].key.studentId, 'EdFiCertificationStudent3');
+  assert.ok(rows[0].covers.length > 0);
+  assert.deepEqual(p.selectRows(doc, ela, sample), rows, 'deterministic');
+});
+test('expected payload translates values and omits blanks', () => {
+  const p = loadPrototype(), {doc, ela, sample} = demo(p);
+  const i = sample.rows.findIndex(r => r[p.sampleCol(sample, 'Rush Flag')] === 'Red Rush Flag');
+  const {payload} = p.expectedStudentAssessment(doc, ela, sample, i);
+  assert.match(payload.eventCircumstanceDescriptor, /EventCircumstanceDescriptor#Red Rush Flag$/);
+  assert.equal(payload.administrationDate, '2024-09-01');
+  assert.equal(payload.studentReference.studentUniqueId, sample.rows[i][2]);
+  const j = sample.rows.findIndex(r => r[p.sampleCol(sample, 'Rush Flag')] === '');
+  assert.ok(!('eventCircumstanceDescriptor' in p.expectedStudentAssessment(doc, ela, sample, j).payload));
+});
+test('an untranslated value is reported as cannot-check, not guessed', () => {
+  const p = loadPrototype(), {doc, ela, sample} = demo(p);
+  const i = sample.rows.findIndex(r => /Passages/.test(r[p.sampleCol(sample, 'Read Aloud')]));
+  const {payload, cannot} = p.expectedStudentAssessment(doc, ela, sample, i);
+  assert.ok(cannot.some(c => /accommodations/.test(c.path) && c.reason === 'untranslated'));
+  assert.ok(!payload.accommodations || !payload.accommodations.length);
+});
+test('objective scores nest under studentObjectiveAssessments keyed by code', () => {
+  const p = loadPrototype(), {doc, ela, sample} = demo(p);
+  const {payload} = p.expectedStudentAssessment(doc, ela, sample, 0);
+  const ph = payload.studentObjectiveAssessments.find(o => o.objectiveAssessmentReference.identificationCode === 'VENDORB-ELA-PH');
+  assert.ok(ph, 'Phonics objective present');
+  assert.ok(ph.scoreResults.some(s => /#Scale score$/.test(s.assessmentReportingMethodDescriptor) && s.result === sample.rows[0][p.sampleCol(sample, 'Phonics Scale Score')]));
+  assert.equal(p.expectedObjectives(doc, ela).length, 7);
+  assert.equal(p.expectedAssessment(doc, ela).assessmentIdentifier, 'VENDORB-DIAGNOSTIC-ELA');
+});
+test('endpoints derive from the mapping', () => {
+  const p = loadPrototype(), {doc, ela, sample} = demo(p);
+  const eps = p.deriveEndpoints(doc, {[ela.identifier]: sample});
+  const ids = eps.map(e => e.id);
+  ['assessments','objectiveAssessments','studentAssessments','eventCircumstanceDescriptors','accommodationDescriptors']
+    .forEach(id => assert.ok(ids.includes(id), id));
+  assert.equal(eps.find(e => e.id === 'studentAssessments').recordCount, 12);
+  assert.ok(p.unmappedColumns(doc, ela, sample).includes('Overall Placement For Families'));
+  assert.ok(!p.unmappedColumns(doc, ela, sample).includes('Phonics Scale Score'));
+});

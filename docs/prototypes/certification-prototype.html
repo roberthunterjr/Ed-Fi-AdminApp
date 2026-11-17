@@ -1406,6 +1406,18 @@ const SAMPLE_ELA = {name:'vendorb-ela-sample.csv',
     ["EdFiCertification","Student155","EdFiCertificationStudent155","11","2024-2025","Grand Bend High School","Enrolled","","","255901001","","","","EdFiCertificationStudent155","female","N","White","N","N","","","HOMEROOM-396100000000502; LA/READ GR 5-39615010046R502; LA/READ GR 5-39615010046R502B; LA/READ GR 5-39615010046R502C; LANG ARTS GR 5-396150100460502; LIB SKLS/INFO LIT 5-396150110500502","","","9/1/24","9/1/24","Fall (Beginning of Year - November 15)","Y","Y","83","","Off","470","Grade 11","1 Grade Level Below","Approaching Grade 11","52","1","425L","325L-475L","474","Grade 10","1 Grade Level Below","Approaching Grade 11","479","Grade 10","1 Grade Level Below","Approaching Grade 11","439","Grade 10","1 Grade Level Below","Approaching Grade 11","482","Grade 10","1 Grade Level Below","Approaching Grade 11","454","Grade 10","1 Grade Level Below","Approaching Grade 11","454","Grade 10","1 Grade Level Below","Approaching Grade 11","458","Grade 10","1 Grade Level Below","Approaching Grade 11","English","0","39","53","0","0","513","Not Provided","","","","VB-ACT-0155"],
     ["EdFiCertification","Student156","EdFiCertificationStudent156","12","2024-2025","Grand Bend High School","Enrolled","","","255901001","","","","EdFiCertificationStudent156","male","Y","White","Y","Y","","","FUN READ 3-223150100260301T; HOMEROOM-223100000000305; LA/READ GR 3-22315010044R305; LANG ARTS GR 3-223150100440305A","","","9/1/24","9/1/24","Fall (Beginning of Year - November 15)","Y","Y","83","","Off","470","Grade 9","3 or More Grade Levels Below","Needs Improvement","3","1","425L","325L-475L","474","Grade 9","3 or More Grade Levels Below","Needs Improvement","479","Grade 9","3 or More Grade Levels Below","Needs Improvement","439","Grade 9","3 or More Grade Levels Below","Needs Improvement","482","Grade 9","3 or More Grade Levels Below","Needs Improvement","454","Grade 9","3 or More Grade Levels Below","Needs Improvement","454","Grade 9","3 or More Grade Levels Below","Needs Improvement","458","Grade 9","3 or More Grade Levels Below","Needs Improvement","Spanish","0","18","50","0","0","642","Not Provided","","","","VB-ACT-0156"]
   ]};
+/* Student-assessment target path → field in the expected Ed-Fi payload. */
+const STUDENT_FIELD = {
+  'studentAssessment.studentReference':'studentReference.studentUniqueId',
+  'studentAssessment.studentAssessmentIdentifier':'studentAssessmentIdentifier',
+  'studentAssessment.administrationDate':'administrationDate',
+  'studentAssessment.whenAssessedGradeLevelDescriptor':'whenAssessedGradeLevelDescriptor',
+  'studentAssessment.administrationLanguageDescriptor':'administrationLanguageDescriptor',
+  'studentAssessment.eventCircumstanceDescriptor':'eventCircumstanceDescriptor',
+  'studentAssessment.retestIndicatorDescriptor':'retestIndicatorDescriptor',
+  'studentAssessment.accommodations':'accommodations',
+  'studentAssessment.period':'period.assessmentPeriodDescriptor'
+};
 /* Mapping docs read back from uploaded (non-tool) mapping CSVs, per version, so
    their ids stay stable across calls. */
 const MAPPING_DOC_CACHE = new WeakMap();
@@ -2379,6 +2391,281 @@ function parseSampleDate(raw, fmt){
   const dt = new Date(Date.UTC(y, m - 1, d));
   if (dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return null;
   return dt.toISOString().slice(0, 10);
+}
+
+/* ---------- run scope: model ----------
+   Pure functions over (MappingDoc, sample, scope). Sample data is the raw
+   shape the vendor posted; put through the mapping, each selected row becomes
+   the payload an Ed-Fi GET should return (run-scope design §5.4–§5.8). */
+function descriptorEndpointId(type){ return type.charAt(0).toLowerCase() + type.slice(1) + 's'; }
+function isStudentPath(path){ return /^student(Objective)?Assessment\./.test(path); }
+function boundColumn(el, sample){
+  if (!sample || !el.sampleColumn || !el.sampleColumn.confirmed) return -1;
+  return sampleCol(sample, el.sampleColumn.name);
+}
+function translateField(doc, el, target, raw){
+  const s = String(raw == null ? '' : raw).trim();
+  if (!s) return {cannot:'blank'};
+  if (el.type === 'Date'){
+    const iso = el.dateFormat ? parseSampleDate(s, el.dateFormat) : null;
+    return iso ? {value:iso} : {cannot:'date-format'};
+  }
+  const enumerated = el.type === 'Enumeration' || el.type === 'Boolean';
+  const tgt = targetByPath(target.path);
+  if (enumerated && SCORE_COLLECTIONS.includes(target.path)){
+    const tr = el.translations.find(x => x.kind === 'result' && x.sample === s);
+    return tr ? {value:tr.value} : {cannot:'untranslated'};
+  }
+  if (enumerated && tgt && tgt.type === 'Descriptor'){
+    const tr = el.translations.find(x => x.kind === 'descriptor' && x.sample === s);
+    const v = tr ? bankValue(doc, tr.value) : null;
+    return v ? {value:v.uri} : {cannot:'untranslated'};
+  }
+  return {value:s};
+}
+function scoreEntry(doc, t){
+  const rm = bankValue(doc, t.entryKey), dt = bankValue(doc, t.datatype);
+  const e = {};
+  if (rm) e.assessmentReportingMethodDescriptor = rm.uri;
+  if (dt) e.resultDatatypeTypeDescriptor = dt.uri;
+  return e;
+}
+function scoreLabel(doc, t){ return (bankValue(doc, t.entryKey) || {code:'?'}).code; }
+function objectiveCode(doc, a, obj){ return ((doc.objectiveCodes || {})[a.id] || {})[obj] || ''; }
+function scoreDefinitions(doc, els, path){
+  const scores = [];
+  els.forEach(e => e.targets.filter(t => t.path === path && t.entryKey).forEach(t => {
+    const s = scoreEntry(doc, t);
+    if (!scores.some(x => x.assessmentReportingMethodDescriptor === s.assessmentReportingMethodDescriptor)) scores.push(s);
+  }));
+  return scores;
+}
+function expectedAssessment(doc, a){
+  const out = {assessmentIdentifier:a.identifier, namespace:doc.product.namespace,
+    assessmentTitle:a.title, assessmentCategoryDescriptor:a.category, adaptiveAssessment:!!a.adaptive,
+    assessmentFamily:a.family, maxRawScore:a.maxRawScore};
+  Object.keys(out).forEach(k => { if (out[k] === '' || out[k] == null) delete out[k]; });
+  const scores = scoreDefinitions(doc, doc.elements.filter(e => e.assessmentId === a.id && !e.objective),
+    'assessment.scores');
+  if (scores.length) out.scores = scores;
+  return out;
+}
+/* One entry per objective: {objective, payload}. The objective name labels the
+   record; Ed-Fi identifies it by identificationCode. */
+function expectedObjectives(doc, a){
+  return objectivesOf(doc, a.id).map(obj => {
+    const payload = {assessmentReference:{assessmentIdentifier:a.identifier, namespace:doc.product.namespace}};
+    const code = objectiveCode(doc, a, obj);
+    if (code) payload.identificationCode = code;
+    const scores = scoreDefinitions(doc, doc.elements.filter(e => e.assessmentId === a.id && e.objective === obj),
+      'objectiveAssessment.scores');
+    if (scores.length) payload.scores = scores;
+    return {objective:obj, payload};
+  });
+}
+function studentFieldPath(doc, e, t){
+  const score = SCORE_COLLECTIONS.includes(t.path);
+  return (t.path.startsWith('studentObjective') ? 'studentObjectiveAssessments[' + e.objective + '].' : '') +
+    (score ? 'scoreResults[' + scoreLabel(doc, t) + '].result' : STUDENT_FIELD[t.path] || t.path);
+}
+function expectedStudentAssessment(doc, a, sample, rowIndex){
+  const row = sample.rows[rowIndex];
+  const payload = {assessmentReference:{assessmentIdentifier:a.identifier, namespace:doc.product.namespace}};
+  const cannot = [];
+  const objectives = {};
+  const objectiveOf = obj => objectives[obj] || (objectives[obj] = {objectiveAssessmentReference:
+    {assessmentIdentifier:a.identifier, identificationCode:objectiveCode(doc, a, obj), namespace:doc.product.namespace},
+    scoreResults:[]});
+  doc.elements.filter(e => e.assessmentId === a.id).forEach(e => {
+    const col = boundColumn(e, sample);
+    e.targets.filter(t => isStudentPath(t.path) && targetByPath(t.path)).forEach(t => {
+      const path = studentFieldPath(doc, e, t);
+      if (col < 0){ cannot.push({path, reason:'no-sample-column', element:e.name}); return; }
+      const r = translateField(doc, e, t, row[col]);
+      if (r.cannot){
+        if (r.cannot !== 'blank') cannot.push({path, reason:r.cannot, element:e.name, raw:row[col]});
+        return;
+      }
+      if (SCORE_COLLECTIONS.includes(t.path)){
+        const entry = Object.assign(scoreEntry(doc, t), {result:r.value});
+        if (t.path.startsWith('studentObjective')) objectiveOf(e.objective).scoreResults.push(entry);
+        else (payload.scoreResults = payload.scoreResults || []).push(entry);
+      } else if (t.path === 'studentAssessment.studentReference') payload.studentReference = {studentUniqueId:r.value};
+      else if (t.path === 'studentAssessment.accommodations')
+        (payload.accommodations = payload.accommodations || []).push({accommodationDescriptor:r.value});
+      else if (t.path === 'studentAssessment.period') payload.period = {assessmentPeriodDescriptor:r.value};
+      else if (STUDENT_FIELD[t.path]) payload[STUDENT_FIELD[t.path]] = r.value;
+    });
+  });
+  const objs = Object.values(objectives).filter(o => o.scoreResults.length);
+  if (objs.length) payload.studentObjectiveAssessments = objs;
+  return {payload, cannot};
+}
+/* The columns that identify a row: the ones bound to the student reference and
+   the administration identifier. Without both, no row can be matched to a GET. */
+function rowKeyColumns(doc, a, sample){
+  const colFor = path => {
+    const e = doc.elements.find(x => x.assessmentId === a.id && x.targets.some(t => t.path === path));
+    return e ? boundColumn(e, sample) : -1;
+  };
+  return {student:colFor('studentAssessment.studentReference'),
+    activity:colFor('studentAssessment.studentAssessmentIdentifier')};
+}
+function rowKey(sample, keys, i){
+  return {studentId:sample.rows[i][keys.student], activityId:sample.rows[i][keys.activity]};
+}
+/* Greedy set cover (§5.5): the smallest set of rows that shows every distinct
+   enumerated value (translated or not), every objective with a score, and the
+   all-domains-blank case when it exists. Ties go to the earlier row. */
+function selectRows(doc, a, sample){
+  const keys = rowKeyColumns(doc, a, sample);
+  if (keys.student < 0 || keys.activity < 0) return [];
+  const els = doc.elements.filter(e => e.assessmentId === a.id);
+  const enumEls = els.filter(e => translationKinds(doc, e).length && boundColumn(e, sample) >= 0);
+  const objs = objectivesOf(doc, a.id);
+  const features = sample.rows.map(r => {
+    const f = new Set();
+    enumEls.forEach(e => { const v = String(r[boundColumn(e, sample)] || '').trim(); if (v) f.add(e.name + ': ' + v); });
+    let any = false;
+    objs.forEach(obj => {
+      const has = els.some(e => e.objective === obj && boundColumn(e, sample) >= 0 &&
+        String(r[boundColumn(e, sample)] || '').trim());
+      if (has){ f.add('Domain: ' + obj); any = true; }
+    });
+    if (objs.length && !any) f.add('All domain scores blank');
+    return f;
+  });
+  const uncovered = new Set();
+  features.forEach(f => f.forEach(x => uncovered.add(x)));
+  const out = [];
+  while (uncovered.size){
+    let best = -1, bestN = 0;
+    features.forEach((f, i) => {
+      let n = 0;
+      f.forEach(x => { if (uncovered.has(x)) n++; });
+      if (n > bestN){ best = i; bestN = n; }
+    });
+    if (best < 0) break;
+    const covers = [...features[best]].filter(x => uncovered.has(x));
+    covers.forEach(x => uncovered.delete(x));
+    out.push({index:best, key:rowKey(sample, keys, best), covers});
+  }
+  return out;
+}
+function fieldRule(el){
+  if (el.type === 'Date') return 'Date · ' + (el.dateFormat || 'no format');
+  if (el.type === 'Enumeration' || el.type === 'Boolean') return el.type + ' · translated';
+  return (el.type || '?') + ' · normalized';
+}
+function deriveEndpoints(doc, samples){
+  const eps = [];
+  if (doc.assessments.length){
+    const fields = ['assessmentIdentifier','namespace','assessmentTitle','assessmentCategoryDescriptor',
+      'adaptiveAssessment','assessmentFamily','maxRawScore']
+      .map(f => ({path:f, element:'Product & assessments', column:null, rule:'from the mapping'}));
+    doc.elements.filter(e => !e.objective).forEach(e => e.targets
+      .filter(t => t.path === 'assessment.scores' && t.entryKey).forEach(t => {
+        const path = 'scores[' + scoreLabel(doc, t) + ']';
+        if (!fields.some(f => f.path === path))
+          fields.push({path, element:e.name, column:null, rule:'reporting method · datatype'});
+      }));
+    eps.push({id:'assessments', resource:'assessments', kind:'assessment', recordCount:doc.assessments.length,
+      fields, descriptors:[]});
+  }
+  const objCount = doc.assessments.reduce((n, a) => n + objectivesOf(doc, a.id).length, 0);
+  if (objCount)
+    eps.push({id:'objectiveAssessments', resource:'objectiveAssessments', kind:'objective', recordCount:objCount,
+      fields:[{path:'identificationCode', element:'Objective codes', column:null, rule:'from the mapping'},
+        {path:'scores[…]', element:'objective score elements', column:null, rule:'reporting method · datatype'}],
+      descriptors:[]});
+  const studentEls = doc.elements.filter(e => e.targets.some(t => isStudentPath(t.path) && targetByPath(t.path)));
+  if (studentEls.length){
+    let records = 0;
+    doc.assessments.forEach(a => { const s = samples[a.identifier]; if (s) records += selectRows(doc, a, s).length; });
+    const fields = [];
+    studentEls.forEach(e => e.targets.filter(t => isStudentPath(t.path) && targetByPath(t.path)).forEach(t => {
+      fields.push({path:studentFieldPath(doc, e, t), element:e.name,
+        column:e.sampleColumn && e.sampleColumn.confirmed ? e.sampleColumn.name : null, rule:fieldRule(e)});
+    }));
+    eps.push({id:'studentAssessments', resource:'studentAssessments', kind:'student', recordCount:records,
+      fields, descriptors:[]});
+  }
+  /* One descriptor endpoint per descriptor type the expected payloads use. */
+  const byType = {};
+  const use = v => { if (v) (byType[v.type] = byType[v.type] || new Set()).add(v.uri); };
+  doc.elements.forEach(e => {
+    e.translations.filter(x => x.kind === 'descriptor').forEach(x => use(bankValue(doc, x.value)));
+    e.targets.forEach(t => { use(bankValue(doc, t.entryKey)); use(bankValue(doc, t.datatype)); });
+  });
+  doc.assessments.forEach(a => use(doc.bank.values.find(v => v.uri === a.category)));
+  Object.keys(byType).sort().forEach(type => eps.push({id:descriptorEndpointId(type),
+    resource:descriptorEndpointId(type), kind:'descriptor', recordCount:byType[type].size,
+    fields:[{path:'codeValue', element:null, column:null, rule:'exists'}], descriptors:[...byType[type]]}));
+  return eps;
+}
+function unmappedColumns(doc, a, sample){
+  const used = new Set(doc.elements.filter(e => e.assessmentId === a.id && e.sampleColumn && e.sampleColumn.confirmed)
+    .map(e => e.sampleColumn.name));
+  return [...new Set(sample.columns)].filter(c => !used.has(c));
+}
+/* The demo mapping, acting as the vendor would in the tool: the Vendor B
+   workbook imported, identity elements added, sample columns bound and values
+   translated, all but Read Aloud's "…and Passages" value, left untranslated so
+   Cannot check shows (run-scope design §5.9). */
+function buildDemoMapping(o){
+  const doc = parseWorkbook(WORKBOOK_FIXTURES.vendorb).doc;
+  const oldNs = doc.product.namespace;
+  doc.product = Object.assign({}, doc.product, {name:o.name, namespace:o.namespace});
+  doc.bank.values.filter(v => v.ns === 'vendor').forEach(v => { v.uri = v.uri.replace(oldNs, o.namespace); });
+  const base = o.name.replace(/ Diagnostic$/, '');
+  doc.assessments.forEach(a => {
+    a.identifier = a.identifier.replace(/^VENDORB/, o.idPrefix);
+    a.family = String(a.family || '').replace(/^VENDORB/, o.idPrefix);
+    a.title = base + ' ' + a.type;
+  });
+  const ela = doc.assessments.find(a => a.type === 'ELA Diagnostic');
+  const identity = (name, path) => {
+    const e = addElement(doc, {assessmentId:ela.id, name, definition:'', type:'String'});
+    e.targets.push({path, entryKey:null, datatype:null});
+    setSampleColumn(doc, e.id, name);
+  };
+  identity('Student ID', 'studentAssessment.studentReference');
+  identity('Activity Id', 'studentAssessment.studentAssessmentIdentifier');
+  suggestSampleColumns(doc, ela.id, SAMPLE_ELA.columns);
+  confirmAllSuggestions(doc, ela.id);
+  const el = n => doc.elements.find(e => e.assessmentId === ela.id && e.name === n);
+  [['Scale Score', 'Overall Scale Score'], ['Placement Level', 'Overall Placement'],
+   ['Relative Placement', 'Overall Relative Placement'], ['Duration (minutes)', 'Duration (min)'],
+   ['Most Recent Diagnostic (Y/N)', 'Most Recent Diagnostic YTD (Y/N)'],
+   ['Mid On-Grade Level Score', 'Mid On Grade Level Scale Score'], ['Date', 'Completion Date'],
+   ['Grade', 'Student Grade']].forEach(([n, c]) => setSampleColumn(doc, el(n).id, c));
+  doc.elements.filter(e => e.assessmentId === ela.id && e.objective && !e.sampleColumn).forEach(e => {
+    const c = e.name.replace(/^Reading /, '').replace(/\s+/g, ' ').replace(/ Placement Level$/, ' Placement');
+    if (sampleCol(SAMPLE_ELA, c) >= 0) setSampleColumn(doc, e.id, c);
+  });
+  setDateFormat(doc, el('Date').id, 'M/D/YY');
+  const val = (type, code) => {
+    const v = doc.bank.values.find(x => x.type === type && x.code === code);
+    if (v && v.ns === 'edfi') v.enabled = true;
+    return v ? v.id : null;
+  };
+  const tr = (n, kind, pairs) => pairs.forEach(([s, v]) => setTranslation(doc, el(n).id, kind, s, v));
+  tr('Baseline Diagnostic (Y/N)', 'result', [['Y', 'true'], ['N', 'false']]);
+  tr('Most Recent Diagnostic (Y/N)', 'descriptor', [['Y', val('RetestIndicatorDescriptor', 'Latest Diagnostic')],
+    ['N', val('RetestIndicatorDescriptor', 'Previous Diagnostic')]]);
+  tr('Rush Flag', 'descriptor', ['Red Rush Flag', 'Yellow Rush Flag'].map(c => [c, val('EventCircumstanceDescriptor', c)]));
+  tr('Read Aloud', 'descriptor', [['Off', val('AccommodationDescriptor', 'Read Aloud Off')],
+    ['Directions, Questions, and Answer Choices', val('AccommodationDescriptor', 'Read Aloud Directions Questions Answers')]]);
+  tr('Norming Window', 'descriptor', ['Fall (Beginning of Year - November 15)', 'Winter (November 16 - March 1)',
+    'Spring (March 2 - End of Year)'].map(c => [c, val('AssessmentPeriodDescriptor', c)]));
+  tr('Diagnostic Language', 'descriptor', ['English', 'Spanish'].map(c => [c, val('LanguageDescriptor', c)]));
+  const grades = ['First','Second','Third','Fourth','Fifth','Sixth','Seventh','Eighth','Ninth','Tenth','Eleventh','Twelfth'];
+  tr('Grade', 'descriptor', grades.map((g, i) => [String(i + 1), val('GradeLevelDescriptor', g + ' grade')]));
+  ['PA','PH','HFW','VOC','RC','RCL','RCI'].forEach((code, i) => {
+    const obj = objectivesOf(doc, ela.id)[i];
+    if (obj) setObjectiveCode(doc, ela.id, obj, o.idPrefix + '-ELA-' + code);
+  });
+  return doc;
 }
 function issueSummary(issues, doc){
   return {total:issues.length,
