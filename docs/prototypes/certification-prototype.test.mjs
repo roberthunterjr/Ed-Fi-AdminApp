@@ -1428,3 +1428,43 @@ test('the scope reason modal refuses an empty reason', () => {
   const r = p.applyScopeChange(sub, {op:'exclude', id:'studentAssessments'}, '  ');
   assert.deepEqual(r, {ok:false, error:'A reason is required.'});
 });
+
+/* ---------- final review fixes ---------- */
+test('an exclusion is dropped when a generated mapping stops implying it, even if nothing read the scope', () => {
+  const p = loadPrototype(), sub = byProduct(p, 'p5');
+  const draft = p.openMappingDraft(sub);
+  const ra = draft.doc.elements.find(e => e.name === 'Read Aloud' && e.targets.length);
+  const keep = ra.targets; ra.targets = [];
+  p.generateMapping(sub);
+  assert.ok(sub.history.some(h => /accommodationDescriptors.*no longer implied/.test(h.what)), 'dropping is audited');
+  ra.targets = keep; p.generateMapping(sub);
+  assert.equal(p.effectiveScope(sub).endpoints.find(e => e.id === 'accommodationDescriptors').on, true);
+});
+test('reading the scope does not change reviewer state', () => {
+  const p = loadPrototype(), sub = byProduct(p, 'p5');
+  const before = JSON.stringify(sub.runScope);
+  sub.runScope.excluded.someGoneEndpoint = {reason:'x', by:'r', at:new Date(0)};
+  p.effectiveScope(sub);
+  assert.ok(sub.runScope.excluded.someGoneEndpoint, 'effectiveScope is a read');
+  assert.ok(before);
+});
+test('the preview does not name a bound column the current sample lacks', () => {
+  const p = loadPrototype(), sub = byProduct(p, 'p2');
+  p.uploadArtifact(sub, 'sample', 'ela-v2.csv', false, 'VENDORB-DIAGNOSTIC-ELA');
+  const s = p.currentSample(sub, 'VENDORB-DIAGNOSTIC-ELA');
+  s.columns = s.columns.map(c => c === 'Rush Flag' ? 'Rush Indicator' : c);
+  const doc = p.mappingDocFor(sub, p.currentVersion(sub, 'mapping'));
+  const st = p.deriveEndpoints(doc, p.currentSamples(sub)).find(e => e.id === 'studentAssessments');
+  assert.equal(st.fields.find(f => f.element === 'Rush Flag').column, null);
+});
+test('seeded assessments runs pin the mapping version they were computed from', () => {
+  const p = loadPrototype();
+  p.APP.runs.filter(r => r.pinned && r.pinned.scope).forEach(r =>
+    assert.equal(r.pinned.mapping, r.pinned.scope.mapping, r.id));
+});
+test('cannot-check banner links open the collapsed record they point at', () => {
+  const p = loadPrototype(), sub = byProduct(p, 'p5');
+  const q = p.gate(sub).qualifying;
+  const html = p.runResults(q.id, true);
+  assert.match(html, /closest\('details'\)/);
+});

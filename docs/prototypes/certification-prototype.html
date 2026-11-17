@@ -1557,7 +1557,7 @@ function hist(sub, what, who, when){
   const asmRun = (sub, o, mode) => {
     const scope = effectiveScope(sub);
     const results = runAssessmentChecks(sub, scope, mode);
-    o.pinned = Object.assign(o.pinned, {sample:pinnedSampleMap(sub), scope});
+    o.pinned = Object.assign(o.pinned, {mapping:scope.mapping, sample:pinnedSampleMap(sub), scope});
     return mkRun(Object.assign(o, {results, outcome:resultTally(results).fail ? 'failed' : 'passed'}));
   };
   asmRun(s2, {submissionId:s2.id, productId:'p2', model:'assessments', state:'completed',
@@ -2619,8 +2619,10 @@ function deriveEndpoints(doc, samples){
     doc.assessments.forEach(a => { const s = samples[a.identifier]; if (s) records += selectRows(doc, a, s).length; });
     const fields = [];
     studentEls.forEach(e => e.targets.filter(t => isStudentPath(t.path) && targetByPath(t.path)).forEach(t => {
+      const a = doc.assessments.find(x => x.id === e.assessmentId);
+      const s = a ? samples[a.identifier] : null;
       fields.push({path:studentFieldPath(doc, e, t), element:e.name,
-        column:e.sampleColumn && e.sampleColumn.confirmed ? e.sampleColumn.name : null, rule:fieldRule(e)});
+        column:boundColumn(e, s) >= 0 ? e.sampleColumn.name : null, rule:fieldRule(e)});
     }));
     eps.push({id:'studentAssessments', resource:'studentAssessments', kind:'student', recordCount:records,
       fields, descriptors:[]});
@@ -2720,9 +2722,8 @@ function effectiveScope(sub){
   const rs = runScopeOf(sub);
   const samples = currentSamples(sub);
   const eps = deriveEndpoints(doc, samples);
-  /* An exclusion goes with its endpoint: one the mapping no longer implies is
-     forgotten, so if a later version brings it back it comes back on. */
-  Object.keys(rs.excluded).forEach(id => { if (!eps.some(e => e.id === id)) delete rs.excluded[id]; });
+  /* Exclusions for endpoints this mapping doesn't imply are ignored here; they
+     are dropped, with a history entry, when the new mapping version lands. */
   const endpoints = eps.map(e => rs.excluded[e.id]
     ? {id:e.id, on:false, reason:rs.excluded[e.id].reason} : {id:e.id, on:true});
   const rows = {}, orphans = [];
@@ -2746,6 +2747,22 @@ function effectiveScope(sub){
     rows[a.identifier] = list;
   });
   return {mapping:cur.v, samples:pinnedSampleMap(sub), endpoints, rows, orphans};
+}
+/* An exclusion goes with its endpoint: when a new mapping version stops implying
+   it, the exclusion is dropped (and audited), so if a later version brings the
+   endpoint back it comes back on. Called whenever a mapping version is added. */
+function dropUnimpliedExclusions(sub){
+  const rs = runScopeOf(sub);
+  const cur = currentVersion(sub, 'mapping');
+  const doc = mappingDocFor(sub, cur);
+  const eps = doc ? deriveEndpoints(doc, currentSamples(sub)) : [];
+  Object.keys(rs.excluded).forEach(id => {
+    if (eps.some(e => e.id === id)) return;
+    delete rs.excluded[id];
+    sub.scopeChangedAt = tick();
+    hist(sub, 'Run scope: ' + id + ' no longer implied by mapping v' + (cur ? cur.v : '?') +
+      '; exclusion dropped', 'Platform');
+  });
 }
 function scopeSignature(scope){
   if (!scope) return '';
@@ -3192,6 +3209,7 @@ function uploadArtifact(sub, type, name, malformed, assessment){
     hist(sub, 'Mapping tool draft discarded — superseded by uploaded Vendor mapping CSV v' + list.length);
     sub.mappingDraft = null;
   }
+  if (type === 'mapping' && isAssessments(sub)) dropUnimpliedExclusions(sub);
   const label = ARTIFACTS.find(a => a.id === type).label;
   hist(sub, (replacing
     ? 'Artifact replaced: ' + label + ' → v' + list.length + ' (' + name + ')'
@@ -3260,6 +3278,7 @@ function generateMapping(sub){
   recomputeStatus(sub);
   draft.baseVersion = version.v;
   draft.dirty = false;
+  if (isAssessments(sub)) dropUnimpliedExclusions(sub);
   return version;
 }
 function mappingIssueBadge(version){
@@ -4457,7 +4476,7 @@ function assessmentResultsHTML(r){
       <p>These don’t fail the run, but nothing was verified for them. Each is a gap in the mapping or the sample
       data, not in the API.</p>
       <ul>${Object.entries(cannotWhy).map(([k, v]) => `<li><a href="#${esc(v.anchor)}"
-        onclick="document.getElementById('${esc(v.anchor)}').scrollIntoView();return false;">${esc(CANNOT_WHY[k] || k)}</a>
+        onclick="var el=document.getElementById('${esc(v.anchor)}');if(el){var d=el.closest('details');if(d)d.open=true;el.scrollIntoView();}return false;">${esc(CANNOT_WHY[k] || k)}</a>
         &mdash; ${v.n}</li>`).join('')}</ul></div>` : ''}
     ${r.results.endpoints.map(e => `
       <h2 style="margin-top:22px"><span class="mono">${esc(e.resource)}</span>
