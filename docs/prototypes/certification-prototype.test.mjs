@@ -1370,3 +1370,25 @@ test('f4 seed: approved submission passes against the demo mapping', () => {
   assert.equal(r.outcome, 'passed');
   assert.ok(p.resultTally(r.results).pass > 100);
 });
+
+test('mapping screen shows sample columns, suggestions and translations', () => {
+  const p = loadPrototype(), sub = byProduct(p, 'p2');
+  p.openMappingDraft(sub);
+  const html = p.mappingScreen(sub.id, 'elements', false);
+  ['Sample column','Confirm all suggestions','Untranslated','data-act="maptranslate"','data-act="mapdatefmt"']
+    .forEach(s => assert.ok(html.includes(s), s));
+  assert.ok(p.mappingScreen(sub.id, 'product', false).includes('Objective codes'));
+  const ro = p.mappingScreen(sub.id, 'elements', true);
+  assert.ok(!ro.includes('Confirm all suggestions'));
+  assert.ok(ro.includes('Untranslated'), 'the reviewer sees untranslated values too');
+});
+test('opening the tool suggests exact-name columns for unbound elements', () => {
+  const p = loadPrototype(), sub = byProduct(p, 'p2');
+  sub.artifacts.mapping.pop();   /* back to the uploaded v1, which has no bindings */
+  p.openMappingDraft(sub);
+  const html = p.mappingScreen(sub.id, 'elements', false);
+  assert.ok(html.includes('Suggested'));
+  assert.ok(html.includes('data-act="mapconfirmcol"'));
+  const issues = p.computeIssues(sub.mappingDraft.doc, p.currentSamples(sub));
+  assert.ok(issues.some(i => i.kind === 'no-sample-column' && /confirm the suggested/.test(i.message)));
+});

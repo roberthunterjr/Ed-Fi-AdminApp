@@ -4418,7 +4418,10 @@ function mappingScreen(subId, tab, readOnly){
       <div class="card"><h2>Start a mapping</h2>
         <p>Import a filled Data Mapping Template workbook (most vendors start here), or build the mapping from scratch.</p>
         ${mappingRowActions(sub, null)}</div>`;
-    doc = draft.doc; issues = computeIssues(doc);
+    doc = draft.doc;
+    const samples = currentSamples(sub);
+    doc.assessments.forEach(a => { if (samples[a.identifier]) suggestSampleColumns(doc, a.id, samples[a.identifier].columns); });
+    issues = computeIssues(doc, samples);
   }
   const ro = readOnly;
   const draft = sub.mappingDraft;
@@ -4467,7 +4470,17 @@ function mapProductHTML(sub, doc, ro){
         `<td>${inp('mapsetasm', f, a[f], 'data-asm="' + a.id + '"')}</td>`).join('')}</tr>`).join('')}
     </tbody></table>` : '<div class="empty">No assessments yet.</div>'}
     ${ro ? '' : `<p style="margin-top:12px"><button class="btn ghost sm" data-act="mapaddasm" data-sub="${sub.id}">
-      + Add assessment</button></p>`}`;
+      + Add assessment</button></p>`}
+    ${doc.assessments.some(a => objectivesOf(doc, a.id).length) ? `<h2 style="margin-top:22px">Objective codes
+      <span class="hint">The identificationCode of each objective assessment. Expected objective payloads are keyed by it.</span></h2>
+      ${doc.assessments.filter(a => objectivesOf(doc, a.id).length).map(a => `<h3 class="mapsubhead">${esc(asmLabel(a))}</h3>
+        <table class="t"><thead><tr><th>Objective</th><th>Identification code</th></tr></thead><tbody>
+        ${objectivesOf(doc, a.id).map(obj => {
+          const code = objectiveCode(doc, a, obj);
+          return `<tr><td>${esc(obj)}</td><td>${ro ? (code ? `<span class="mono">${esc(code)}</span>`
+            : '<span class="badge b-amber">Missing</span>')
+            : `<input type="text" class="mapin" data-act="mapobjcode" data-sub="${sub.id}" data-asm="${a.id}"
+                data-obj="${esc(obj)}" value="${esc(code)}" />`}</td></tr>`; }).join('')}</tbody></table>`).join('')}` : ''}`;
 }
 
 /* ---- descriptor bank ---- */
@@ -4519,8 +4532,61 @@ function datatypeOptions(doc, selected, blank){
         v.ns === 'vendor' ? ' (vendor)' : ''}</option>`).join('');
 }
 
+/* ---- sample column, value translations and date format for one element (run-scope design §5.3) ---- */
+function sampleCellHTML(sub, doc, e, sample, ro){
+  const col = e.sampleColumn;
+  const colCtl = ro
+    ? (col && col.confirmed ? `<span class="mono">${esc(col.name)}</span>` : '<span class="muted">No sample column</span>')
+    : `<select data-act="mapsamplecol" data-sub="${sub.id}" data-el="${e.id}" title="Sample column">
+        <option value="">\u2014 sample column \u2014</option>${[...new Set(sample.columns)].map(c =>
+          `<option${col && col.name === c ? ' selected' : ''}>${esc(c)}</option>`).join('')}</select>`;
+  const suggested = col && !col.confirmed ? ` <span class="badge b-blue">Suggested</span>${ro ? ''
+    : ` <button class="btn ghost sm" data-act="mapconfirmcol" data-sub="${sub.id}" data-el="${e.id}">Confirm</button>`}` : '';
+  let extra = '';
+  if (col && col.confirmed && sampleCol(sample, col.name) >= 0){
+    if (e.type === 'Date'){
+      const values = distinctSampleValues(sample, col.name);
+      const bad = e.dateFormat ? values.filter(v => !parseSampleDate(v, e.dateFormat)).length : values.length;
+      extra = `<div style="margin-top:6px">${ro ? 'Format: ' + esc(e.dateFormat || 'not set')
+        : `<select data-act="mapdatefmt" data-sub="${sub.id}" data-el="${e.id}"><option value="">\u2014 date format \u2014</option>${
+          DATE_FORMATS.map(f => `<option${f === e.dateFormat ? ' selected' : ''}>${f}</option>`).join('')}</select>`}
+        ${bad ? `<span class="badge b-amber">${bad} don\u2019t fit</span>` : ''}</div>`;
+    }
+    const kinds = translationKinds(doc, e);
+    if (kinds.length){
+      const values = distinctSampleValues(sample, col.name);
+      const descType = (e.targets.map(t => targetByPath(t.path)).find(x => x && x.type === 'Descriptor') || {}).descriptor
+        || e.enumType;
+      const open = kinds.some(k => values.some(v => !e.translations.some(x => x.kind === k && x.sample === v)));
+      const untranslated = kinds.reduce((n, k) => n + values.filter(v => !e.translations.some(x => x.kind === k && x.sample === v)).length, 0);
+      const cell = (k, v) => {
+        const tr = e.translations.find(x => x.kind === k && x.sample === v);
+        if (ro) return tr ? `<span class="mono" style="font-size:12px">${esc(k === 'descriptor'
+          ? (bankValue(doc, tr.value) || {code:'?'}).code : tr.value)}</span>` : '<span class="badge b-amber">Untranslated</span>';
+        const ctl = k === 'descriptor'
+          ? `<select data-act="maptranslate" data-sub="${sub.id}" data-el="${e.id}" data-kind="descriptor" data-sample="${esc(v)}">
+              <option value="">\u2014 Ed-Fi value \u2014</option>${selectableValues(doc, descType).map(b =>
+                `<option value="${b.id}"${tr && tr.value === b.id ? ' selected' : ''}>${esc(b.code)}</option>`).join('')}</select>`
+          : `<input type="text" class="mapin" data-act="maptranslate" data-sub="${sub.id}" data-el="${e.id}"
+              data-kind="result" data-sample="${esc(v)}" value="${esc(tr ? tr.value : '')}" placeholder="result, e.g. true" />`;
+        return ctl + (tr ? '' : ' <span class="badge b-amber">Untranslated</span>');
+      };
+      extra += `<details${open ? ' open' : ''} style="margin-top:6px"><summary>Values (${values.length}${
+          untranslated ? ', ' + untranslated + ' untranslated' : ''})</summary>
+        <table class="t"><thead><tr><th>Sample value</th>${kinds.map(k =>
+          `<th>${k === 'descriptor' ? 'Ed-Fi descriptor' : 'Result value'}</th>`).join('')}</tr></thead>
+        <tbody>${values.map(v => `<tr><td class="mono">${esc(v)}</td>${kinds.map(k => `<td>${cell(k, v)}</td>`).join('')}</tr>`).join('')}</tbody>
+        </table></details>`;
+    }
+  }
+  return colCtl + suggested + extra;
+}
+
 /* ---- elements: element-first, like the workbook ---- */
 function mapElementsHTML(sub, doc, issues, ro){
+  const samples = currentSamples(sub);
+  const asmIdent = e => (doc.assessments.find(a => a.id === e.assessmentId) || {}).identifier;
+  const hasSample = e => !!samples[asmIdent(e)];
   const opts = (list, sel, blank) => (blank != null ? `<option value="">${blank}</option>` : '') +
     list.map(([v, l]) => `<option value="${esc(v)}"${v === sel ? ' selected' : ''}>${esc(l)}</option>`).join('');
   const chips = e => e.targets.map((t, i) => {
@@ -4554,6 +4620,7 @@ function mapElementsHTML(sub, doc, issues, ro){
         ${e.type === 'Enumeration' ? (ro ? '<div class="muted" style="font-size:12px">' + esc(e.enumType || 'no descriptor') + '</div>'
           : `<div><select data-act="mapsetenum" data-sub="${sub.id}" data-el="${e.id}">${
             opts(doc.bank.types.map(t => [t.type, t.type.replace(/Descriptor$/, '')]), e.enumType, '— descriptor —')}</select></div>`) : ''}</td>
+      ${hasSample(e) ? `<td>${sampleCellHTML(sub, doc, e, samples[asmIdent(e)], ro)}</td>` : ''}
       <td><div class="mchips">${chips(e) || '<span class="muted">No target</span>'}</div>
         ${ro ? '' : `<select class="mapadd" data-act="mapaddtarget" data-sub="${sub.id}" data-el="${e.id}">
           <option value="">+ Add target…</option>${EDFI_V5_TARGETS.map(t =>
@@ -4571,10 +4638,17 @@ function mapElementsHTML(sub, doc, issues, ro){
     .filter(([a, els]) => a || els.length);
   return `<h2>Element mappings <span class="hint">One vendor element can map to several Ed-Fi fields.
       Keyed collections (scores, scoreResults) need a reporting method from the bank.</span></h2>
-    ${groups.map(([a, els]) => `<h3 class="mapsubhead">${esc(asmLabel(a))} <span class="muted">(${els.length})</span></h3>
-      ${els.length ? `<table class="t mapels"><thead><tr><th>Vendor element</th><th>Data type</th><th>Ed-Fi targets</th>
+    ${groups.map(([a, els]) => {
+      const s = a ? samples[a.identifier] : null;
+      const pending = s ? els.filter(e => e.sampleColumn && !e.sampleColumn.confirmed).length : 0;
+      return `<h3 class="mapsubhead">${esc(asmLabel(a))} <span class="muted">(${els.length})</span>
+        ${s ? `<span class="muted" style="font-weight:400;font-size:12.5px">\u00b7 sample ${esc(s.name)} v${s.v}</span>` : ''}
+        ${s && !ro ? `<button class="btn ghost sm" data-act="mapconfirmallcols" data-sub="${sub.id}" data-asm="${a.id}"
+          ${pending ? '' : 'disabled'}>Confirm all suggestions${pending ? ' (' + pending + ')' : ''}</button>` : ''}</h3>
+      ${els.length ? `<table class="t mapels"><thead><tr><th>Vendor element</th><th>Data type</th>${
+        s ? '<th>Sample column</th>' : ''}<th>Ed-Fi targets</th>
         <th>Issues &amp; notes</th>${ro ? '' : '<th></th>'}</tr></thead><tbody>${els.map(row).join('')}</tbody></table>`
-        : '<div class="empty">No elements for this assessment.</div>'}`).join('')}
+        : '<div class="empty">No elements for this assessment.</div>'}`; }).join('')}
     ${ro ? '' : `<div class="mapform" style="margin-top:14px">
       <input type="text" id="mapNewElName" placeholder="Vendor element name" />
       <select id="mapNewElAsm">${doc.assessments.map(a => `<option value="${a.id}">${esc(asmLabel(a))}</option>`).join('')}</select>
@@ -4684,7 +4758,7 @@ function mapIssuesHTML(sub, doc, issues, ro){
 
 function generateModalHTML(sub){
   const doc = sub.mappingDraft.doc;
-  const issues = computeIssues(doc);
+  const issues = computeIssues(doc, currentSamples(sub));
   const sum = issueSummary(issues, doc);
   const cur = currentVersion(sub, 'mapping');
   const runs = runsFor(sub);
@@ -4992,7 +5066,8 @@ function bind(){
      checkbox fires change, so the event is chosen per action. */
   const ACTION_EVENT = {setparam:'input', toggleopenruns:'change', maptoggle:'change', mapsettype:'change',
     mapsetenum:'change', mapsetkey:'change', mapnotes:'change', mapissuenote:'change', mapaddtarget:'change',
-    mapsetproduct:'change', mapsetasm:'change', mapsetdtype:'change', mapsetentrydtype:'change'};
+    mapsetproduct:'change', mapsetasm:'change', mapsetdtype:'change', mapsetentrydtype:'change',
+    mapsamplecol:'change', maptranslate:'change', mapdatefmt:'change', mapobjcode:'change'};
   main.querySelectorAll('[data-act]').forEach(node => {
     node.addEventListener(ACTION_EVENT[node.dataset.act] || 'click', ev =>
       handleAction(node.dataset.act, node.dataset.sub ? submission(node.dataset.sub) : null, node, ev));
@@ -5126,7 +5201,7 @@ function handleAction(act, sub, node, ev){
   }
 }
 
-const QUIET_MAP_ACTS = ['mapnotes','mapissuenote','mapsetproduct','mapsetasm'];
+const QUIET_MAP_ACTS = ['mapnotes','mapissuenote','mapsetproduct','mapsetasm','mapobjcode'];
 /* Every mapping-editor edit goes through a Task 3 model function, then marks
    the draft dirty and re-renders. Blocked actions explain themselves. */
 function mapAction(act, sub, node){
@@ -5153,6 +5228,12 @@ function mapAction(act, sub, node){
     case 'mapsetdtype': setTargetDatatype(doc, ds.el, +ds.idx, val); break;
     case 'mapsetentrydtype': setEntryDatatype(doc, {assessmentId:ds.asm, objective:ds.obj || null,
       collection:ds.col, keyValueId:ds.key, datatype:val}); break;
+    case 'mapsamplecol': setSampleColumn(doc, ds.el, val || null); break;
+    case 'mapconfirmcol': confirmSampleColumn(doc, ds.el); break;
+    case 'mapconfirmallcols': confirmAllSuggestions(doc, ds.asm); break;
+    case 'maptranslate': setTranslation(doc, ds.el, ds.kind, ds.sample, val.trim() || null); break;
+    case 'mapdatefmt': r = setDateFormat(doc, ds.el, val || null); break;
+    case 'mapobjcode': setObjectiveCode(doc, ds.asm, ds.obj, val); break;
     case 'mapaddelement':
       if (!v('mapNewElName').trim()){ toast('Give the element a name first.'); return; }
       addElement(doc, {assessmentId:v('mapNewElAsm'), name:v('mapNewElName').trim(), type:v('mapNewElType')});
