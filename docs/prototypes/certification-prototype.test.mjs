@@ -1091,3 +1091,20 @@ test('the elements and collections tabs show datatype controls', () => {
   const f2 = p.APP.submissions.find(x => x.productId === 'p5');
   assert.match(p.mappingScreen(f2.id, 'elements', true), /Integer/);
 });
+
+/* ---------- run scope (docs/design/2026-11-17-assessment-run-scope-design.md) ---------- */
+/* Submission ids are generated, so seeded submissions are found by product:
+   s2 is product p2 (Vendor B Assessments), f2 is p5 (Northwind, In Review). */
+const byProduct = (p, productId) => p.APP.submissions.find(s => s.productId === productId);
+
+test('embedded ELA sample is anonymized and complete', () => {
+  const p = loadPrototype(), s = p.SAMPLE_ELA;
+  assert.equal(s.rows.length, 156);
+  assert.equal(s.columns.length, 80);
+  const t = p.sampleCol(s, 'Class Teacher(s)'), a = p.sampleCol(s, 'Activity Id');
+  assert.ok(s.rows.every(r => r[t] === ''), 'teacher names blanked');
+  assert.equal(s.rows[0][a], 'VB-ACT-0001');
+  assert.equal(new Set(s.rows.map(r => r[a])).size, 156);
+  assert.equal(s.rows[0][p.sampleCol(s, 'Student ID')], 'EdFiCertificationStudent1');
+  assert.equal(p.sampleCol(s, 'Nope'), -1);
+});
