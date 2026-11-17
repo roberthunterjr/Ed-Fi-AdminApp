@@ -767,3 +767,70 @@ test('a missing enumeration needed by two assessments is reported once', () => {
   const p = loadPrototype(); const r = validate(p, original(p));
   assert.equal(findings(r, x => /No enumeration for `AccommodationDescriptor`/.test(x.message)).length, 1);
 });
+
+/* Task 4 — objectives, expected payloads, rows and endpoints. */
+const ela = r => r.model.assessments.find(a => a.type === 'ELA Diagnostic');
+
+test('objective code drops the suffix of the same-method assessment element', () => {
+  const p = loadPrototype(); const r = validate(p, linkAll(original(p)));
+  const codes = r.objectives['ELA Diagnostic'].map(o => o.code);
+  assert.ok(codes.includes('Phonics'));
+  assert.ok(codes.includes('Reading Comprehension: Literature'));
+  assert.equal(new Set(codes).size, codes.length);
+  assert.equal(ela(r).elements.find(e => e.name === 'Phonics Scale Score').objective, 'Phonics');
+});
+
+test('objective spellings that share a normalized key warn and keep the first spelling', () => {
+  const p = loadPrototype(); const fx = linkAll(original(p));
+  const row = fx.workbook.ElementDefinitions.find(r => r.Element === 'Phonics Relative Placement');
+  row.Element = 'phonics - Relative Placement';
+  const r = validate(p, fx);
+  assert.ok(findings(r, x => x.category === 'objectives' && x.severity === 'warning' && /phonics -/.test(x.message)).length);
+  assert.equal(ela(r).elements.find(e => e.name === 'phonics - Relative Placement').objective, 'Phonics');
+});
+
+test('an objective element that does not end in its score name is an error', () => {
+  const p = loadPrototype(); const fx = linkAll(original(p));
+  fx.workbook.ElementDefinitions.find(r => r.Element === 'Phonics Scale Score').Element = 'Scale Score';
+  assert.ok(findings(validate(p, fx), x => x.category === 'objectives' && x.severity === 'error').length);
+});
+
+test('expected student assessment carries pre-arranged identity and vendor descriptor URIs', () => {
+  const p = loadPrototype(); const r = validate(p, linkAll(original(p))); const a = ela(r);
+  const col = a.sample.columns.indexOf('Rush Flag');
+  const i = a.sample.rows.findIndex(row => row[col] === 'Red Rush Flag');
+  const pl = p.expectedStudentAssessment(r.model, a, i);
+  assert.equal(pl.eventCircumstanceDescriptor, 'uri://vendorb.example/EventCircumstanceDescriptor#Red Rush Flag');
+  assert.equal(pl.studentReference.studentUniqueId, a.sample.rows[i][a.idColumns.student]);
+  assert.equal(pl.studentAssessmentIdentifier, a.sample.rows[i][a.idColumns.activity]);
+  assert.deepEqual(pl.assessmentReference, {assessmentIdentifier:'VENDORB-DIAGNOSTIC-ELA', namespace:'uri://vendorb.example/'});
+  assert.ok(pl.studentObjectiveAssessments.some(o => o.objectiveAssessmentReference.identificationCode === 'Phonics'));
+});
+
+test('expected assessment and objectives come from the workbook', () => {
+  const p = loadPrototype(); const r = validate(p, linkAll(original(p))); const a = ela(r);
+  const asm = p.expectedAssessment(r.model, a);
+  assert.equal(asm.assessmentIdentifier, 'VENDORB-DIAGNOSTIC-ELA');
+  assert.equal(asm.adaptiveAssessment, true);
+  assert.ok(asm.scores.length > 0);
+  const objs = p.expectedObjectives(r.model, a);
+  assert.equal(objs.length, r.objectives['ELA Diagnostic'].length);
+  assert.ok(objs.every(o => o.payload.identificationCode === o.code && o.payload.scores.length));
+});
+
+test('row selection covers every distinct descriptor value and objective', () => {
+  const p = loadPrototype(); const r = validate(p, linkAll(original(p))); const a = ela(r);
+  const rows = p.selectRows(r.model, a);
+  assert.ok(rows.length > 0 && rows.length < a.sample.rows.length);
+  assert.ok(rows.every(x => x.why && x.key.studentId && x.key.activityId));
+  const col = a.sample.columns.indexOf('Rush Flag');
+  ['Red Rush Flag', 'Yellow Rush Flag'].forEach(v => assert.ok(rows.some(x => a.sample.rows[x.index][col] === v), v));
+});
+
+test('endpoints are derived in order', () => {
+  const p = loadPrototype(); const r = validate(p, linkAll(original(p)));
+  const eps = p.deriveEndpoints(r.model);
+  assert.deepEqual(eps.slice(0, 3).map(e => e.id), ['assessments', 'objectiveAssessments', 'studentAssessments']);
+  assert.ok(eps.some(e => e.id === 'descriptor:EventCircumstanceDescriptor'));
+  assert.ok(eps.every(e => e.recordCount > 0));
+});

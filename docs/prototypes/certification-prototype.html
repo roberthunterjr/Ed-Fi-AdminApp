@@ -1763,7 +1763,7 @@ function validateMapping(workbook, samples){
     }
     a.elements.push({row:r.__row, name:r.Element || '', dataType:r['Data Type'] || '',
       completeName:r['Ed-Fi ODS/API Element Complete Name'] || '', snippet:r.H || '',
-      targets:[], column:-1, reportingMethod:null, resultDatatype:null,
+      targets:[], column:-1, reportingMethod:null, resultDatatype:null, resultDatatypeUri:null,
       descriptorType:null, descriptorSource:null, enumeration:null, codes:null, objective:null});
   });
 
@@ -1807,7 +1807,7 @@ function validateMapping(workbook, samples){
             message:'`' + uri + '` doesn\'t resolve to a known descriptor value', hint:closestHint(res.hint)});
         });
         if (rm && resolveUri(rm).ok) e.reportingMethod = rm;
-        if (dt){ const res = resolveUri(dt); if (res.ok) e.resultDatatype = res.code; }
+        if (dt){ const res = resolveUri(dt); if (res.ok){ e.resultDatatype = res.code; e.resultDatatypeUri = dt; } }
       }
       const dtarget = e.targets.map(targetByPath).find(t => t.type === 'Descriptor' && t.descriptor);
       if (dtarget){
@@ -1894,6 +1894,9 @@ function validateMapping(workbook, samples){
     });
   });
 
+  const objectives = {};
+  model.assessments.forEach(a => { objectives[a.type] = deriveObjectives(a, add); });
+
   const notChecked = {};
   model.assessments.filter(a => a.sample).forEach(a => {
     const used = new Set(a.elements.map(e => e.column).filter(i => i >= 0));
@@ -1902,7 +1905,200 @@ function validateMapping(workbook, samples){
     notChecked[a.type] = a.sample.columns.filter((c, i) => !used.has(i) &&
       !(a.sample.columns.findIndex(x => sameText(x, c)) !== i));
   });
-  return finishReport(findings, model, notChecked, {});
+  return finishReport(findings, model, notChecked, objectives);
+}
+
+/* §4.5 — objective codes. An objective element's code is its name less the
+   name of the assessment-level element reporting the same method ("Phonics
+   Scale Score" less "Scale Score"). Without such an element, the suffix is the
+   longest run of trailing words shared by the objective elements of that
+   method. Codes are matched on normKey; the first spelling of a key wins. */
+const OBJECTIVE_TARGETS = ['objectiveAssessment.scores', 'studentObjectiveAssessment.scoreResults'];
+const ASSESSMENT_SCORE_TARGETS = ['assessment.scores', 'studentAssessment.scoreResults'];
+const words = s => String(s).trim().split(/\s+/).filter(Boolean);
+function stripSuffix(name, suffixWords){
+  const w = words(name);
+  const n = suffixWords.length;
+  if (!n || w.length <= n) return '';
+  const tail = w.slice(-n).map(x => x.toLowerCase());
+  if (tail.join(' ') !== suffixWords.map(x => x.toLowerCase()).join(' ')) return '';
+  return w.slice(0, -n).join(' ').replace(/[\s:–—-]+$/, '');
+}
+function commonTrailingWords(names){
+  const ws = names.map(words);
+  const out = [];
+  for (let i = 1; ws.every(w => w.length >= i); i++){
+    const x = ws[0][ws[0].length - i].toLowerCase();
+    if (!ws.every(w => w[w.length - i].toLowerCase() === x)) break;
+    out.unshift(ws[0][ws[0].length - i]);
+  }
+  return out;
+}
+function deriveObjectives(a, add){
+  const objEls = a.elements.filter(e => e.targets.some(t => OBJECTIVE_TARGETS.includes(t)));
+  const asmEls = a.elements.filter(e => e.reportingMethod && e.targets.some(t => ASSESSMENT_SCORE_TARGETS.includes(t)));
+  const byKey = new Map();
+  objEls.forEach(e => {
+    let suffix = [];
+    const base = e.reportingMethod && asmEls.find(x => x.reportingMethod === e.reportingMethod);
+    if (base) suffix = words(base.name);
+    else if (e.reportingMethod){
+      const peers = objEls.filter(x => x.reportingMethod === e.reportingMethod);
+      if (peers.length > 1) suffix = commonTrailingWords(peers.map(x => x.name));
+    }
+    const code = stripSuffix(e.name, suffix);
+    if (!code){
+      add({category:'objectives', file:'Workbook', where:'ElementDefinitions', row:e.row,
+        message:'`' + e.name + '` doesn\'t end in the name of its score' +
+          (suffix.length ? ' (`' + suffix.join(' ') + '`)' : '') + ', so its objective can\'t be derived'});
+      return;
+    }
+    const key = normKey(code);
+    const first = byKey.get(key);
+    if (!first){ byKey.set(key, code); e.objective = code; return; }
+    e.objective = first;
+    if (first !== code)
+      add({severity:'warning', category:'objectives', file:'Workbook', where:'ElementDefinitions', row:e.row,
+        message:'`' + e.name + '` names objective `' + code + '`, the same as `' + first + '`; `' + first + '` is used'});
+  });
+  return [...byKey.entries()].map(([key, code]) => ({code, key}));
+}
+
+/* ---------- expected payloads (design §5) ----------
+   Built only from a ready report's model; callers guard. */
+function descriptorUri(model, source, type, code){
+  return (source === 'standard' ? 'uri://ed-fi.org/' : model.product.namespace) + type + '#' + code;
+}
+const canonicalCode = (codes, v) => (codes || []).find(c => sameText(c, v)) || v;
+const assessmentRef = (model, a) => ({assessmentIdentifier:a.identifier, namespace:model.product.namespace});
+function scoreEntry(e){
+  return {assessmentReportingMethodDescriptor:e.reportingMethod, resultDatatypeTypeDescriptor:e.resultDatatypeUri};
+}
+function scoreDefs(els){
+  const out = [];
+  els.forEach(e => {
+    if (e.reportingMethod && !out.some(s => s.assessmentReportingMethodDescriptor === e.reportingMethod)) out.push(scoreEntry(e));
+  });
+  return out;
+}
+function expectedAssessment(model, a){
+  const out = {assessmentIdentifier:a.identifier, namespace:model.product.namespace, assessmentTitle:a.title,
+    assessmentCategoryDescriptor:a.category, adaptiveAssessment:a.adaptive};
+  if (a.family) out.assessmentFamily = a.family;
+  if (a.maxRawScore !== '') out.maxRawScore = isNaN(+a.maxRawScore) ? a.maxRawScore : +a.maxRawScore;
+  const scores = scoreDefs(a.elements.filter(e => e.targets.some(t => ASSESSMENT_SCORE_TARGETS.includes(t))));
+  if (scores.length) out.scores = scores;
+  return out;
+}
+function objectiveCodes(a){
+  const seen = [];
+  a.elements.forEach(e => { if (e.objective && !seen.includes(e.objective)) seen.push(e.objective); });
+  return seen;
+}
+function expectedObjectives(model, a){
+  return objectiveCodes(a).map(code => {
+    const payload = {assessmentReference:assessmentRef(model, a), identificationCode:code};
+    const scores = scoreDefs(a.elements.filter(e => e.objective === code));
+    if (scores.length) payload.scores = scores;
+    return {code, key:normKey(code), payload};
+  });
+}
+const cell = (row, i) => i < 0 ? '' : String(row[i] == null ? '' : row[i]).trim();
+function expectedStudentAssessment(model, a, rowIndex){
+  const row = a.sample.rows[rowIndex];
+  const payload = {studentAssessmentIdentifier:cell(row, a.idColumns.activity),
+    assessmentReference:assessmentRef(model, a),
+    studentReference:{studentUniqueId:cell(row, a.idColumns.student)}};
+  const objectives = new Map();
+  a.elements.filter(e => e.column >= 0).forEach(e => {
+    const v = cell(row, e.column);
+    if (!v) return;
+    e.targets.filter(t => t.startsWith('studentAssessment.') || t.startsWith('studentObjectiveAssessment.')).forEach(t => {
+      if (t === 'studentAssessment.scoreResults')
+        (payload.scoreResults = payload.scoreResults || []).push(Object.assign(scoreEntry(e), {result:v}));
+      else if (t === 'studentObjectiveAssessment.scoreResults'){
+        if (!e.objective) return;
+        if (!objectives.has(e.objective)) objectives.set(e.objective, {objectiveAssessmentReference:
+          {assessmentIdentifier:a.identifier, identificationCode:e.objective, namespace:model.product.namespace},
+          scoreResults:[]});
+        objectives.get(e.objective).scoreResults.push(Object.assign(scoreEntry(e), {result:v}));
+      } else if (e.codes && targetByPath(t).type === 'Descriptor'){
+        const uri = descriptorUri(model, e.descriptorSource, e.descriptorType, canonicalCode(e.codes, v));
+        if (t === 'studentAssessment.accommodations')
+          (payload.accommodations = payload.accommodations || []).push({accommodationDescriptor:uri});
+        else if (t === 'studentAssessment.period') payload.period = {assessmentPeriodDescriptor:uri};
+        else if (STUDENT_FIELD[t]) payload[STUDENT_FIELD[t]] = uri;
+      } else if (STUDENT_FIELD[t] && !STUDENT_FIELD[t].includes('.')) payload[STUDENT_FIELD[t]] = v;
+    });
+  });
+  if (objectives.size) payload.studentObjectiveAssessments = [...objectives.values()];
+  return payload;
+}
+
+/* Greedy set cover (design §5): the fewest rows that show every distinct
+   descriptor or Boolean value and every objective with a score. Ties go to the
+   earlier row. Each pick says why: the first feature it was chosen for. */
+function selectRows(model, a){
+  if (!a.sample || a.idColumns.student < 0 || a.idColumns.activity < 0) return [];
+  const enumEls = a.elements.filter(e => e.column >= 0 && (e.codes || e.resultDatatype === 'Boolean'));
+  const objEls = a.elements.filter(e => e.column >= 0 && e.objective);
+  const features = a.sample.rows.map(row => {
+    const f = new Map();
+    enumEls.forEach(e => {
+      const v = cell(row, e.column);
+      if (v) f.set(e.name + ': ' + canonicalCode(e.codes, v), e.codes ? canonicalCode(e.codes, v) : e.name + ' ' + v);
+    });
+    objEls.forEach(e => { if (cell(row, e.column)) f.set('Objective: ' + e.objective, e.objective + ' score'); });
+    return f;
+  });
+  const uncovered = new Set();
+  features.forEach(f => f.forEach((_, k) => uncovered.add(k)));
+  const out = [];
+  while (uncovered.size){
+    let best = -1, bestN = 0;
+    features.forEach((f, i) => {
+      let n = 0;
+      f.forEach((_, k) => { if (uncovered.has(k)) n++; });
+      if (n > bestN){ best = i; bestN = n; }
+    });
+    if (best < 0) break;
+    const covers = [...features[best].keys()].filter(k => uncovered.has(k));
+    covers.forEach(k => uncovered.delete(k));
+    const row = a.sample.rows[best];
+    out.push({index:best, key:{studentId:cell(row, a.idColumns.student), activityId:cell(row, a.idColumns.activity)},
+      why:'first ' + features[best].get(covers[0]), covers});
+  }
+  return out.sort((x, y) => x.index - y.index);
+}
+
+/* Endpoints the run turns on (design §5), in a fixed order. */
+function deriveEndpoints(model){
+  const withSample = model.assessments.filter(a => a.sample);
+  const eps = [];
+  const typesIn = obj => [...new Set((JSON.stringify(obj).match(/uri:\/\/[^"#]*?\/(\w+Descriptor)#/g) || [])
+    .map(u => u.match(/\/(\w+Descriptor)#$/)[1]))];
+  const asm = model.assessments.map(a => expectedAssessment(model, a));
+  eps.push({id:'assessments', resource:'assessments', recordCount:asm.length,
+    fieldCount:asm.reduce((n, x) => Math.max(n, Object.keys(x).length), 0), descriptors:typesIn(asm)});
+  const objs = [].concat(...model.assessments.map(a => expectedObjectives(model, a).map(o => o.payload)));
+  if (objs.length)
+    eps.push({id:'objectiveAssessments', resource:'objectiveAssessments', recordCount:objs.length,
+      fieldCount:objs.reduce((n, x) => Math.max(n, Object.keys(x).length), 0), descriptors:typesIn(objs)});
+  const students = [].concat(...withSample.map(a => selectRows(model, a).map(r => expectedStudentAssessment(model, a, r.index))));
+  if (students.length){
+    const paths = new Set();
+    students.forEach(s => Object.keys(s).forEach(k => paths.add(k)));
+    eps.push({id:'studentAssessments', resource:'studentAssessments', recordCount:students.length,
+      fieldCount:paths.size, descriptors:typesIn(students)});
+  }
+  const all = [...new Set([].concat(...eps.map(e => e.descriptors)))];
+  all.forEach(type => {
+    const values = new Set();
+    (JSON.stringify([asm, objs, students]).match(new RegExp('uri://[^"]*?/' + type + '#[^"]+', 'g')) || []).forEach(u => values.add(u));
+    eps.push({id:'descriptor:' + type, resource:type.charAt(0).toLowerCase() + type.slice(1) + 's',
+      recordCount:values.size, fieldCount:3, descriptors:[type]});
+  });
+  return eps;
 }
 
 function finishReport(findings, model, notChecked, objectives){
