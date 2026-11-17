@@ -598,3 +598,34 @@ test('Vendor B fixture is embedded with the original files', () => {
   assert.equal(fx.samples['ELA Diagnostic'].rows.length, 156);
   assert.ok(fx.workbook.ElementDefinitions.some(r => /Math/.test(r['Assessment Type'])));
 });
+
+test('normKey ignores case, whitespace and punctuation', () => {
+  const p = loadPrototype();
+  assert.equal(p.normKey('Reading Comprehension:  Literature'), p.normKey('reading comprehension - literature'));
+});
+
+test('closest suggests the near header', () => {
+  const p = loadPrototype();
+  assert.equal(p.closest('Most Recent Diagnostic (Y/N)', ['Rush Flag', 'Most Recent Diagnostic YTD (Y/N)']),
+    'Most Recent Diagnostic YTD (Y/N)');
+  assert.equal(p.closest('Zebra', ['Rush Flag']), null);
+});
+
+test('standard descriptors cover every ed-fi URI the fixture uses', () => {
+  const p = loadPrototype();
+  const uris = JSON.stringify(p.FIXTURES['vendorb-original'].workbook).match(/uri:\/\/ed-fi\.org\/\w+#[^"\\]+/g);
+  assert.ok(uris.length > 0);
+  uris.forEach(u => {
+    const [, type, code] = u.match(/ed-fi\.org\/(\w+)#(.+)/);
+    assert.ok((p.STANDARD_DESCRIPTORS[type] || []).includes(code), u);
+  });
+});
+
+test('reference data names required tabs, targets and pre-arranged columns', () => {
+  const p = loadPrototype();
+  assert.deepEqual(Object.keys(p.REQUIRED_TABS),
+    ['Product', 'Assessments', 'ElementDefinitions', 'EnumerationDefinitions', 'EnumerationItems']);
+  assert.ok(p.targetByPath('studentAssessment.accommodations'));
+  assert.equal(p.targetByPath('nope.nothing'), null);
+  assert.deepEqual(p.PREARRANGED_COLUMNS.map(c => c.column), ['Student ID', 'Activity Id']);
+});
