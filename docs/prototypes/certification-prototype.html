@@ -925,54 +925,6 @@ const DESCRIPTOR_VALUES = {
 };
 /* A stable pseudo-random pick, so the same element always shows the same value. */
 const seedOf = s => { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return h; };
-/* Assessments validation content — deliberately seeds every failure kind RC2 requires. */
-const ASSESSMENT_RESULTS = [
-  {domain:'Assessment', resource:'assessments', elements:[
-    {el:'assessmentIdentifier', type:'String', expected:'ELA-BM-2026-01', observed:'ELA-BM-2026-01', st:'pass'},
-    {el:'namespace', type:'String', expected:'uri://vendor-b.example.com', observed:'uri://vendor-b.example.com', st:'pass'},
-    {el:'assessmentTitle', type:'String', expected:'ELA Benchmark 1', observed:'ELA Benchmark 1 ', st:'pass',
-      why:'Trailing whitespace trimmed before comparison (§9.1, String).'},
-    {el:'assessmentCategoryDescriptor', type:'Descriptor',
-      expected:'uri://ed-fi.org/AssessmentCategoryDescriptor#Benchmark test',
-      observed:'uri://ed-fi.org/AssessmentCategoryDescriptor#Benchmark test', st:'pass'},
-    {el:'academicSubjects[0].academicSubjectDescriptor', type:'Descriptor',
-      expected:'uri://ed-fi.org/AcademicSubjectDescriptor#English Language Arts',
-      observed:'uri://vendor-b.example.com/AcademicSubjectDescriptor#ELA', st:'fail-descriptor',
-      why:'Descriptor URI does not resolve to a legitimate Ed-Fi descriptor (D8).'},
-    {el:'maxRawScore', type:'Decimal', expected:'100', observed:'100.0', st:'pass',
-      why:'Parsed numerically before comparison (§9.1, Decimal).'}
-  ]},
-  {domain:'Assessment', resource:'objectiveAssessments', elements:[
-    {el:'identificationCode', type:'String', expected:'ELA-BM-2026-01-OA1', observed:'ELA-BM-2026-01-OA1', st:'pass'},
-    {el:'maxRawScore', type:'Decimal', expected:'85', observed:'87', st:'fail-value',
-      why:'Value mismatch after normalization — genuine difference, not formatting.'},
-    {el:'percentOfAssessment', type:'Decimal', expected:'40', observed:'"forty"', st:'fail-type',
-      why:'Observed value cannot be parsed as Decimal — reported as a type error, not a value mismatch (§9.1).'},
-    {el:'nomenclature', type:'String', expected:'Reading Informational Text', observed:'Reading Informational Text', st:'pass'}
-  ]},
-  {domain:'Student Assessment', resource:'studentAssessments', elements:[
-    {el:'studentReference.studentUniqueId', type:'String', expected:'604821', observed:'604821', st:'pass'},
-    {el:'administrationDate', type:'Date', expected:'9/14/2026', observed:'2026-09-14T00:00:00Z', st:'pass',
-      why:'Both sides parsed to an instant before comparison (§9.1, Date).'},
-    {el:'scoreResults[0].result', type:'Decimal', expected:'78', observed:'78', st:'pass'},
-    {el:'scoreResults[0].assessmentReportingMethodDescriptor', type:'Descriptor',
-      expected:'uri://ed-fi.org/AssessmentReportingMethodDescriptor#Raw score',
-      observed:'uri://ed-fi.org/AssessmentReportingMethodDescriptor#Raw score', st:'pass'},
-    {el:'performanceLevels[0].performanceLevelDescriptor', type:'Descriptor',
-      expected:'uri://ed-fi.org/PerformanceLevelDescriptor#Proficient',
-      observed:'uri://ed-fi.org/PerformanceLevelDescriptor#Proficient', st:'pass'},
-    {el:'reportedSchoolIdentifier', type:'String', expected:'255901107', observed:'(absent)', st:'fail-missing',
-      why:'Element declared in the mapping CSV but not present in the API response.'},
-    {el:'whenAssessedGradeLevelDescriptor', type:'Descriptor',
-      expected:'uri://ed-fi.org/GradeLevelDescriptor#Ninth grade', observed:'(absent)', st:'fail-missing',
-      why:'Element declared in the mapping CSV but not present in the API response.'}
-  ]},
-  {domain:'Student Assessment', resource:'studentAssessmentEducationOrganizationAssociations',
-   emptyResource:true, elements:[
-    {el:'educationOrganizationReference.educationOrganizationId', type:'String', expected:'255901107', observed:'—', st:'fail-empty'},
-    {el:'assessmentReportingMethodDescriptor', type:'Descriptor', expected:'uri://ed-fi.org/…#Raw score', observed:'—', st:'fail-empty'}
-  ]}
-];
 const ST_LABEL = {
   pass:['ok','Pass'],
   'fail-missing':['bad','Missing element'],
@@ -980,6 +932,10 @@ const ST_LABEL = {
   'fail-value':['bad','Value mismatch'],
   'fail-type':['bad','Type error'],
   'fail-empty':['bad','No data returned'],
+  'fail-notfound':['bad','Record not found'],
+  'fail-notloaded':['bad','Descriptor not loaded'],
+  cannot:['warn','Cannot check'],
+  excluded:['muted','Excluded by reviewer'],
   /* Bruno-side kinds. The assertions are constraints, not expected values, so a
      failure is named after the constraint that broke. */
   'fail-assert':['bad','Assertion failed'],
@@ -1406,6 +1362,15 @@ const SAMPLE_ELA = {name:'vendorb-ela-sample.csv',
     ["EdFiCertification","Student155","EdFiCertificationStudent155","11","2024-2025","Grand Bend High School","Enrolled","","","255901001","","","","EdFiCertificationStudent155","female","N","White","N","N","","","HOMEROOM-396100000000502; LA/READ GR 5-39615010046R502; LA/READ GR 5-39615010046R502B; LA/READ GR 5-39615010046R502C; LANG ARTS GR 5-396150100460502; LIB SKLS/INFO LIT 5-396150110500502","","","9/1/24","9/1/24","Fall (Beginning of Year - November 15)","Y","Y","83","","Off","470","Grade 11","1 Grade Level Below","Approaching Grade 11","52","1","425L","325L-475L","474","Grade 10","1 Grade Level Below","Approaching Grade 11","479","Grade 10","1 Grade Level Below","Approaching Grade 11","439","Grade 10","1 Grade Level Below","Approaching Grade 11","482","Grade 10","1 Grade Level Below","Approaching Grade 11","454","Grade 10","1 Grade Level Below","Approaching Grade 11","454","Grade 10","1 Grade Level Below","Approaching Grade 11","458","Grade 10","1 Grade Level Below","Approaching Grade 11","English","0","39","53","0","0","513","Not Provided","","","","VB-ACT-0155"],
     ["EdFiCertification","Student156","EdFiCertificationStudent156","12","2024-2025","Grand Bend High School","Enrolled","","","255901001","","","","EdFiCertificationStudent156","male","Y","White","Y","Y","","","FUN READ 3-223150100260301T; HOMEROOM-223100000000305; LA/READ GR 3-22315010044R305; LANG ARTS GR 3-223150100440305A","","","9/1/24","9/1/24","Fall (Beginning of Year - November 15)","Y","Y","83","","Off","470","Grade 9","3 or More Grade Levels Below","Needs Improvement","3","1","425L","325L-475L","474","Grade 9","3 or More Grade Levels Below","Needs Improvement","479","Grade 9","3 or More Grade Levels Below","Needs Improvement","439","Grade 9","3 or More Grade Levels Below","Needs Improvement","482","Grade 9","3 or More Grade Levels Below","Needs Improvement","454","Grade 9","3 or More Grade Levels Below","Needs Improvement","454","Grade 9","3 or More Grade Levels Below","Needs Improvement","458","Grade 9","3 or More Grade Levels Below","Needs Improvement","Spanish","0","18","50","0","0","642","Not Provided","","","","VB-ACT-0156"]
   ]};
+/* Result-datatype codes compared numerically, and why a field couldn't be checked. */
+const NUMERIC_TYPES = ['Integer', 'Decimal', 'Percentile', 'Percentage'];
+const CANNOT_WHY = {
+  'untranslated':'Sample value has no Ed-Fi translation in the mapping.',
+  'no-sample-column':'No confirmed sample column feeds this element.',
+  'date-format':'Sample value doesn’t fit the element’s date format.',
+  'no-sample':'No sample data for this assessment.',
+  'no-key':'Rows can’t be matched to a GET: map the student reference and administration identifier.'
+};
 /* Student-assessment target path → field in the expected Ed-Fi payload. */
 const STUDENT_FIELD = {
   'studentAssessment.studentReference':'studentReference.studentUniqueId',
@@ -1515,16 +1480,6 @@ function hist(sub, what, who, when){
      s2 has the ELA sample only, so its Math slot is missing. */
   Object.assign(s2.artifacts.sample[0], {assessment:'VENDORB-DIAGNOSTIC-ELA',
     columns:SAMPLE_ELA.columns.slice(), rows:SAMPLE_ELA.rows.map(r => r.slice())});
-  /* v2: the vendor finished the mapping in the tool, binding sample columns and
-     translating values (all but Read Aloud's "…and Passages"). */
-  (function(){
-    const doc = buildDemoMapping({name:'Vendor B Diagnostic', namespace:'uri://vendor-b.example.com/', idPrefix:'VENDORB'});
-    const at = d(10,14,30);
-    const issues = computeIssues(doc, {'VENDORB-DIAGNOSTIC-ELA':s2.artifacts.sample[0]});
-    s2.artifacts.mapping.push({v:2, name:'vendorb-assessments-mapping-v2.csv', by:V, at, source:'tool',
-      doc, issues, summary:issueSummary(issues, doc)});
-    s2.artifactsChangedAt = at;
-  })();
 
   /* p3 / MTSS v5 — nothing uploaded: Draft */
   mkSubmission({productId:'p3', model:'mtss', status:'draft',
@@ -1583,27 +1538,45 @@ function hist(sub, what, who, when){
     completeness:'Incomplete', pinned:{mapping:1, sample:{'VENDORB-DIAGNOSTIC-ELA':null, 'VENDORB-DIAGNOSTIC-MATH':null}, docs:null},
     tag:MODELS.assessments.tag, sha:MODELS.assessments.sha, initiator:V, env:'Vendor_B',
     started:d(9,11,0), ended:d(9,11,1)});
-  mkRun({submissionId:s2.id, productId:'p2', model:'assessments', state:'completed', outcome:'failed',
+  /* An Assessments run's results are computed from the scope it pinned (§5.8),
+     so a seeded run pins the scope current at that point in the seed. */
+  const asmRun = (sub, o, mode) => {
+    const scope = effectiveScope(sub);
+    const results = runAssessmentChecks(sub, scope, mode);
+    o.pinned = Object.assign(o.pinned, {sample:pinnedSampleMap(sub), scope});
+    return mkRun(Object.assign(o, {results, outcome:resultTally(results).fail ? 'failed' : 'passed'}));
+  };
+  asmRun(s2, {submissionId:s2.id, productId:'p2', model:'assessments', state:'completed',
     completeness:'Incomplete', pinned:{mapping:1, sample:{'VENDORB-DIAGNOSTIC-ELA':1, 'VENDORB-DIAGNOSTIC-MATH':null}, docs:null},
     tag:MODELS.assessments.tag, sha:MODELS.assessments.sha, initiator:V2, env:'Vendor_B',
-    started:d(13,15,20), ended:d(13,15,26), results:assessmentResults('realistic')});
+    started:d(13,15,20), ended:d(13,15,26)}, 'realistic');
+  /* v2: the vendor finished the mapping in the tool, binding sample columns and
+     translating values (all but Read Aloud's "…and Passages"). */
+  (function(){
+    const doc = buildDemoMapping({name:'Vendor B Diagnostic', namespace:'uri://vendor-b.example.com/', idPrefix:'VENDORB'});
+    const at = d(10,14,30);
+    const issues = computeIssues(doc, {'VENDORB-DIAGNOSTIC-ELA':s2.artifacts.sample[0]});
+    s2.artifacts.mapping.push({v:2, name:'vendorb-assessments-mapping-v2.csv', by:V, at, source:'tool',
+      doc, issues, summary:issueSummary(issues, doc)});
+    s2.artifactsChangedAt = at;
+  })();
 
   mkRun({submissionId:f1.id, productId:'p4', model:'sis', state:'sealed', outcome:'passed',
     completeness:'Complete', pinned:{mapping:1, sample:1, docs:1},
     tag:MODELS.sis.tag, sha:MODELS.sis.sha, initiator:'dev@acme.example.com', env:'Acme_Prod_Cert',
     started:d(12,9,0), ended:d(12,9,8), results:seededBrunoResults('sis','pass')});
-  mkRun({submissionId:f2.id, productId:'p5', model:'assessments', state:'completed', outcome:'passed',
+  asmRun(f2, {submissionId:f2.id, productId:'p5', model:'assessments', state:'completed',
     completeness:'Complete', pinned:{mapping:1, sample:1, docs:1},
     tag:MODELS.assessments.tag, sha:MODELS.assessments.sha, initiator:'eng@northwind.example.com',
-    env:'Northwind_Cert', started:d(11,10,0), ended:d(11,10,7), results:assessmentResults('pass')});
+    env:'Northwind_Cert', started:d(11,10,0), ended:d(11,10,7)}, 'pass');
   mkRun({submissionId:f3.id, productId:'p6', model:'mtss', state:'sealed', outcome:'infra-error',
     completeness:'Complete', pinned:{mapping:1, sample:1, docs:1},
     tag:MODELS.mtss.tag, sha:MODELS.mtss.sha, initiator:'ops@larkspur.example.com',
     env:'Larkspur_Cert', started:d(14,17,40), ended:d(14,17,41)});
-  mkRun({submissionId:f4.id, productId:'p4', model:'assessments', state:'completed', outcome:'passed',
+  asmRun(f4, {submissionId:f4.id, productId:'p4', model:'assessments', state:'completed',
     completeness:'Complete', pinned:{mapping:1, sample:1, docs:1},
     tag:MODELS.assessments.tag, sha:MODELS.assessments.sha, initiator:'dev@acme.example.com',
-    env:'Acme_Prod_Cert', started:d(6,11,0), ended:d(6,11,6), results:assessmentResults('pass')});
+    env:'Acme_Prod_Cert', started:d(6,11,0), ended:d(6,11,6)}, 'pass');
 
   /* seeded history */
   s1.history = [
@@ -1859,17 +1832,6 @@ function seededBrunoResults(model, mode){
   });
   return run.results;
 }
-function assessmentResults(mode){
-  const groups = ASSESSMENT_RESULTS.map(g => ({
-    domain:g.domain, resource:g.resource,
-    emptyResource: mode === 'pass' ? false : !!g.emptyResource,
-    elements: g.elements.map(e => mode === 'pass'
-      ? Object.assign({}, e, {st:'pass', observed: e.st === 'pass' ? e.observed : e.expected,
-          why: e.st === 'pass' ? e.why : ''})
-      : Object.assign({}, e))
-  }));
-  return {kind:'assessments', groups};
-}
 function resultTally(r){
   if (!r) return {pass:0, fail:0, notAttempted:0, total:0, unit:'scenarios'};
   if (r.kind === 'bruno'){
@@ -1882,9 +1844,15 @@ function resultTally(r){
     });
     return {pass, fail, notAttempted, total:r.scenarios.length, unit:'scenarios'};
   }
-  let pass = 0, fail = 0;
-  r.groups.forEach(g => g.elements.forEach(e => e.st === 'pass' ? pass++ : fail++));
-  return {pass, fail, notAttempted:0, total:pass + fail, unit:'element checks'};
+  /* Assessments: Cannot check and Excluded are counted, never as failures. */
+  let pass = 0, fail = 0, cannot = 0, excluded = 0;
+  r.endpoints.forEach(e => e.records.forEach(rec => rec.fields.forEach(f => {
+    if (f.st === 'pass') pass++;
+    else if (f.st === 'cannot') cannot++;
+    else if (f.st === 'excluded') excluded++;
+    else fail++;
+  })));
+  return {pass, fail, cannot, excluded, notAttempted:0, total:pass + fail, unit:'field checks'};
 }
 
 /* ---------- mapping tool: model ----------
@@ -2772,6 +2740,201 @@ function undoScopeRow(sub, assessment, key){
   scopeChanged(sub, 'undid the change to row ' + keyLabel(key));
   return {ok:true};
 }
+
+/* ---------- run scope: simulated GETs and comparison (run-scope design §5.8) ----------
+   The prototype has no Ed-Fi API, so the "response" is the expected payload with
+   harmless formatting differences and, for a realistic run, a few deterministic
+   faults. Comparison applies the §9.1 normalization symmetrically. */
+function compareValue(type, expected, observed){
+  if (observed === undefined || observed === null) return {st:'fail-missing',
+    why:'Element declared in the mapping but not present in the API response.'};
+  const e = String(expected), o = String(observed);
+  if (NUMERIC_TYPES.includes(type)){
+    const en = Number(e.trim()), on = Number(o.trim());
+    if (o.trim() === '' || isNaN(on)) return {st:'fail-type',
+      why:'Observed value cannot be parsed as ' + type + ' — a type error, not a value mismatch (§9.1).'};
+    if (en === on) return e.trim() === o.trim() ? {st:'pass'} : {st:'pass', why:'Parsed numerically before comparison (§9.1).'};
+    return {st:'fail-value', why:'Value mismatch after normalization — a genuine difference, not formatting.'};
+  }
+  if (type === 'Date'){
+    const ed = Date.parse(e.length === 10 ? e + 'T00:00:00Z' : e), od = Date.parse(o.length === 10 ? o + 'T00:00:00Z' : o);
+    if (isNaN(od)) return {st:'fail-type', why:'Observed value cannot be parsed as a date (§9.1).'};
+    if (ed === od) return e === o ? {st:'pass'} : {st:'pass', why:'Both sides parsed to an instant before comparison (§9.1).'};
+    return {st:'fail-value', why:'Date differs after normalization.'};
+  }
+  if (type === 'Descriptor'){
+    const [ens, ecode] = e.split('#'), [ons, ocode] = o.split('#');
+    if (ocode === undefined || ens !== ons) return {st:'fail-descriptor',
+      why:'Descriptor namespace or type does not match the one the mapping declares (D8).'};
+    if (ecode.trim().toLowerCase() === ocode.trim().toLowerCase())
+      return ecode === ocode ? {st:'pass'} : {st:'pass', why:'Descriptor code values compare case-insensitively.'};
+    return {st:'fail-value', why:'Descriptor resolves, but to a different value than the sample data.'};
+  }
+  if (type === 'Boolean') return e.trim().toLowerCase() === o.trim().toLowerCase() ? {st:'pass'}
+    : {st:'fail-value', why:'Boolean differs.'};
+  if (e.trim() === o.trim()) return e === o ? {st:'pass'} : {st:'pass', why:'Whitespace trimmed before comparison (§9.1, String).'};
+  return {st:'fail-value', why:'Value mismatch after normalization.'};
+}
+function leafType(key, siblings){
+  if (/Descriptor$/.test(key)) return 'Descriptor';
+  if (key === 'administrationDate') return 'Date';
+  if (key === 'maxRawScore') return 'Decimal';
+  if (key === 'adaptiveAssessment') return 'Boolean';
+  if (key === 'result'){
+    const dt = String((siblings || {}).resultDatatypeTypeDescriptor || '').split('#')[1] || '';
+    if (NUMERIC_TYPES.includes(dt)) return dt;
+    if (dt === 'Boolean') return 'Boolean';
+  }
+  return 'String';
+}
+/* Keyed collections are matched by key, not position. */
+function entryKey(item){
+  if (!item || typeof item !== 'object') return String(item);
+  if (item.assessmentReportingMethodDescriptor) return item.assessmentReportingMethodDescriptor.toLowerCase();
+  if (item.objectiveAssessmentReference) return String(item.objectiveAssessmentReference.identificationCode).toLowerCase();
+  if (item.accommodationDescriptor) return item.accommodationDescriptor.toLowerCase();
+  return JSON.stringify(item);
+}
+function entryLabel(item){
+  if (item.assessmentReportingMethodDescriptor) return item.assessmentReportingMethodDescriptor.split('#').pop();
+  if (item.objectiveAssessmentReference) return item.objectiveAssessmentReference.identificationCode;
+  if (item.accommodationDescriptor) return item.accommodationDescriptor.split('#').pop();
+  return '?';
+}
+function compareRecord(expected, observed, prefix, out){
+  out = out || [];
+  Object.keys(expected).forEach(k => {
+    const ev = expected[k], ov = observed ? observed[k] : undefined, path = (prefix ? prefix + '.' : '') + k;
+    if (Array.isArray(ev)){
+      ev.forEach(item => {
+        const p2 = path + '[' + entryLabel(item) + ']';
+        const match = Array.isArray(ov) ? ov.find(x => entryKey(x) === entryKey(item)) : undefined;
+        if (!match){
+          out.push({path:p2, type:'Entry', expected:entryLabel(item), observed:'(absent)', st:'fail-missing',
+            why:'Collection entry declared by the mapping is not in the API response.'});
+          return;
+        }
+        compareRecord(item, match, p2, out);
+      });
+    } else if (ev && typeof ev === 'object'){
+      compareRecord(ev, ov && typeof ov === 'object' ? ov : {}, path, out);
+    } else {
+      const type = leafType(k, expected);
+      const c = compareValue(type, ev, ov);
+      out.push(Object.assign({path, type, expected:String(ev), observed:ov == null ? '(absent)' : String(ov)}, c));
+    }
+  });
+  return out;
+}
+function cloneJson(x){ return JSON.parse(JSON.stringify(x)); }
+function simulateResponses(expected, mode){
+  const obs = cloneJson(expected);
+  obs.assessments.forEach(r => {
+    if (r.payload.assessmentTitle) r.payload.assessmentTitle += ' ';
+    if (r.payload.maxRawScore && !/\./.test(r.payload.maxRawScore)) r.payload.maxRawScore += '.0';
+  });
+  obs.studentAssessments.forEach(r => {
+    if (r.payload.administrationDate) r.payload.administrationDate += 'T00:00:00Z';
+  });
+  if (mode !== 'realistic') return obs;
+  const list = obs.studentAssessments;
+  const scale = o => (o.scoreResults || []).find(s => /#Scale score$/.test(s.assessmentReportingMethodDescriptor || ''));
+  /* 1: two domains' scale scores swapped (a value in the wrong place). */
+  let i = list.findIndex(r => {
+    const objs = (r.payload.studentObjectiveAssessments || []).filter(scale);
+    return objs.length >= 2 && scale(objs[0]).result !== scale(objs[1]).result;
+  });
+  if (i >= 0){
+    const objs = list[i].payload.studentObjectiveAssessments.filter(scale);
+    const a = scale(objs[0]), b = scale(objs[1]);
+    [a.result, b.result] = [b.result, a.result];
+  }
+  /* 2: the next row is not returned; 3: the one after loses its grade level. */
+  const j = i + 1;
+  if (j < list.length) list[j].missing = true;
+  const k = list.findIndex((r, n) => n > j && r.payload.whenAssessedGradeLevelDescriptor);
+  if (k >= 0) delete list[k].payload.whenAssessedGradeLevelDescriptor;
+  obs.studentAssessments = list.filter(r => !r.missing);
+  /* 4: one vendor descriptor value is not loaded. */
+  const id = Object.keys(obs.descriptors).find(x => obs.descriptors[x].some(u => !/^uri:\/\/ed-fi\.org\//.test(u)));
+  if (id){
+    const uri = obs.descriptors[id].find(u => !/^uri:\/\/ed-fi\.org\//.test(u));
+    obs.descriptors[id] = obs.descriptors[id].filter(u => u !== uri);
+  }
+  return obs;
+}
+function sampleVersionFor(sub, identifier, v){
+  return v ? sub.artifacts.sample.find(x => x.assessment === identifier && x.v === v) || null : null;
+}
+function runAssessmentChecks(sub, scope, mode){
+  const version = sub.artifacts.mapping.find(m => m.v === scope.mapping);
+  const doc = mappingDocFor(sub, version);
+  if (!doc) return {kind:'assessments', endpoints:[]};
+  const samples = {};
+  doc.assessments.forEach(a => { samples[a.identifier] = sampleVersionFor(sub, a.identifier, (scope.samples || {})[a.identifier]); });
+  const eps = deriveEndpoints(doc, samples);
+  const on = id => { const e = scope.endpoints.find(x => x.id === id); return !e || e.on; };
+  const reasonOf = id => (scope.endpoints.find(x => x.id === id) || {}).reason;
+  const expected = {assessments:[], objectiveAssessments:[], studentAssessments:[], descriptors:{}};
+  const cannotRecords = [];
+  doc.assessments.forEach(a => {
+    const title = a.title || a.type;
+    expected.assessments.push({key:a.identifier, label:title, payload:expectedAssessment(doc, a)});
+    expectedObjectives(doc, a).forEach(o => expected.objectiveAssessments.push({key:a.identifier + '/' + o.objective,
+      label:title + ' › ' + o.objective, payload:o.payload}));
+    const studentEls = doc.elements.filter(e => e.assessmentId === a.id &&
+      e.targets.some(t => isStudentPath(t.path) && targetByPath(t.path)));
+    if (!studentEls.length) return;
+    const s = samples[a.identifier];
+    const cannotAll = (label, reason) => cannotRecords.push({label, fields:studentEls.flatMap(e => e.targets
+      .filter(t => isStudentPath(t.path) && targetByPath(t.path))
+      .map(t => ({path:studentFieldPath(doc, e, t), type:'—', expected:'—', observed:'—',
+        st:'cannot', reason, why:CANNOT_WHY[reason]})))});
+    if (!s){ cannotAll('No sample data for this assessment', 'no-sample'); return; }
+    const keys = rowKeyColumns(doc, a, s);
+    if (keys.student < 0 || keys.activity < 0){ cannotAll('No row can be matched to a GET (' + title + ')', 'no-key'); return; }
+    (scope.rows[a.identifier] || []).forEach(row => {
+      const i = s.rows.findIndex((r, n) => sameKey(rowKey(s, keys, n), row.key));
+      if (i < 0) return;
+      const exp = expectedStudentAssessment(doc, a, s, i);
+      expected.studentAssessments.push({key:row.key, label:keyLabel(row.key), payload:exp.payload, cannot:exp.cannot,
+        covers:row.covers, source:row.source});
+    });
+  });
+  eps.filter(e => e.kind === 'descriptor').forEach(e => { expected.descriptors[e.id] = e.descriptors.slice(); });
+  const observed = simulateResponses(expected, mode);
+
+  const endpoint = (e, records) => ({id:e.id, resource:e.resource, kind:e.kind, excluded:!on(e.id),
+    reason:reasonOf(e.id), records:on(e.id) ? records : records.map(r => Object.assign({}, r, {fields:r.fields
+      .map(f => Object.assign({}, f, {st:'excluded', why:'Excluded by reviewer: "' + reasonOf(e.id) + '"'}))}))});
+  const byKey = (list, key) => list.find(x => JSON.stringify(x.key) === JSON.stringify(key));
+  return {kind:'assessments', endpoints:eps.map(e => {
+    if (e.kind === 'assessment' || e.kind === 'objective'){
+      const src = e.kind === 'assessment' ? 'assessments' : 'objectiveAssessments';
+      return endpoint(e, expected[src].map(x => ({label:x.label, key:x.key,
+        fields:compareRecord(x.payload, (byKey(observed[src], x.key) || {}).payload)})));
+    }
+    if (e.kind === 'student'){
+      return endpoint(e, expected.studentAssessments.map(x => {
+        const o = byKey(observed.studentAssessments, x.key);
+        const cannot = x.cannot.map(c => ({path:c.path, type:'—', expected:'—',
+          observed:'—', st:'cannot', reason:c.reason, why:CANNOT_WHY[c.reason] +
+            (c.raw ? ' ("' + c.raw + '")' : '')}));
+        if (!o) return {label:x.label, key:x.key, covers:x.covers, source:x.source, fields:[{path:'(record)', type:'Record',
+          expected:x.label, observed:'(not returned)', st:'fail-notfound',
+          why:'GET studentAssessments?studentUniqueId=' + x.key.studentId + ' returned no record with ' +
+            'studentAssessmentIdentifier ' + x.key.activityId + '.'}].concat(cannot)};
+        return {label:x.label, key:x.key, covers:x.covers, source:x.source,
+          fields:compareRecord(x.payload, o.payload).concat(cannot)};
+      }).concat(cannotRecords));
+    }
+    return endpoint(e, e.descriptors.map(uri => ({label:uri.split('#').pop(), key:uri, fields:[
+      (observed.descriptors[e.id] || []).includes(uri)
+        ? {path:'codeValue', type:'Descriptor', expected:uri, observed:uri, st:'pass'}
+        : {path:'codeValue', type:'Descriptor', expected:uri, observed:'(not loaded)', st:'fail-notloaded',
+           why:'GET /ed-fi/' + e.resource + ' has no value with this namespace and code.'}]})));
+  })};
+}
 function issueSummary(issues, doc){
   return {total:issues.length,
     explained:issues.filter(i => String(doc.issueNotes[i.key] || '').trim()).length};
@@ -2826,11 +2989,12 @@ const runStateBadge = r =>
   r.state === 'sealed'    ? '<span class="badge b-green">Sealed</span>' :
   r.state === 'abandoned' ? '<span class="badge b-red">Abandoned</span>' :
   '<span class="badge">' + esc(r.state.charAt(0).toUpperCase() + r.state.slice(1)) + '</span>';
-const currentVersion = (sub, type) => {
+/* A function declaration, not a const arrow: seed() computes Assessments runs at load. */
+function currentVersion(sub, type){
   const list = sub.artifacts[type];
   return list && list.length ? list[list.length - 1] : null;
-};
-const isAssessments = sub => MODELS[sub.model].kind === 'assessments';
+}
+function isAssessments(sub){ return MODELS[sub.model].kind === 'assessments'; }
 /* The mapping a version stands for. Tool versions carry their doc; an uploaded
    CSV is read back in the tool's export format (prototype: the Vendor B seed). */
 function mappingDocFor(sub, version){
@@ -3089,11 +3253,12 @@ function finishRun(r){
     hist(sub, 'Run ' + r.id + ' failed — authentication error (401 from environment ' + r.env + ')', 'Platform');
   } else {
     const mode = r.mode === 'pass' ? 'pass' : 'realistic';
-    r.results = assessmentResults(mode);   /* Bruno runs returned above */
+    r.results = runAssessmentChecks(sub, r.pinned.scope, mode);   /* Bruno runs returned above */
     const t = resultTally(r.results);
-    r.outcome = t.fail === 0 ? 'passed' : 'failed';
+    r.outcome = t.fail === 0 ? 'passed' : 'failed';   /* Cannot check never fails a run (§5.8) */
     hist(sub, 'Run ' + r.id + ' completed — ' + r.completeness + ' — ' +
-      (t.fail === 0 ? 'all ' + t.unit + ' passed' : t.fail + ' of ' + t.total + ' ' + t.unit + ' failed'), 'Platform');
+      (t.fail === 0 ? 'all ' + t.unit + ' passed' : t.fail + ' of ' + t.total + ' ' + t.unit + ' failed') +
+      (t.cannot ? ' · ' + t.cannot + ' cannot check' : ''), 'Platform');
   }
   recomputeStatus(sub);
   render();
@@ -3547,6 +3712,12 @@ function runTable(rows, opts){
         <td>${esc(MODELS[r.model].label)}</td>
         <td>${completenessBadge(r.completeness)}</td>
         <td>${runStateHTML(r)}${(() => {
+          if (r.results && r.results.kind === 'assessments'){
+            const t3 = resultTally(r.results);
+            return `<div class="muted" style="font-size:12px">${t3.pass} passed, ${t3.fail} failed</div>` +
+              (t3.cannot ? `<div><span class="badge b-amber">${r.outcome === 'passed' ? 'Passed' : 'Failed'} ·
+                ${t3.cannot} cannot check</span></div>` : '');
+          }
           if (!r.results || r.results.kind !== 'bruno') return '';
           const t2 = resultTally(r.results);
           return `<div class="muted" style="font-size:12px">${t2.pass} passed, ${t2.fail} failed` +
@@ -3822,7 +3993,8 @@ function runResults(id, reviewerView){
         <div><div class="k">Tag &rarr; commit</div><div class="v"><span class="tag">${esc(r.tag)}</span>
           <span class="mono muted">${esc(r.sha)}</span></div></div>
         ${r.results ? `<div><div class="k">Checks</div><div class="v">${t.pass} passed,
-          ${t.fail} failed <span class="muted">of ${t.total} ${esc(t.unit)}</span></div></div>` : ''}
+          ${t.fail} failed <span class="muted">of ${t.total} ${esc(t.unit)}</span>${t.cannot
+            ? ` <span class="badge b-amber">${t.cannot} cannot check</span>` : ''}</div></div>` : ''}
       </div>
       <div class="muted" style="font-size:12.5px">${r.state === 'open'
         ? 'Determinism: each recorded check is reproducible against an unchanged environment (§13). ' +
@@ -4041,42 +4213,70 @@ function brunoResultsHTML(r){
 }
 
 function assessmentResultsHTML(r){
-  const kinds = {};
-  r.results.groups.forEach(g => g.elements.forEach(e => {
-    if (e.st !== 'pass') kinds[e.st] = (kinds[e.st] || 0) + 1; }));
+  const t = resultTally(r.results);
+  const kinds = {}, cannotWhy = {};
+  r.results.endpoints.forEach(e => e.records.forEach(rec => rec.fields.forEach((f, i) => {
+    if (/^fail/.test(f.st)) kinds[f.st] = (kinds[f.st] || 0) + 1;
+    if (f.st === 'cannot'){
+      const k = f.reason || 'other';
+      if (!cannotWhy[k]) cannotWhy[k] = {n:0, anchor:'f-' + e.id + '-' + rec.label.replace(/\W+/g, '_') + '-' + i};
+      cannotWhy[k].n++;
+    }
+  })));
+  const fieldRow = (e, rec, f, i) => `<tr id="${esc('f-' + e.id + '-' + rec.label.replace(/\W+/g, '_') + '-' + i)}">
+    <td class="mono">${esc(f.path)}</td>
+    <td class="muted">${esc(f.type)}</td>
+    <td class="mono">${esc(f.expected)}</td>
+    <td class="mono ${/^fail/.test(f.st) ? 'err' : ''}">${esc(f.observed)}</td>
+    <td>${f.st === 'cannot' ? '<span class="badge b-amber">Cannot check</span>'
+      : `<span class="dotstate ${ST_LABEL[f.st][0]}"><i></i>${esc(ST_LABEL[f.st][1])}</span>`}
+      ${f.why ? `<div class="muted" style="font-size:12px">${esc(f.why)}</div>` : ''}</td></tr>`;
+  const recTally = rec => {
+    const n = st => rec.fields.filter(f => st(f.st)).length;
+    const fail = n(s => /^fail/.test(s)), cannot = n(s => s === 'cannot');
+    return (fail ? `<span class="badge b-red">${fail} failed</span> ` : '<span class="badge b-green">Pass</span> ') +
+      (cannot ? `<span class="badge b-amber">${cannot} cannot check</span>` : '');
+  };
   return `<div class="card">
     <div class="cardhead"><h2>Validation results
-      <span class="hint">By domain, resource and element (FR10). GET requests only.</span></h2></div>
+      <span class="hint">By endpoint, record and field (FR10). GET requests only.</span></h2>
+      <div class="right muted" style="font-size:12.5px">${t.pass} passed &middot; ${t.fail} failed
+        &middot; ${t.cannot} cannot check${t.excluded ? ' &middot; ' + t.excluded + ' excluded' : ''}</div></div>
     ${Object.keys(kinds).length ? `<div class="banner red"><h3>Failures by kind</h3>
       <ul>${Object.entries(kinds).map(([k, n]) =>
         `<li><strong>${esc(ST_LABEL[k][1])}</strong> &mdash; ${n}</li>`).join('')}</ul>
       <p class="muted">A type error and a value mismatch mean different things to a vendor fixing them, so they
       are reported separately (§9.1).</p></div>`
-      : `<div class="banner green"><h3>All element checks passed</h3>
-         <p>Every element declared in the mapping CSV was present and populated, every descriptor resolved to a
-         legitimate Ed-Fi URI, and every value reconciled to the submitted sample data (D8).</p></div>`}
-    ${r.results.groups.map(g => `
-      <h2 style="margin-top:22px">${esc(g.domain)} <span class="hint">/ <span class="mono">${esc(g.resource)}</span></span></h2>
-      ${g.emptyResource ? `<div class="banner amber"><h3>Declared resource returned no data</h3>
-        <p><span class="mono">GET /ed-fi/${esc(g.resource)}</span> returned <strong>200 with an empty
-        collection</strong>. The mapping declares this resource, so the run <em>fails loudly</em> rather than
-        refusing to start — "this resource returned nothing" is the actionable feedback (D24).</p></div>` : ''}
-      <table class="t">
-        <thead><tr><th>Element</th><th>Ed-Fi type</th><th>Expected (sample data)</th>
-          <th>Observed (API response)</th><th>Result</th></tr></thead>
-        <tbody>${g.elements.map(e => `<tr>
-          <td class="mono">${esc(e.el)}</td>
-          <td class="muted">${esc(e.type)}</td>
-          <td class="mono">${esc(e.expected)}</td>
-          <td class="mono ${e.st === 'pass' ? '' : 'err'}">${esc(e.observed)}</td>
-          <td><span class="dotstate ${ST_LABEL[e.st][0]}"><i></i>${esc(ST_LABEL[e.st][1])}</span>
-            ${e.why ? `<div class="muted" style="font-size:12px">${esc(e.why)}</div>` : ''}</td>
-        </tr>`).join('')}</tbody>
-      </table>`).join('')}
+      : `<div class="banner green"><h3>No failed checks</h3>
+         <p>Every checked field was present in the API response and reconciled to the expected payload built
+         from the sample data through the mapping (D8).</p></div>`}
+    ${t.cannot ? `<div class="banner amber"><h3>${t.cannot} field(s) could not be checked</h3>
+      <p>These don’t fail the run, but nothing was verified for them. Each is a gap in the mapping or the sample
+      data, not in the API.</p>
+      <ul>${Object.entries(cannotWhy).map(([k, v]) => `<li><a href="#${esc(v.anchor)}"
+        onclick="document.getElementById('${esc(v.anchor)}').scrollIntoView();return false;">${esc(CANNOT_WHY[k] || k)}</a>
+        &mdash; ${v.n}</li>`).join('')}</ul></div>` : ''}
+    ${r.results.endpoints.map(e => `
+      <h2 style="margin-top:22px"><span class="mono">${esc(e.resource)}</span>
+        <span class="hint">${e.records.length} record(s)</span>
+        ${e.excluded ? `<span class="badge b-gray">Excluded by reviewer</span>` : ''}</h2>
+      ${e.excluded ? `<div class="muted" style="margin-bottom:8px">Reason: “${esc(e.reason || '')}” —
+        listed for traceability, not checked or counted.</div>` : ''}
+      ${e.records.map(rec => `<details ${rec.fields.some(f => /^fail/.test(f.st)) ? 'open' : ''}>
+        <summary><strong>${esc(rec.label)}</strong> ${recTally(rec)}${rec.covers && rec.covers.length
+          ? ` <span class="muted" style="font-size:12px">covers: ${esc(rec.covers.join(', '))}</span>` : ''}${
+          rec.source === 'reviewer' ? ' <span class="tag">added by reviewer</span>' : ''}</summary>
+        <table class="t">
+          <thead><tr><th>Field</th><th>Type</th><th>Expected (sample through mapping)</th>
+            <th>Observed (API response)</th><th>Result</th></tr></thead>
+          <tbody>${rec.fields.map((f, i) => fieldRow(e, rec, f, i)).join('')}</tbody>
+        </table></details>`).join('')}`).join('')}
     <div class="legend">
       <span class="badge b-green">Pass</span><span class="badge b-red">Missing element</span>
       <span class="badge b-red">Invalid descriptor</span><span class="badge b-red">Value mismatch</span>
-      <span class="badge b-red">Type error</span><span class="badge b-red">No data returned</span>
+      <span class="badge b-red">Type error</span><span class="badge b-red">Record not found</span>
+      <span class="badge b-red">Descriptor not loaded</span><span class="badge b-amber">Cannot check</span>
+      <span class="badge b-gray">Excluded by reviewer</span>
       <span class="muted" style="font-size:12.5px">Normalization is applied symmetrically to both sides and is
         versioned with the validator — never configurable per vendor (§9.1).</span>
     </div>

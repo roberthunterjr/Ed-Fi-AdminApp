@@ -1295,3 +1295,50 @@ test('an endpoint that drops out and returns comes back on', () => {
   ra.targets = keep; p.generateMapping(sub);
   assert.equal(p.effectiveScope(sub).endpoints.find(e => e.id === 'accommodationDescriptors').on, true);
 });
+
+const allFields = res => res.endpoints.flatMap(e => e.records.flatMap(r => r.fields));
+test('realistic run surfaces each new kind and cannot-check never fails a run', () => {
+  const p = loadPrototype(), sub = byProduct(p, 'p2');
+  const res = p.runAssessmentChecks(sub, p.effectiveScope(sub), 'realistic');
+  const sts = allFields(res).map(f => f.st);
+  ['fail-value','fail-notfound','fail-missing','fail-notloaded','cannot'].forEach(k => assert.ok(sts.includes(k), k));
+  const t = p.resultTally(p.runAssessmentChecks(sub, p.effectiveScope(sub), 'pass'));
+  assert.equal(t.fail, 0);
+  assert.ok(t.cannot > 0, 'untranslated Passages value is cannot-check');
+  assert.ok(t.pass > 0);
+});
+test('harmless formatting differences pass after normalization', () => {
+  const p = loadPrototype();
+  assert.equal(p.compareValue('Date', '2024-09-01', '2024-09-01T00:00:00Z').st, 'pass');
+  assert.equal(p.compareValue('Decimal', '800', '800.0').st, 'pass');
+  assert.equal(p.compareValue('String', 'ELA', 'ELA ').st, 'pass');
+  assert.equal(p.compareValue('Integer', '40', 'forty').st, 'fail-type');
+  assert.equal(p.compareValue('Integer', '470', '471').st, 'fail-value');
+  assert.equal(p.compareValue('Descriptor', 'uri://ed-fi.org/GradeLevelDescriptor#First grade',
+    'uri://ed-fi.org/GradeLevelDescriptor#first Grade').st, 'pass');
+  assert.equal(p.compareValue('Descriptor', 'uri://ed-fi.org/GradeLevelDescriptor#First grade',
+    'uri://vendor-b.example.com/GradeLevelDescriptor#First grade').st, 'fail-descriptor');
+});
+test('an assessment with no sample is cannot-check, not a failure', () => {
+  const p = loadPrototype(), sub = byProduct(p, 'p2');
+  const res = p.runAssessmentChecks(sub, p.effectiveScope(sub), 'pass');
+  const st = res.endpoints.find(e => e.id === 'studentAssessments');
+  const rec = st.records.find(r => r.label === 'No sample data for this assessment');
+  assert.ok(rec && rec.fields.every(f => f.st === 'cannot'));
+});
+test('excluding studentAssessments marks rows excluded and fails nothing', () => {
+  const p = loadPrototype(), sub = byProduct(p, 'p2');
+  p.setEndpointIncluded(sub, 'studentAssessments', false, 'Reviewing assessment metadata only');
+  const res = p.runAssessmentChecks(sub, p.effectiveScope(sub), 'realistic');
+  const st = res.endpoints.find(e => e.id === 'studentAssessments');
+  assert.ok(st.excluded && st.records.every(r => r.fields.every(f => f.st === 'excluded')));
+  assert.ok(p.resultTally(res).excluded > 0);
+});
+test('a finished run is computed from its pinned scope and passes despite cannot-check', () => {
+  const p = loadPrototype(), sub = byProduct(p, 'p2');
+  const r = p.startRun(sub, 'pass');
+  p.finishRun(r);
+  assert.equal(r.outcome, 'passed');
+  assert.ok(p.resultTally(r.results).cannot > 0);
+  assert.throws(() => p.ASSESSMENT_RESULTS, ReferenceError, 'the fixed fixture is gone');
+});
