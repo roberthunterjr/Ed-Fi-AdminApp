@@ -588,3 +588,13 @@ test('infra and auth failures are distinguishable from scenario failures (FR8)',
   });
   assert.deepEqual(kinds, ['fail-unchanged', 'fail-infra', 'fail-auth']);
 });
+
+/* ---------- mapping validation report (docs/design/2026-11-17-mapping-validation-report-plan.md) ---------- */
+
+test('Vendor B fixture is embedded with the original files', () => {
+  const p = loadPrototype();
+  const fx = p.FIXTURES['vendorb-original'];
+  assert.equal(fx.workbook.Product[0]['Vendor Product'], 'Vendor B');
+  assert.equal(fx.samples['ELA Diagnostic'].rows.length, 156);
+  assert.ok(fx.workbook.ElementDefinitions.some(r => /Math/.test(r['Assessment Type'])));
+});
