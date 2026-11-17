@@ -1392,3 +1392,39 @@ test('opening the tool suggests exact-name columns for unbound elements', () => 
   const issues = p.computeIssues(sub.mappingDraft.doc, p.currentSamples(sub));
   assert.ok(issues.some(i => i.kind === 'no-sample-column' && /confirm the suggested/.test(i.message)));
 });
+
+test('vendor sees the derived scope read-only, with exclusions and reasons', () => {
+  const p = loadPrototype(), sub = byProduct(p, 'p5');
+  const html = p.inScopePanelHTML(sub, false);
+  ['In-scope resources','studentAssessments','Excluded by reviewer','Sample columns not checked',
+   'loaded by the district'].forEach(s => assert.ok(html.includes(s), s));
+  assert.ok(!html.includes('data-act="scopetoggle"'));
+});
+test('reviewer panel exposes scope controls and a payload preview', () => {
+  const p = loadPrototype(), sub = byProduct(p, 'p5');
+  p.APP.scopeView = {endpoint:'studentAssessments', record:0};
+  const html = p.inScopePanelHTML(sub, true);
+  assert.ok(html.includes('data-act="scopetoggle"'));
+  assert.ok(html.includes('&quot;studentAssessmentIdentifier&quot;') || html.includes('"studentAssessmentIdentifier"'));
+  assert.ok(/covers:/.test(html));
+  assert.ok(html.includes('GET /ed-fi/studentAssessments?studentUniqueId='));
+  assert.ok(html.includes('data-act="scopeaddrow"'));
+});
+test('the vendor start screen and the reviewer submission both carry the panel', () => {
+  const p = loadPrototype();
+  const s2 = byProduct(p, 'p2');
+  const start = p.vendorNewRun(s2.id);
+  assert.ok(start.includes('In-scope resources'));
+  assert.ok(start.includes('No sample data for this assessment'), 'Math has no sample');
+  const f2 = byProduct(p, 'p5');
+  const rev = p.reviewerSubmission(f2.id);
+  assert.ok(rev.includes('Run scope'));
+  assert.match(rev, /\d+ cannot check/);
+});
+test('the scope reason modal refuses an empty reason', () => {
+  const p = loadPrototype(), sub = byProduct(p, 'p5');
+  try { p.scopeReasonModal(sub, {op:'exclude', id:'studentAssessments'}); } catch { /* stub DOM */ }
+  assert.match(p.$('#overlay').innerHTML, /data-act="doscope"/);
+  const r = p.applyScopeChange(sub, {op:'exclude', id:'studentAssessments'}, '  ');
+  assert.deepEqual(r, {ok:false, error:'A reason is required.'});
+});

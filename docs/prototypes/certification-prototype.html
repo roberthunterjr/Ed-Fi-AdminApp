@@ -3750,6 +3750,165 @@ function sampleSlotRows(sub, a, reviewerView){
   }).join('');
 }
 
+/* ---- In-scope resources (run-scope design §5.7) ----
+   What the next run will check: derived endpoints, rows, fields, descriptors and
+   the expected payload for any record. Read-only for the vendor; the reviewer
+   gets the scope controls (§5.6). */
+function scopeRecords(doc, ep, scope, samples){
+  if (ep.kind === 'assessment') return doc.assessments.map(a => ({label:a.title || a.type,
+    get:'GET /ed-fi/assessments?assessmentIdentifier=' + a.identifier + '&namespace=' + doc.product.namespace,
+    payload:expectedAssessment(doc, a), cannot:[]}));
+  if (ep.kind === 'objective') return doc.assessments.flatMap(a => expectedObjectives(doc, a).map(o => ({
+    label:(a.title || a.type) + ' › ' + o.objective,
+    get:'GET /ed-fi/objectiveAssessments?assessmentIdentifier=' + a.identifier +
+      (o.payload.identificationCode ? '&identificationCode=' + o.payload.identificationCode : ''),
+    payload:o.payload, cannot:[]})));
+  if (ep.kind === 'student') return doc.assessments.flatMap(a => {
+    const s = samples[a.identifier];
+    if (!s) return [{label:'No sample data for this assessment (' + (a.title || a.type) + ')', get:'—',
+      payload:null, cannot:[{path:'all student fields', reason:'no-sample'}]}];
+    return (scope.rows[a.identifier] || []).map(r => {
+      const exp = expectedStudentAssessment(doc, a, s, r.index);
+      return {label:keyLabel(r.key), row:r, assessment:a.identifier,
+        get:'GET /ed-fi/studentAssessments?studentUniqueId=' + r.key.studentId, payload:exp.payload, cannot:exp.cannot};
+    });
+  });
+  return ep.descriptors.map(uri => ({label:uri.split('#').pop(),
+    get:'GET /ed-fi/' + ep.resource + '?namespace=' + encodeURI(uri.split('#')[0].replace(/[^/]+$/, '')) +
+      '&codeValue=' + encodeURIComponent(uri.split('#').pop()),
+    payload:{namespace:uri.split('#')[0].replace(/[^/]+$/, ''), codeValue:uri.split('#').pop()}, cannot:[]}));
+}
+function inScopePanelHTML(sub, editable){
+  const cur = currentVersion(sub, 'mapping');
+  const doc = mappingDocFor(sub, cur);
+  if (!doc) return `<h2>In-scope resources</h2><div class="empty">No mapping CSV uploaded, so no resources are in scope.</div>`;
+  const scope = effectiveScope(sub);
+  const samples = currentSamples(sub);
+  const eps = deriveEndpoints(doc, samples);
+  const view = APP.scopeView || {};
+  const rs = runScopeOf(sub);
+  const header = sampleSlots(sub).map(sl => {
+    const s = sl.current;
+    const n = (scope.rows[sl.identifier] || []).length;
+    return 'sample data ' + esc(sl.title) + (s ? ' v' + s.v + ' (' + s.rows.length + ' rows, ' + n + ' selected)' : ' — none');
+  }).join(' · ');
+  const epRow = ep => {
+    const st = scope.endpoints.find(e => e.id === ep.id) || {on:true};
+    const open = view.endpoint === ep.id;
+    const recs = scopeRecords(doc, ep, scope, samples);
+    const state = editable
+      ? `<button class="btn ${st.on ? '' : 'ghost '}sm" data-act="scopetoggle" data-sub="${sub.id}" data-id="${esc(ep.id)}"
+          title="${st.on ? 'Exclude from runs (reason required)' : 'Include in runs again'}">${st.on ? 'On' : 'Off'}</button>`
+      : (st.on ? '<span class="badge b-green">On</span>' : '<span class="badge b-gray">Off</span>');
+    const descCount = ep.kind === 'descriptor' ? ep.descriptors.length
+      : ep.fields.filter(f => /Descriptor/.test(f.path) || / · translated$/.test(f.rule)).length;
+    let body = '';
+    if (open){
+      const ri = Math.min(view.record || 0, Math.max(recs.length - 1, 0));
+      const rec = recs[ri];
+      const unchecked = ep.fields.filter(f => ep.kind === 'student' && !f.column);
+      body = `<tr><td colspan="6" style="background:#fafbfc">
+        <div class="muted" style="font-size:12.5px;margin-bottom:6px">${recs.length} request(s), e.g.
+          <span class="mono">${esc(rec ? rec.get : '—')}</span></div>
+        <table class="t"><thead><tr><th>Field checked</th><th>Source element</th><th>Sample column</th><th>Rule</th></tr></thead>
+          <tbody>${ep.fields.map(f => `<tr><td class="mono">${esc(f.path)}</td><td>${esc(f.element || '—')}</td>
+            <td class="mono">${f.column ? esc(f.column) : (ep.kind === 'student' ? '<span class="badge b-amber">Cannot check</span>' : '—')}</td>
+            <td class="muted">${esc(f.rule)}</td></tr>`).join('')}</tbody></table>
+        ${unchecked.length ? `<div class="muted" style="font-size:12.5px">${unchecked.length} field(s) have no confirmed
+          sample column and will be <strong>Cannot check</strong>.</div>` : ''}
+        ${ep.kind === 'descriptor' ? `<div style="margin-top:8px"><strong>Descriptors checked:</strong>
+          <ul>${ep.descriptors.map(u => `<li class="mono" style="font-size:12px">${esc(u)}</li>`).join('')}</ul></div>` : ''}
+        ${ep.kind === 'student' ? rowsHTML(sub, doc, scope, samples, editable) : ''}
+        ${recs.length ? `<div style="margin-top:12px"><label><strong>Expected payload</strong> for
+          <select data-act="scoperecord" data-sub="${sub.id}">${recs.map((r, i) =>
+            `<option value="${i}"${i === ri ? ' selected' : ''}>${esc(r.label)}</option>`).join('')}</select></label>
+          ${rec && rec.cannot.length ? `<div class="banner amber" style="margin:8px 0"><h3>Cannot check for this record</h3>
+            <ul>${rec.cannot.map(c => `<li><span class="mono">${esc(c.path)}</span> — ${esc(CANNOT_WHY[c.reason] || c.reason)}${
+              c.raw ? ' ("' + esc(c.raw) + '")' : ''}</li>`).join('')}</ul></div>` : ''}
+          ${rec && rec.payload ? `<pre class="mono" style="font-size:12px;max-height:340px;overflow:auto;background:#f6f8fa;padding:10px;border-radius:6px">${
+            esc(JSON.stringify(rec.payload, null, 2))}</pre>` : ''}</div>` : ''}
+      </td></tr>`;
+    }
+    return `<tr>
+      <td>${state}</td>
+      <td class="mono"><button class="linkish" data-act="scopeexpand" data-sub="${sub.id}" data-id="${esc(ep.id)}">${
+        open ? '▾' : '▸'} ${esc(ep.resource)}</button>${st.on ? ''
+        : `<div style="font-size:12px"><span class="badge b-gray">Excluded by reviewer</span> “${esc(st.reason || '')}”</div>`}</td>
+      <td>${recs.filter(r => r.payload).length} record(s)${ep.kind === 'student' ? doc.assessments
+        .filter(a => !samples[a.identifier]).map(a => `<div><span class="badge b-amber">Cannot check</span>
+          <span style="font-size:12px">No sample data for this assessment: ${esc(a.title || a.type)}</span></div>`).join('') : ''}</td>
+      <td>${ep.fields.length} field(s)</td><td>${descCount} descriptor(s)</td>
+      <td class="muted" style="font-size:12px">${{assessment:'From the mapping', objective:'From the mapping',
+        student:'Sample rows through the mapping', descriptor:'Must exist in the environment'}[ep.kind]}</td>
+    </tr>${body}`;
+  };
+  const unmapped = doc.assessments.filter(a => samples[a.identifier]).map(a =>
+    `<div style="margin-top:6px"><strong>${esc(a.title || a.type)}:</strong> <span class="muted" style="font-size:12.5px">${
+      unmappedColumns(doc, a, samples[a.identifier]).map(esc).join(', ') || 'none'}</span></div>`).join('');
+  return `<h2>${editable ? 'Run scope' : 'In-scope resources'} <span class="hint">${editable
+      ? 'In-scope resources for this submission’s runs. You can narrow it; every change needs a reason and stales earlier runs.'
+      : 'Derived from the mapping and sample data. The reviewer may narrow it (§5.6).'}</span></h2>
+    ${editable ? '<div class="muted" style="font-size:12.5px;margin-bottom:4px">In-scope resources</div>' : ''}
+    <div class="muted" style="margin-bottom:12px">from mapping v${cur.v} · ${header || 'no sample data'}</div>
+    <table class="t"><thead><tr><th>Included</th><th>Endpoint</th><th>Records</th><th>Fields</th><th>Descriptors</th><th>Source</th></tr></thead>
+      <tbody>${eps.map(epRow).join('')}</tbody></table>
+    ${scope.orphans.length ? `<div class="banner amber" style="margin-top:12px"><h3>Row adjustments that no longer apply</h3>
+      <ul>${scope.orphans.map(o => `<li>${esc(keyLabel(o.key))} — Row no longer in sample (${o.kind === 'add' ? 'added' : 'removed'}:
+        “${esc(o.reason || '')}”)${editable ? ` <button class="btn ghost sm" data-act="scopeundo" data-sub="${sub.id}"
+          data-asm="${esc(o.assessment)}" data-sid="${esc(o.key.studentId)}" data-aid="${esc(o.key.activityId)}">Clear</button>` : ''}</li>`).join('')}</ul></div>` : ''}
+    <h3 style="margin-top:16px">Sample columns not checked <span class="hint">Nothing in the mapping reads them.</span></h3>
+    ${unmapped || '<div class="muted">No sample data uploaded.</div>'}
+    <div class="muted" style="margin-top:12px;font-size:12.5px">GET requests only; no writes or updates (§5).
+      A declared resource the environment returns nothing for is a run <em>failure</em>, not a refusal to run (D24).
+      Blank sample cells produce no expected value.${rs.rowRemoves.length || rs.rowAdds.length
+        ? ' ' + (rs.rowAdds.length + rs.rowRemoves.length) + ' row adjustment(s) by the reviewer.' : ''}</div>`;
+}
+function rowsHTML(sub, doc, scope, samples, editable){
+  const rs = runScopeOf(sub);
+  return doc.assessments.filter(a => samples[a.identifier]).map(a => {
+    const s = samples[a.identifier];
+    const rows = scope.rows[a.identifier] || [];
+    const removed = rs.rowRemoves.filter(x => x.assessment === a.identifier);
+    const keys = rowKeyColumns(doc, a, s);
+    const grade = sampleCol(s, 'Student Grade');
+    const btn = (act, label, key) => `<button class="btn ghost sm" data-act="${act}" data-sub="${sub.id}"
+      data-asm="${esc(a.identifier)}" data-sid="${esc(key.studentId)}" data-aid="${esc(key.activityId)}">${label}</button>`;
+    return `<h3 style="margin-top:12px">Rows checked — ${esc(a.title || a.type)} <span class="hint">${rows.length} of ${s.rows.length}</span></h3>
+      ${keys.student < 0 || keys.activity < 0 ? `<div class="banner amber"><p>No row can be matched to a GET until the
+        student reference and administration identifier are mapped. All student fields are <strong>Cannot check</strong>.</p></div>` : `
+      <table class="t"><thead><tr><th>Row</th><th>Why it is checked</th>${editable ? '<th class="act"></th>' : ''}</tr></thead><tbody>
+        ${rows.map(r => `<tr><td class="mono">${esc(keyLabel(r.key))}</td>
+          <td>${r.source === 'reviewer' ? `<span class="tag">added by reviewer</span> “${esc(r.reason || '')}”`
+            : `<span class="muted" style="font-size:12px">covers: ${esc(r.covers.join(', '))}</span>`}</td>
+          ${editable ? `<td class="act">${r.source === 'reviewer' ? btn('scopeundo', 'Undo', r.key) : btn('scoperemoverow', 'Remove', r.key)}</td>` : ''}</tr>`).join('')}
+        ${removed.map(x => `<tr><td class="mono muted"><s>${esc(keyLabel(x.key))}</s></td>
+          <td class="muted">removed by reviewer “${esc(x.reason)}”</td>
+          ${editable ? `<td class="act">${btn('scopeundo', 'Undo', x.key)}</td>` : ''}</tr>`).join('')}</tbody></table>
+      ${editable ? `<div class="mapform" style="margin-top:8px"><select id="scopeAddRow-${esc(a.identifier)}">${s.rows.map((r, i) =>
+          `<option value="${i}">${esc(r[keys.student])} · grade ${esc(grade >= 0 ? r[grade] : '?')}</option>`).join('')}</select>
+        <button class="btn ghost sm" data-act="scopeaddrow" data-sub="${sub.id}" data-asm="${esc(a.identifier)}">Add row</button></div>` : ''}`}`;
+  }).join('');
+}
+/* A scope change, applied with its reason. Shared by the modal and tests. */
+function applyScopeChange(sub, change, reason){
+  if (change.op === 'exclude') return setEndpointIncluded(sub, change.id, false, reason);
+  if (change.op === 'add') return addScopeRow(sub, change.assessment, change.key, reason);
+  if (change.op === 'remove') return removeScopeRow(sub, change.assessment, change.key, reason);
+  return {ok:false, error:'Unknown change.'};
+}
+function scopeReasonModal(sub, change, error){
+  APP.pendingScope = change;
+  const what = change.op === 'exclude' ? 'Exclude ' + change.id + ' from runs'
+    : (change.op === 'add' ? 'Add row ' : 'Remove row ') + keyLabel(change.key);
+  modal(esc(what), `
+    ${error ? `<div class="banner red"><p>${esc(error)}</p></div>` : ''}
+    <div class="field"><label>Reason <span class="muted">(required — the vendor sees it, and it is kept in history)</span></label>
+      <textarea id="scopeReason" rows="3"></textarea></div>
+    <div class="banner"><p>Runs that pinned the current scope will be marked stale.</p></div>`,
+    `<button class="btn ghost" data-act="cancel">Cancel</button>
+     <button class="btn" data-act="doscope" data-sub="${sub.id}">Apply</button>`);
+}
+
 function runTable(rows, opts){
   opts = opts || {};
   if (!rows.length) return '<div class="empty">No runs yet.</div>';
@@ -3902,20 +4061,7 @@ function vendorNewRun(id){
         <button>&rsaquo;</button><button>&raquo;</button>
         <select><option>Show 10</option><option>Show 25</option></select></div>
     </div>` : `
-    <div class="card">
-      <h2>In-scope resources <span class="hint">Read from the mapping CSV — the platform does not derive the mapping (§5).</span></h2>
-      ${mapping ? `<div class="muted" style="margin-bottom:12px">From
-        <strong>${esc(mapping.name)}</strong> (v${mapping.v}, uploaded ${fmtShort(mapping.at)} by ${esc(mapping.by)}).</div>
-      <table class="t"><thead><tr><th>Domain</th><th>Resource</th><th>Declared elements</th><th>Checks</th></tr></thead>
-        <tbody>${ASSESSMENT_RESULTS.map(g2 => `<tr>
-          <td>${esc(g2.domain)}</td><td class="mono">${esc(g2.resource)}</td>
-          <td>${g2.elements.length}</td>
-          <td class="muted">presence &middot; descriptor validity &middot; value reconciliation</td></tr>`).join('')}</tbody>
-      </table>
-      <div class="muted" style="margin-top:12px;font-size:12.5px">GET requests only; no writes or updates (§5).
-        A declared resource the environment returns nothing for is a run <em>failure</em>, not a refusal to
-        run (D24).</div>`
-      : '<div class="empty">No mapping CSV uploaded, so no resources are in scope.</div>'}
+    <div class="card">${inScopePanelHTML(sub, false)}
     </div>`;
 
   return crumbs([['Home', '#/products'], ['My products', '#/products'],
@@ -4965,7 +5111,11 @@ function reviewerSubmission(id){
         <div><div class="k">Status</div><div class="v">${badge(sub.status)}</div></div>
         <div><div class="k">Cleared by</div><div class="v">${esc(STATUS[sub.status].who)}</div></div>
         <div><div class="k">Qualifying run</div><div class="v">${g.qualifying
-          ? `<a href="#/run/${g.qualifying.id}">${esc(g.qualifying.id)}</a>` : 'None'}</div></div>
+          ? `<a href="#/run/${g.qualifying.id}">${esc(g.qualifying.id)}</a>${(() => {
+              if (!g.qualifying.results || g.qualifying.results.kind !== 'assessments') return '';
+              const tq = resultTally(g.qualifying.results);
+              return tq.cannot ? ` <span class="badge b-amber">${tq.cannot} cannot check</span>` : '';
+            })()}` : 'None'}</div></div>
         <div><div class="k">Runs recorded</div><div class="v">${runs.length}
           <span class="muted">(${runs.filter(r => r.completeness === 'Complete').length} qualifying)</span></div></div>
         <div><div class="k">Submitted</div><div class="v">${fmt(sub.created)}</div></div>
@@ -4979,6 +5129,8 @@ function reviewerSubmission(id){
         correctly. The platform never approves or rejects a certification.</p>
       </div>
     </div>
+
+    ${isAssessments(sub) ? `<div class="card">${inScopePanelHTML(sub, true)}</div>` : ''}
 
     ${sub.comments.length ? `<div class="card"><h2>Review comments</h2>
       <ul class="hist">${sub.comments.map(c => `<li><span class="when">${fmtShort(c.at)}</span>
@@ -5067,7 +5219,7 @@ function bind(){
   const ACTION_EVENT = {setparam:'input', toggleopenruns:'change', maptoggle:'change', mapsettype:'change',
     mapsetenum:'change', mapsetkey:'change', mapnotes:'change', mapissuenote:'change', mapaddtarget:'change',
     mapsetproduct:'change', mapsetasm:'change', mapsetdtype:'change', mapsetentrydtype:'change',
-    mapsamplecol:'change', maptranslate:'change', mapdatefmt:'change', mapobjcode:'change'};
+    mapsamplecol:'change', maptranslate:'change', mapdatefmt:'change', mapobjcode:'change', scoperecord:'change'};
   main.querySelectorAll('[data-act]').forEach(node => {
     node.addEventListener(ACTION_EVENT[node.dataset.act] || 'click', ev =>
       handleAction(node.dataset.act, node.dataset.sub ? submission(node.dataset.sub) : null, node, ev));
@@ -5104,6 +5256,31 @@ function handleAction(act, sub, node, ev){
     case 'mapopen': openMappingDraft(sub); go('#/mapping/' + sub.id); break;
     case 'mapblank': startBlankMapping(sub); go('#/mapping/' + sub.id); break;
     case 'mapimport': importModal(sub); break;
+    case 'scopeexpand':
+      APP.scopeView = (APP.scopeView || {}).endpoint === node.dataset.id ? {} : {endpoint:node.dataset.id, record:0};
+      render(); break;
+    case 'scoperecord': APP.scopeView = Object.assign({}, APP.scopeView, {record:+node.value}); render(); break;
+    case 'scopetoggle': {
+      const st = effectiveScope(sub).endpoints.find(x => x.id === node.dataset.id);
+      if (st && st.on) scopeReasonModal(sub, {op:'exclude', id:node.dataset.id});
+      else { setEndpointIncluded(sub, node.dataset.id, true); render(); }
+      break;
+    }
+    case 'scopeaddrow': {
+      const s = currentSample(sub, node.dataset.asm);
+      const doc = mappingDocFor(sub, currentVersion(sub, 'mapping'));
+      const a = doc.assessments.find(x => x.identifier === node.dataset.asm);
+      const i = +(($('#scopeAddRow-' + node.dataset.asm) || {}).value || 0);
+      scopeReasonModal(sub, {op:'add', assessment:node.dataset.asm, key:rowKey(s, rowKeyColumns(doc, a, s), i)});
+      break;
+    }
+    case 'scoperemoverow':
+      scopeReasonModal(sub, {op:'remove', assessment:node.dataset.asm,
+        key:{studentId:node.dataset.sid, activityId:node.dataset.aid}});
+      break;
+    case 'scopeundo':
+      undoScopeRow(sub, node.dataset.asm, {studentId:node.dataset.sid, activityId:node.dataset.aid});
+      render(); break;
     case 'mapview': go('#/mapping/' + sub.id); break;
     case 'mapgenerate': generateModal(sub); break;
     default:
@@ -5266,6 +5443,15 @@ function bindOverlay(){
       const act = node.dataset.act;
       const sub = node.dataset.sub ? submission(node.dataset.sub) : null;
       if (act === 'cancel'){ closeModal(); return; }
+      if (act === 'doscope'){
+        const change = APP.pendingScope;
+        const r = applyScopeChange(sub, change, ($('#scopeReason') || {}).value || '');
+        if (!r.ok){ scopeReasonModal(sub, change, r.error); return; }
+        APP.pendingScope = null;
+        closeModal();
+        render();
+        return;
+      }
       if (act === 'douploadconfirm'){
         const type = node.dataset.type;
         const name = ($('#fileName') && $('#fileName').value.trim()) || 'upload.dat';
