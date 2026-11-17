@@ -766,6 +766,7 @@ const asmSub = p => p.APP.submissions.find(s => s.productId === 'p2');
 
 test('opening the tool on an uploaded CSV parses it into a draft', () => {
   const p = loadPrototype(); const s = asmSub(p);
+  s.artifacts.mapping.pop();   /* the seed's v2 came from the tool; v1 is the uploaded CSV */
   const d = p.openMappingDraft(s);
   assert.equal(d.baseVersion, 1);
   assert.equal(d.doc.importReport.source, 'csv');
@@ -794,12 +795,12 @@ test('generating from a blank mapping is allowed and stales older runs', () => {
   const old = p.APP.runs.find(r => r.submissionId === s.id && r.pinned.mapping === 1);
   p.startBlankMapping(s);
   const v = p.generateMapping(s);
-  assert.equal(v.v, 2);
+  assert.equal(v.v, 3, 'the seed already has v1 (uploaded) and v2 (tool)');
   assert.equal(v.source, 'tool');
   assert.ok(v.issues.some(i => i.key === 'unmapped:-:-:-:assessments'), 'empty mapping is flagged, not blocked');
   assert.equal(p.isStale(s, old), true);
   assert.equal(s.mappingDraft.dirty, false);
-  assert.match(s.history[0].what, /Mapping generated in mapping tool: Vendor mapping CSV v2/);
+  assert.match(s.history[0].what, /Mapping generated in mapping tool: Vendor mapping CSV v3/);
 });
 
 test('the reviewer-side seed carries 4 issues, 3 explained', () => {
@@ -981,10 +982,10 @@ test('replacing the CSV discards the mapping draft, with a warning and an audit 
   /* modal() writes the overlay, then binds via a DOM stub that returns null — the markup is what we check */
   try { p.uploadModal(s, 'mapping'); } catch { /* stub DOM */ }
   assert.match(p.$('#overlay').innerHTML, /discards your mapping-tool draft/);
-  p.uploadArtifact(s, 'mapping', 'vendorb-assessments-mapping-v2.csv', false);
+  p.uploadArtifact(s, 'mapping', 'vendorb-assessments-mapping-v3.csv', false);
   assert.equal(s.mappingDraft, null);
   assert.ok(s.history.some(h => /Mapping tool draft discarded/.test(h.what)));
-  assert.equal(p.openMappingDraft(s).baseVersion, 2);
+  assert.equal(p.openMappingDraft(s).baseVersion, 3);
 });
 
 test('a collection entry key must match the descriptor the collection is keyed by', () => {
@@ -1251,4 +1252,46 @@ test('endpoints derive from the mapping', () => {
   assert.equal(eps.find(e => e.id === 'studentAssessments').recordCount, 12);
   assert.ok(p.unmappedColumns(doc, ela, sample).includes('Overall Placement For Families'));
   assert.ok(!p.unmappedColumns(doc, ela, sample).includes('Phonics Scale Score'));
+});
+
+test('excluding an endpoint needs a reason, is audited and stales earlier runs', () => {
+  const p = loadPrototype(), sub = byProduct(p, 'p2');
+  const r = p.startRun(sub, 'pass');
+  assert.deepEqual(p.setEndpointIncluded(sub, 'accommodationDescriptors', false, ''),
+    {ok:false, error:'A reason is required.'});
+  assert.equal(p.setEndpointIncluded(sub, 'accommodationDescriptors', false, 'Loaded by district').ok, true);
+  assert.equal(p.effectiveScope(sub).endpoints.find(e => e.id === 'accommodationDescriptors').on, false);
+  assert.match(sub.history[0].what, /accommodationDescriptors.*Loaded by district/);
+  assert.equal(p.isStale(sub, r), true);
+});
+test('a row adjustment whose row leaves the sample is shown as an orphan', () => {
+  const p = loadPrototype(), sub = byProduct(p, 'p2');
+  const key = {studentId:'EdFiCertificationStudent99', activityId:'VB-ACT-0099'};
+  assert.equal(p.addScopeRow(sub, 'VENDORB-DIAGNOSTIC-ELA', key, '').ok, false);
+  p.addScopeRow(sub, 'VENDORB-DIAGNOSTIC-ELA', key, 'Spot check');
+  assert.ok(p.effectiveScope(sub).rows['VENDORB-DIAGNOSTIC-ELA'].some(r => r.key.studentId === key.studentId && r.source === 'reviewer'));
+  p.uploadArtifact(sub, 'sample', 'ela-small.csv', false, 'VENDORB-DIAGNOSTIC-ELA');
+  p.currentSample(sub, 'VENDORB-DIAGNOSTIC-ELA').rows.splice(50);   /* drop row 99 */
+  const s = p.effectiveScope(sub);
+  assert.ok(s.orphans.some(o => o.key.studentId === 'EdFiCertificationStudent99'));
+  assert.ok(!s.rows['VENDORB-DIAGNOSTIC-ELA'].some(r => r.key.studentId === 'EdFiCertificationStudent99'));
+});
+test('removing a coverage row needs a reason and undo restores it', () => {
+  const p = loadPrototype(), sub = byProduct(p, 'p2');
+  const first = p.effectiveScope(sub).rows['VENDORB-DIAGNOSTIC-ELA'][0];
+  assert.equal(p.removeScopeRow(sub, 'VENDORB-DIAGNOSTIC-ELA', first.key, 'Duplicate of another case').ok, true);
+  assert.ok(!p.effectiveScope(sub).rows['VENDORB-DIAGNOSTIC-ELA'].some(r => r.key.studentId === first.key.studentId));
+  p.undoScopeRow(sub, 'VENDORB-DIAGNOSTIC-ELA', first.key);
+  assert.ok(p.effectiveScope(sub).rows['VENDORB-DIAGNOSTIC-ELA'].some(r => r.key.studentId === first.key.studentId));
+});
+test('an endpoint that drops out and returns comes back on', () => {
+  const p = loadPrototype(), sub = byProduct(p, 'p2');
+  p.setEndpointIncluded(sub, 'accommodationDescriptors', false, 'x');
+  const draft = p.openMappingDraft(sub);
+  const ra = draft.doc.elements.find(e => e.name === 'Read Aloud');
+  const keep = ra.targets; ra.targets = [];
+  p.generateMapping(sub);
+  assert.ok(!p.effectiveScope(sub).endpoints.some(e => e.id === 'accommodationDescriptors'));
+  ra.targets = keep; p.generateMapping(sub);
+  assert.equal(p.effectiveScope(sub).endpoints.find(e => e.id === 'accommodationDescriptors').on, true);
 });

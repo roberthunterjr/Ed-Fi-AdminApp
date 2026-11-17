@@ -1515,6 +1515,16 @@ function hist(sub, what, who, when){
      s2 has the ELA sample only, so its Math slot is missing. */
   Object.assign(s2.artifacts.sample[0], {assessment:'VENDORB-DIAGNOSTIC-ELA',
     columns:SAMPLE_ELA.columns.slice(), rows:SAMPLE_ELA.rows.map(r => r.slice())});
+  /* v2: the vendor finished the mapping in the tool, binding sample columns and
+     translating values (all but Read Aloud's "…and Passages"). */
+  (function(){
+    const doc = buildDemoMapping({name:'Vendor B Diagnostic', namespace:'uri://vendor-b.example.com/', idPrefix:'VENDORB'});
+    const at = d(10,14,30);
+    const issues = computeIssues(doc, {'VENDORB-DIAGNOSTIC-ELA':s2.artifacts.sample[0]});
+    s2.artifacts.mapping.push({v:2, name:'vendorb-assessments-mapping-v2.csv', by:V, at, source:'tool',
+      doc, issues, summary:issueSummary(issues, doc)});
+    s2.artifactsChangedAt = at;
+  })();
 
   /* p3 / MTSS v5 — nothing uploaded: Draft */
   mkSubmission({productId:'p3', model:'mtss', status:'draft',
@@ -2594,7 +2604,8 @@ function deriveEndpoints(doc, samples){
   const byType = {};
   const use = v => { if (v) (byType[v.type] = byType[v.type] || new Set()).add(v.uri); };
   doc.elements.forEach(e => {
-    e.translations.filter(x => x.kind === 'descriptor').forEach(x => use(bankValue(doc, x.value)));
+    if (e.targets.some(t => (targetByPath(t.path) || {}).type === 'Descriptor'))
+      e.translations.filter(x => x.kind === 'descriptor').forEach(x => use(bankValue(doc, x.value)));
     e.targets.forEach(t => { use(bankValue(doc, t.entryKey)); use(bankValue(doc, t.datatype)); });
   });
   doc.assessments.forEach(a => use(doc.bank.values.find(v => v.uri === a.category)));
@@ -2666,6 +2677,100 @@ function buildDemoMapping(o){
     if (obj) setObjectiveCode(doc, ela.id, obj, o.idPrefix + '-ELA-' + code);
   });
   return doc;
+}
+
+/* ---------- run scope: reviewer-owned, per submission (run-scope design §5.6) ----------
+   Derived from the current mapping and samples. The reviewer can only narrow it:
+   exclude endpoints and adjust rows, each with a reason that lands in history.
+   Runs pin the effective scope at start; changing it stales earlier runs. */
+function runScopeOf(sub){
+  return sub.runScope || (sub.runScope = {excluded:{}, rowAdds:[], rowRemoves:[]});
+}
+function sameKey(a, b){ return a.studentId === b.studentId && a.activityId === b.activityId; }
+function effectiveScope(sub){
+  const cur = currentVersion(sub, 'mapping');
+  const doc = mappingDocFor(sub, cur);
+  const empty = {mapping:null, samples:{}, endpoints:[], rows:{}, orphans:[]};
+  if (!doc) return empty;
+  const rs = runScopeOf(sub);
+  const samples = currentSamples(sub);
+  const eps = deriveEndpoints(doc, samples);
+  /* An exclusion goes with its endpoint: one the mapping no longer implies is
+     forgotten, so if a later version brings it back it comes back on. */
+  Object.keys(rs.excluded).forEach(id => { if (!eps.some(e => e.id === id)) delete rs.excluded[id]; });
+  const endpoints = eps.map(e => rs.excluded[e.id]
+    ? {id:e.id, on:false, reason:rs.excluded[e.id].reason} : {id:e.id, on:true});
+  const rows = {}, orphans = [];
+  doc.assessments.forEach(a => {
+    const s = samples[a.identifier];
+    if (!s) return;
+    const keys = rowKeyColumns(doc, a, s);
+    const find = key => keys.student < 0 ? -1 : s.rows.findIndex((r, i) => sameKey(rowKey(s, keys, i), key));
+    const removed = rs.rowRemoves.filter(x => x.assessment === a.identifier);
+    const list = selectRows(doc, a, s).map(r => Object.assign(r, {source:'coverage'}))
+      .filter(r => !removed.some(x => sameKey(x.key, r.key)));
+    rs.rowAdds.filter(x => x.assessment === a.identifier).forEach(x => {
+      const i = find(x.key);
+      if (i < 0) orphans.push({key:x.key, assessment:a.identifier, kind:'add', reason:x.reason});
+      else if (!list.some(r => r.index === i))
+        list.push({index:i, key:x.key, covers:[], source:'reviewer', reason:x.reason});
+    });
+    removed.forEach(x => {
+      if (find(x.key) < 0) orphans.push({key:x.key, assessment:a.identifier, kind:'remove', reason:x.reason});
+    });
+    rows[a.identifier] = list;
+  });
+  return {mapping:cur.v, samples:pinnedSampleMap(sub), endpoints, rows, orphans};
+}
+function scopeSignature(scope){
+  if (!scope) return '';
+  return JSON.stringify({e:scope.endpoints.map(e => [e.id, e.on]),
+    r:Object.keys(scope.rows).sort().map(k => [k, scope.rows[k].map(x => x.key.studentId + '|' + x.key.activityId)])});
+}
+function scopeChanged(sub, what){
+  sub.scopeChangedAt = tick();
+  hist(sub, 'Run scope: ' + what);
+}
+function setEndpointIncluded(sub, id, on, reason){
+  const rs = runScopeOf(sub);
+  if (!effectiveScope(sub).endpoints.some(e => e.id === id)) return {ok:false, error:'Unknown endpoint.'};
+  if (!on){
+    if (!String(reason || '').trim()) return {ok:false, error:'A reason is required.'};
+    rs.excluded[id] = {reason:String(reason).trim(), by:me(), at:tick()};
+    scopeChanged(sub, 'excluded ' + id + ' — "' + rs.excluded[id].reason + '"');
+  } else {
+    if (!rs.excluded[id]) return {ok:true};
+    delete rs.excluded[id];
+    scopeChanged(sub, 'included ' + id + ' again');
+  }
+  return {ok:true};
+}
+function keyLabel(key){ return key.studentId + ' (' + key.activityId + ')'; }
+function addScopeRow(sub, assessment, key, reason){
+  if (!String(reason || '').trim()) return {ok:false, error:'A reason is required.'};
+  const rs = runScopeOf(sub);
+  rs.rowRemoves = rs.rowRemoves.filter(x => !(x.assessment === assessment && sameKey(x.key, key)));
+  rs.rowAdds.push({key, assessment, reason:String(reason).trim(), by:me(), at:tick()});
+  scopeChanged(sub, 'added row ' + keyLabel(key) + ' — "' + String(reason).trim() + '"');
+  return {ok:true};
+}
+function removeScopeRow(sub, assessment, key, reason){
+  if (!String(reason || '').trim()) return {ok:false, error:'A reason is required.'};
+  const rs = runScopeOf(sub);
+  const wasAdded = rs.rowAdds.some(x => x.assessment === assessment && sameKey(x.key, key));
+  rs.rowAdds = rs.rowAdds.filter(x => !(x.assessment === assessment && sameKey(x.key, key)));
+  if (!wasAdded) rs.rowRemoves.push({key, assessment, reason:String(reason).trim(), by:me(), at:tick()});
+  scopeChanged(sub, 'removed row ' + keyLabel(key) + ' — "' + String(reason).trim() + '"');
+  return {ok:true};
+}
+function undoScopeRow(sub, assessment, key){
+  const rs = runScopeOf(sub);
+  const match = x => x.assessment === assessment && sameKey(x.key, key);
+  if (!rs.rowAdds.some(match) && !rs.rowRemoves.some(match)) return {ok:true};
+  rs.rowAdds = rs.rowAdds.filter(x => !match(x));
+  rs.rowRemoves = rs.rowRemoves.filter(x => !match(x));
+  scopeChanged(sub, 'undid the change to row ' + keyLabel(key));
+  return {ok:true};
 }
 function issueSummary(issues, doc){
   return {total:issues.length,
@@ -2797,6 +2902,8 @@ const busyEnv = env => APP.runs.find(r => r.env === env &&
   (r.state === 'queued' || r.state === 'running'));
 /* FR11 — a run is stale when its pinned versions are no longer current. */
 function isStale(sub, r){
+  if (isAssessments(sub) && r.pinned && r.pinned.scope &&
+      scopeSignature(r.pinned.scope) !== scopeSignature(effectiveScope(sub))) return true;
   return ARTIFACTS.some(a => {
     if (a.id === 'sample' && isAssessments(sub))
       return JSON.stringify(pinnedSampleMap(sub)) !== JSON.stringify((r.pinned && r.pinned.sample) || {});
@@ -2949,7 +3056,7 @@ function startRun(sub, outcomeMode){
     started:tick(), ended:null, results:null, mode:outcomeMode
   };
   ARTIFACTS.forEach(a => { const c = currentVersion(sub, a.id); r.pinned[a.id] = c ? c.v : null; });
-  if (isAssessments(sub)) r.pinned.sample = pinnedSampleMap(sub);
+  if (isAssessments(sub)){ r.pinned.sample = pinnedSampleMap(sub); r.pinned.scope = effectiveScope(sub); }
   /* A Bruno run is worked through by the vendor, so it opens and waits. An
      Assessments run is a batch the platform executes, so it keeps its timers. */
   if (MODELS[sub.model].kind === 'bruno'){
