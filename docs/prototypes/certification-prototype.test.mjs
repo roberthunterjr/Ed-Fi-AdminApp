@@ -871,3 +871,88 @@ test('renamed fixture keeps the verdict', () => {
   const r = validate(p, fx);
   assert.equal(r.verdict, 'ready'); assert.equal(r.model.product.namespace, 'uri://northwind.example/');
 });
+
+/* Task 6 — mapping workbook and per-assessment sample slots. */
+const freshAsm = p => p.mkSubmission({productId:'p2', model:'assessments', status:'draft',
+  artifacts:p.artifactSet([]), created:p.tick()});
+
+test('assessments submission has one sample slot per workbook assessment', () => {
+  const p = loadPrototype(); const sub = freshAsm(p);
+  assert.deepEqual(p.sampleSlots(sub), []);
+  assert.equal(p.uploadArtifact(sub, 'mapping', 'wb.xlsx', false, {fixture:'vendorb-original'}).ok, true);
+  assert.deepEqual(p.sampleSlots(sub), ['ELA Diagnostic', 'Math Diagnostic']);
+});
+
+test('gate lists each missing sample slot', () => {
+  const p = loadPrototype(); const sub = freshAsm(p);
+  assert.ok(p.gate(sub).missing.some(m => m.label === 'Mapping workbook'));
+  p.uploadArtifact(sub, 'mapping', 'wb.xlsx', false, {fixture:'vendorb-original'});
+  p.uploadArtifact(sub, 'sample', 'ela.csv', false, {assessment:'ELA Diagnostic', fixture:'vendorb-original'});
+  const labels = p.gate(sub).missing.map(m => m.label);
+  assert.ok(labels.includes('Sample data — Math Diagnostic'));
+  assert.ok(!labels.includes('Sample data — ELA Diagnostic'));
+  assert.ok(!labels.includes('Mapping workbook'));
+});
+
+test('sample versions count per assessment', () => {
+  const p = loadPrototype(); const sub = freshAsm(p);
+  p.uploadArtifact(sub, 'mapping', 'wb.xlsx', false, {fixture:'vendorb-original'});
+  p.uploadArtifact(sub, 'sample', 'ela.csv', false, {assessment:'ELA Diagnostic', fixture:'vendorb-original'});
+  p.uploadArtifact(sub, 'sample', 'ela2.csv', false, {assessment:'ELA Diagnostic', fixture:'vendorb-corrected'});
+  p.uploadArtifact(sub, 'sample', 'math.csv', false, {assessment:'Math Diagnostic', fixture:'vendorb-original'});
+  assert.equal(p.currentSample(sub, 'ELA Diagnostic').v, 2);
+  assert.equal(p.currentSample(sub, 'Math Diagnostic').v, 1);
+});
+
+test('replacing one sample slot stales runs that pinned it', () => {
+  const p = loadPrototype(); const sub = freshAsm(p);
+  p.loadFixtureSet(sub, 'vendorb', 'corrected');
+  const r = p.startRun(sub, 'pass');
+  assert.deepEqual(JSON.parse(JSON.stringify(r.pinned.samples)), {'ELA Diagnostic':1});
+  assert.equal(p.isStale(sub, r), false);
+  p.uploadArtifact(sub, 'sample', 'ela2.csv', false, {assessment:'ELA Diagnostic', fixture:'vendorb-corrected'});
+  assert.equal(p.isStale(sub, r), true);
+});
+
+test('malformed workbook variant is rejected with history', () => {
+  const p = loadPrototype(); const sub = freshAsm(p);
+  const res = p.uploadArtifact(sub, 'mapping', 'bad.xlsx', false, {fixture:'vendorb-malformed'});
+  assert.equal(res.ok, false); assert.ok(res.errors.some(e => /EnumerationItems/.test(e)));
+  assert.match(sub.history[0].what, /^Mapping workbook upload rejected — malformed workbook \(/);
+  assert.equal(p.currentVersion(sub, 'mapping'), null);
+});
+
+test('loadFixtureSet fills the workbook and every slot', () => {
+  const p = loadPrototype(); const sub = freshAsm(p);
+  p.loadFixtureSet(sub, 'vendorb', 'original');
+  assert.ok(p.currentVersion(sub, 'mapping'));
+  assert.ok(p.currentSample(sub, 'ELA Diagnostic'));
+  assert.match(sub.history[0].what + sub.history[1].what, /report: /);
+});
+
+test('reportFor is recomputed when a slot version changes', () => {
+  const p = loadPrototype(); const sub = freshAsm(p);
+  assert.equal(p.reportFor(sub), null);
+  p.loadFixtureSet(sub, 'vendorb', 'corrected');
+  assert.equal(p.reportFor(sub).verdict, 'ready');
+  p.uploadArtifact(sub, 'sample', 'ela-orig.csv', false, {assessment:'ELA Diagnostic', fixture:'vendorb-original'});
+  assert.equal(p.reportFor(sub).verdict, 'not-ready');
+  assert.match(sub.history[0].what, / — report: Not ready · \d+ errors$/);
+});
+
+test('assessments artifact card shows the workbook, a row per sample slot and the fixture shortcut', () => {
+  const p = loadPrototype(); const sub = freshAsm(p);
+  let h = p.artifactCard(sub, false);
+  assert.match(h, /Mapping workbook/); assert.match(h, /Load fixture set/);
+  assert.doesNotMatch(h, /Vendor mapping CSV/);
+  p.uploadArtifact(sub, 'mapping', 'wb.xlsx', false, {fixture:'vendorb-original'});
+  h = p.artifactCard(sub, false);
+  assert.match(h, /Sample data — ELA Diagnostic/); assert.match(h, /Sample data — Math Diagnostic/);
+  assert.match(h, /data-assessment="Math Diagnostic"/);
+});
+
+test('non-assessments artifact card keeps the original labels', () => {
+  const p = loadPrototype();
+  const sub = p.APP.submissions.find(s => s.model === 'sis');
+  assert.match(p.artifactCard(sub, false), /Vendor mapping CSV/);
+});

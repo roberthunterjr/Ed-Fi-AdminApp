@@ -1720,6 +1720,58 @@ function finishReport(findings, model, notChecked, objectives){
 }
 
 
+/* ---------- assessments artifacts: workbook and per-assessment sample slots ----------
+   An Assessments submission holds a Mapping workbook and one Sample data slot per
+   assessment the workbook names (design §3.2). Entries carry the fixture variant
+   they were "uploaded" from; sample versions count per assessment. */
+function isAssessments(sub){ return !!sub && MODELS[sub.model].kind === 'assessments'; }
+function currentSample(sub, assessmentType){
+  const list = (sub.artifacts.sample || []).filter(x => x.assessment && sameText(x.assessment, assessmentType));
+  return list.length ? list[list.length - 1] : null;
+}
+function workbookFixture(sub){
+  const cur = currentVersion(sub, 'mapping');
+  return cur && cur.fixture ? fixtureVariant(cur.fixture) : null;
+}
+function sampleSlots(sub){
+  const fx = workbookFixture(sub);
+  if (!fx || !Array.isArray(fx.workbook.Assessments)) return [];
+  return fx.workbook.Assessments.map(r => String(r['Assessment Type'] || '').trim()).filter(Boolean);
+}
+const artifactLabel = (sub, type, assessment) => isAssessments(sub)
+  ? (type === 'mapping' ? 'Mapping workbook' : type === 'sample' ? 'Sample data' + (assessment ? ' — ' + assessment : '')
+    : ARTIFACTS.find(a => a.id === type).label)
+  : ARTIFACTS.find(a => a.id === type).label;
+/* The mapping validation report for a submission's current artifacts, cached
+   on their versions. Null when there is no workbook. */
+function reportFor(sub){
+  if (!isAssessments(sub)) return null;
+  const cur = currentVersion(sub, 'mapping');
+  if (!cur || !cur.fixture) return null;
+  const slots = sampleSlots(sub);
+  const sig = cur.v + ':' + cur.fixture + '|' + slots.map(s => {
+    const c = currentSample(sub, s);
+    return s + '=' + (c ? c.v + ':' + c.fixture : '');
+  }).join('|');
+  if (sub.reportCache && sub.reportCache.sig === sig) return sub.reportCache.report;
+  const fx = workbookFixture(sub);
+  const samples = {};
+  slots.forEach(s => {
+    const c = currentSample(sub, s);
+    if (!c) return;
+    const sfx = fixtureVariant(c.fixture);
+    const key = sfx && Object.keys(sfx.samples).find(k => sameText(k, s));
+    if (key) samples[s] = sfx.samples[key];
+  });
+  const report = validateMapping(fx.workbook, samples);
+  sub.reportCache = {sig, report};
+  return report;
+}
+const verdictText = r => !r ? 'No workbook' : r.verdict === 'ready' ? 'Ready to run'
+  : r.verdict === 'malformed' ? 'Malformed workbook' : 'Not ready · ' + r.errors + ' error' + (r.errors === 1 ? '' : 's');
+/* Which fixture set a submission's files come from (seeded vendors are renamed copies). */
+const fixtureSetOf = sub => sub.fixtureSet || 'vendorb';
+
 /* ---------- mutable application state ---------- */
 const APP = {
   persona: 'vendor',
@@ -2168,10 +2220,10 @@ const runStateBadge = r =>
   r.state === 'sealed'    ? '<span class="badge b-green">Sealed</span>' :
   r.state === 'abandoned' ? '<span class="badge b-red">Abandoned</span>' :
   '<span class="badge">' + esc(r.state.charAt(0).toUpperCase() + r.state.slice(1)) + '</span>';
-const currentVersion = (sub, type) => {
+function currentVersion(sub, type){
   const list = sub.artifacts[type];
   return list && list.length ? list[list.length - 1] : null;
-};
+}
 const mySubmissions = () => APP.submissions.filter(s => !product(s.productId).foreign);
 
 /* FR13 — deterministic readiness gate. */
@@ -2182,10 +2234,21 @@ const isFinished = r => r.state === 'sealed' || r.state === 'completed';
 const isQualifying = r => r.completeness === 'Complete' &&
   (r.state === 'sealed' || r.state === 'completed');
 function gate(sub){
-  const missing = ARTIFACTS.filter(a => !currentVersion(sub, a.id));
+  const missing = isAssessments(sub) ? assessmentsMissing(sub) : ARTIFACTS.filter(a => !currentVersion(sub, a.id));
   const qualifying = runsFor(sub).find(isQualifying);
   return {missing, qualifying, artifactsComplete: missing.length === 0,
           met: missing.length === 0 && !!qualifying};
+}
+/* Assessments: the workbook, one sample per workbook assessment, and product
+   documentation (design §3.2). Without a workbook the slots are unknown. */
+function assessmentsMissing(sub){
+  const missing = [];
+  if (!currentVersion(sub, 'mapping')) missing.push({id:'mapping', label:'Mapping workbook'});
+  const slots = sampleSlots(sub);
+  if (!slots.length && !currentVersion(sub, 'mapping')) missing.push({id:'sample', label:'Sample data'});
+  slots.forEach(s => { if (!currentSample(sub, s)) missing.push({id:'sample', assessment:s, label:'Sample data — ' + s}); });
+  if (!currentVersion(sub, 'docs')) missing.push(ARTIFACTS.find(a => a.id === 'docs'));
+  return missing;
 }
 /* §8.1 — completeness is decided from artifacts alone, at run start. */
 const wouldStamp = sub => gate(sub).artifactsComplete ? 'Complete' : 'Incomplete';
@@ -2198,10 +2261,24 @@ const busyEnv = env => APP.runs.find(r => r.env === env &&
   (r.state === 'queued' || r.state === 'running'));
 /* FR11 — a run is stale when its pinned versions are no longer current. */
 function isStale(sub, r){
+  if (isAssessments(sub) && r.pinned && r.pinned.samples){
+    const now = pinSamples(sub), was = r.pinned.samples;
+    const keys = new Set(Object.keys(now).concat(Object.keys(was)));
+    if ([...keys].some(k => now[k] !== was[k])) return true;
+    return ['mapping', 'docs'].some(id => {
+      const cur = currentVersion(sub, id);
+      return (cur ? cur.v : null) !== (r.pinned[id] == null ? null : r.pinned[id]);
+    });
+  }
   return ARTIFACTS.some(a => {
     const cur = currentVersion(sub, a.id);
     return (cur ? cur.v : null) !== (r.pinned ? r.pinned[a.id] : null);
   });
+}
+function pinSamples(sub){
+  const out = {};
+  sampleSlots(sub).forEach(s => { const c = currentSample(sub, s); out[s] = c ? c.v : null; });
+  return out;
 }
 const hasUnseenChanges = sub => !!(sub.artifactsChangedAt && sub.reviewerSeenAt &&
   new Date(sub.artifactsChangedAt) > new Date(sub.reviewerSeenAt));
@@ -2232,7 +2309,9 @@ function startCertification(appId, model){
   return sub;
 }
 
-function uploadArtifact(sub, type, name, malformed){
+function uploadArtifact(sub, type, name, malformed, opts){
+  if (isAssessments(sub) && (type === 'mapping' || type === 'sample'))
+    return uploadAssessmentsArtifact(sub, type, name, opts || {});
   if (type === 'mapping' && malformed){
     hist(sub, 'Vendor mapping CSV upload rejected — structural validation failed (' + name + ')');
     return {ok:false, errors:[
@@ -2255,6 +2334,49 @@ function uploadArtifact(sub, type, name, malformed){
   return {ok:true};
 }
 
+/* Assessments workbook and sample uploads are fixture variants (design §8). A
+   malformed workbook is rejected and not stored; every accepted upload's history
+   line ends with the report verdict it produces. */
+function uploadAssessmentsArtifact(sub, type, name, opts){
+  const fixture = opts.fixture || fixtureSetOf(sub) + '-original';
+  const fx = fixtureVariant(fixture);
+  if (type === 'mapping'){
+    const check = validateMapping(fx.workbook, {});
+    if (check.verdict === 'malformed'){
+      const missing = check.findings.map(f => f.message.replace(/^Required (tab|column) /, '').replace(/ is missing.*$/, ''));
+      hist(sub, 'Mapping workbook upload rejected — malformed workbook (' + missing.join(', ') + ' missing)');
+      return {ok:false, errors:check.findings.map(f => f.message + '.')};
+    }
+  }
+  const assessment = type === 'sample' ? (opts.assessment || sampleSlots(sub)[0]) : null;
+  if (type === 'sample' && !assessment) return {ok:false, errors:['Upload the mapping workbook first: it names the sample slots.']};
+  const list = sub.artifacts[type];
+  const prior = type === 'sample' ? list.filter(x => sameText(x.assessment, assessment)).length : list.length;
+  const entry = {v:prior + 1, name, by:me(), at:tick(), fixture};
+  if (assessment) entry.assessment = assessment;
+  list.push(entry);
+  const label = artifactLabel(sub, type, assessment);
+  hist(sub, (prior ? 'Artifact replaced: ' + label + ' → v' + entry.v + ' (' + name + ')'
+    : 'Artifact uploaded: ' + label + ' v1 (' + name + ')') + ' — report: ' + verdictText(reportFor(sub)));
+  sub.artifactsChangedAt = tick();
+  recomputeStatus(sub);
+  return {ok:true};
+}
+/* "Load fixture set": the workbook and every slot's sample in one step. */
+function loadFixtureSet(sub, setId, variant){
+  const id = setId + '-' + (variant || 'original');
+  const res = uploadArtifact(sub, 'mapping', setId + '-mapping-workbook.xlsx', false, {fixture:id});
+  if (!res.ok) return res;
+  const sampleId = variant === 'malformed' ? setId + '-original' : id;
+  sampleSlots(sub).forEach(s => {
+    const sfx = fixtureVariant(sampleId);
+    if (sfx && Object.keys(sfx.samples).some(k => sameText(k, s)))
+      uploadArtifact(sub, 'sample', setId + '-' + s.toLowerCase().replace(/\W+/g, '-') + '-sample.csv', false,
+        {assessment:s, fixture:sampleId});
+  });
+  return {ok:true};
+}
+
 function startRun(sub, outcomeMode){
   const m = MODELS[sub.model];
   const r = {
@@ -2264,6 +2386,7 @@ function startRun(sub, outcomeMode){
     started:tick(), ended:null, results:null, mode:outcomeMode
   };
   ARTIFACTS.forEach(a => { const c = currentVersion(sub, a.id); r.pinned[a.id] = c ? c.v : null; });
+  if (isAssessments(sub)){ r.pinned.sample = null; r.pinned.samples = pinSamples(sub); }
   /* A Bruno run is worked through by the vendor, so it opens and waits. An
      Assessments run is a batch the platform executes, so it keeps its timers. */
   if (MODELS[sub.model].kind === 'bruno'){
@@ -2673,14 +2796,34 @@ function statusBanner(sub, g, busy){
   </div>`;
 }
 
+/* Assessments rows: the workbook, then one sample row per assessment it names. */
+function assessmentsArtifactRows(sub){
+  const docs = ARTIFACTS.find(a => a.id === 'docs');
+  const slots = sampleSlots(sub);
+  const rows = [{type:'mapping', label:'Mapping workbook', cur:currentVersion(sub, 'mapping'),
+    versions:sub.artifacts.mapping.length,
+    note:'The vendor’s filled Data Mapping Template — the source of truth for what is checked.',
+    validation:'Validated into the mapping validation report'}];
+  if (!slots.length) rows.push({type:'sample', label:'Sample data', cur:null, versions:0, disabled:true,
+    note:'One slot per assessment, named by the workbook. Upload the workbook first.',
+    validation:'Checked against the workbook'});
+  slots.forEach(s => rows.push({type:'sample', assessment:s, label:'Sample data — ' + s, cur:currentSample(sub, s),
+    versions:sub.artifacts.sample.filter(x => sameText(x.assessment, s)).length,
+    note:'The vendor’s fields with the values as posted to Ed-Fi.', validation:'Checked against the workbook'}));
+  rows.push({type:'docs', label:docs.label, cur:currentVersion(sub, 'docs'), versions:sub.artifacts.docs.length,
+    note:docs.note, validation:docs.validation});
+  return rows;
+}
 function artifactCard(sub, reviewerView){
+  const rows = isAssessments(sub) ? assessmentsArtifactRows(sub) : ARTIFACTS.map(a => ({type:a.id, label:a.label,
+    cur:currentVersion(sub, a.id), versions:sub.artifacts[a.id].length, note:a.note, validation:a.validation}));
   return `<h2>Required artifacts <span class="hint">All three gate <em>review</em>, not execution (§9).</span></h2>
     <table class="t">
       <thead><tr><th>Artifact</th><th>Current version</th><th>Uploaded by</th><th>Uploaded</th>
         <th>Validated on upload</th><th class="act">Action</th></tr></thead>
-      <tbody>${ARTIFACTS.map(a => {
-        const cur = currentVersion(sub, a.id);
-        const versions = sub.artifacts[a.id].length;
+      <tbody>${rows.map(a => {
+        const cur = a.cur;
+        const versions = a.versions;
         return `<tr>
           <td><strong>${esc(a.label)}</strong><div class="muted" style="font-size:12px">${esc(a.note)}</div></td>
           <td>${cur ? `v${cur.v} <span class="muted">${esc(cur.name)}</span>${
@@ -2691,11 +2834,16 @@ function artifactCard(sub, reviewerView){
           <td class="muted">${esc(a.validation)}</td>
           <td class="act">${reviewerView
             ? (cur ? '<button class="btn ghost sm" data-act="viewartifact">View</button>' : '<span class="muted">—</span>')
-            : `<button class="btn sm" data-act="upload" data-sub="${sub.id}" data-type="${a.id}">${
-                cur ? 'Replace' : 'Upload'}</button>`}</td>
+            : a.disabled ? '<span class="muted">—</span>'
+            : `<button class="btn sm" data-act="upload" data-sub="${sub.id}" data-type="${a.type}"${
+                a.assessment ? ` data-assessment="${esc(a.assessment)}"` : ''}>${cur ? 'Replace' : 'Upload'}</button>`}</td>
         </tr>`;
       }).join('')}</tbody>
     </table>
+    ${isAssessments(sub) && !reviewerView ? `<div class="acts" style="margin-top:12px">
+      <button class="btn ghost sm" data-act="loadfixtures" data-sub="${sub.id}" data-variant="original">Load fixture set — original files</button>
+      <button class="btn ghost sm" data-act="loadfixtures" data-sub="${sub.id}" data-variant="corrected">Load fixture set — corrected files</button>
+      <span class="muted" style="font-size:12px">Prototype only: fills the workbook and every sample slot in one step.</span></div>` : ''}
     ${reviewerView ? `<div class="muted" style="margin-top:12px;font-size:12.5px">
       Reviewers do not upload artifacts on a vendor’s behalf (§8).</div>` : ''}`;
 }
@@ -3488,7 +3636,38 @@ function toast(msg){
   toastTimer = setTimeout(() => t.remove(), 4200);
 }
 
-function uploadModal(sub, type){
+const VARIANT_LABELS = {
+  original:'Original files — as the vendor first sent them',
+  corrected:'Corrected files — every finding fixed',
+  malformed:'Malformed workbook — a required tab is missing'
+};
+/* Assessments workbook and sample uploads pick a fixture variant (design §8). */
+function assessmentsUploadModal(sub, type, assessment){
+  const set = FIXTURE_SETS[fixtureSetOf(sub)] || FIXTURE_SETS.vendorb;
+  const cur = type === 'mapping' ? currentVersion(sub, 'mapping') : currentSample(sub, assessment);
+  const label = artifactLabel(sub, type, assessment);
+  const variants = type === 'mapping' ? set.workbook : set.samples;
+  const slug = fixtureSetOf(sub);
+  const name = type === 'mapping' ? slug + '-mapping-workbook.xlsx'
+    : slug + '-' + String(assessment).toLowerCase().replace(/\W+/g, '-') + '-sample.csv';
+  modal((cur ? 'Replace ' : 'Upload ') + esc(label), `
+    <div class="drop">Drag a file here, or</div>
+    <div class="field"><label>File</label><input type="text" id="fileName" value="${esc(name)}" /></div>
+    <div class="field radios"><label style="font-weight:700;display:block;margin-bottom:8px">
+      Simulated file <span class="muted" style="font-weight:400">(prototype only — ${esc(set.label)})</span></label>
+      ${variants.map((v, i) => `<label><input type="radio" name="fixture" value="${esc(v)}"${i === 0 ? ' checked' : ''} />
+        ${esc(VARIANT_LABELS[v.split('-').pop()] || v)}</label>`).join('')}</div>
+    <div class="muted" style="font-size:12.5px">${type === 'sample'
+      ? 'The sample must carry the pre-arranged identity columns. <a href="#" data-act="reqcols">Required sample columns</a>'
+      : 'The workbook names the assessments; each gets its own Sample data slot.'}</div>
+    ${cur ? `<div class="banner"><h3>This creates version ${cur.v + 1}</h3>
+      <p>Prior versions remain in audit history, and runs that pinned v${cur.v} are marked stale (D14, FR11).</p></div>` : ''}
+  `, `<button class="btn ghost" data-act="cancel">Cancel</button>
+      <button class="btn" data-act="douploadconfirm" data-sub="${sub.id}" data-type="${type}"${
+        assessment ? ` data-assessment="${esc(assessment)}"` : ''}>${cur ? 'Replace artifact' : 'Upload artifact'}</button>`);
+}
+function uploadModal(sub, type, assessment){
+  if (isAssessments(sub) && (type === 'mapping' || type === 'sample')) return assessmentsUploadModal(sub, type, assessment);
   const a = ARTIFACTS.find(x => x.id === type);
   const cur = currentVersion(sub, type);
   const isMapping = type === 'mapping';
@@ -3530,7 +3709,8 @@ function bind(){
       const act = node.dataset.act;
       const sub = node.dataset.sub ? submission(node.dataset.sub) : null;
       switch (act){
-        case 'upload': ev.preventDefault(); uploadModal(sub, node.dataset.type); break;
+        case 'upload': ev.preventDefault(); uploadModal(sub, node.dataset.type, node.dataset.assessment); break;
+        case 'loadfixtures': ev.preventDefault(); loadFixtureSet(sub, fixtureSetOf(sub), node.dataset.variant); render(); break;
         case 'gotorun': go('#/newrun/' + sub.id); break;
         case 'startrun': {
           const mode = $('#outcomeSel') ? $('#outcomeSel').value : 'realistic';
@@ -3656,9 +3836,11 @@ function bindOverlay(){
         const type = node.dataset.type;
         const name = ($('#fileName') && $('#fileName').value.trim()) || 'upload.dat';
         const simBad = !!$('#overlay').querySelector('input[name=sim][value=bad]:checked');
-        const res = uploadArtifact(sub, type, name, simBad);
+        const picked = $('#overlay').querySelector('input[name=fixture]:checked');
+        const res = uploadArtifact(sub, type, name, simBad,
+          {assessment:node.dataset.assessment, fixture:picked ? picked.value : undefined});
         if (!res.ok){
-          modal('Mapping CSV rejected', `
+          modal(isAssessments(sub) ? 'Mapping workbook rejected' : 'Mapping CSV rejected', `
             <div class="banner red"><h3>Structural validation failed — ${esc(name)}</h3>
               <p>The file was <strong>not stored</strong> as the active mapping, and no run can be started
               against it. Malformed files are rejected on upload (D9, FR6).</p>
