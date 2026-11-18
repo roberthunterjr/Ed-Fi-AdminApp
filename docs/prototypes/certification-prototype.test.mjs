@@ -159,7 +159,8 @@ test('completeness and artifact pins are stamped at start', () => {
 
 test('an Assessments run still uses the batch path', () => {
   const p = loadPrototype();
-  const sub = p.APP.submissions.find(s => s.model === 'assessments');
+  /* A Ready report is the run precondition (mapping validation design §7). */
+  const sub = readySub(p);
   const run = p.startRun(sub, 'realistic');
   assert.equal(run.state, 'queued', 'Assessments is unchanged');
 });
@@ -955,4 +956,71 @@ test('non-assessments artifact card keeps the original labels', () => {
   const p = loadPrototype();
   const sub = p.APP.submissions.find(s => s.model === 'sis');
   assert.match(p.artifactCard(sub, false), /Vendor mapping CSV/);
+});
+
+/* Task 7 — runs against expected responses, within reviewer scope. */
+const readySub = p => { const sub = freshAsm(p); p.loadFixtureSet(sub, 'vendorb', 'corrected'); return sub; };
+const allFields = r => r.results.endpoints.flatMap(e => e.records.flatMap(rec => rec.fields.map(f => Object.assign({endpoint:e}, f))));
+
+test('ASSESSMENT_RESULTS is gone', () => {
+  assert.throws(() => loadPrototype().ASSESSMENT_RESULTS, ReferenceError);
+});
+
+test('assessments run cannot start from a not-ready report', () => {
+  const p = loadPrototype(); const sub = freshAsm(p);
+  p.loadFixtureSet(sub, 'vendorb', 'original');
+  const before = p.APP.runs.length;
+  assert.equal(p.startRun(sub, 'pass'), null);
+  assert.equal(p.APP.runs.length, before);
+});
+
+test('pass run has no failures and no cannot-check', () => {
+  const p = loadPrototype(); const sub = readySub(p);
+  const r = p.startRun(sub, 'pass'); p.finishRun(r);
+  assert.equal(r.outcome, 'passed');
+  const t = p.resultTally(r.results);
+  assert.equal(t.fail, 0); assert.ok(t.pass > 0); assert.equal(t.unit, 'field checks');
+  assert.ok(!allFields(r).some(f => f.st === 'cannot'));
+  assert.deepEqual(r.results.endpoints.slice(0, 3).map(e => e.id), ['assessments', 'objectiveAssessments', 'studentAssessments']);
+});
+
+test('realistic run has one of each failure kind, none in excluded endpoints', () => {
+  const p = loadPrototype(); const sub = readySub(p);
+  assert.equal(p.setEndpointIncluded(sub, 'descriptor:EventCircumstanceDescriptor', false, 'Loaded by the district').ok, true);
+  const r = p.startRun(sub, 'realistic'); p.finishRun(r);
+  assert.equal(r.outcome, 'failed');
+  const fails = allFields(r).filter(f => f.st === 'fail');
+  ['value', 'notloaded', 'notfound', 'objective-notfound'].forEach(k =>
+    assert.equal(fails.filter(f => f.kind === k).length, 1, k));
+  assert.ok(fails.every(f => !f.endpoint.excluded));
+  assert.ok(allFields(r).some(f => f.st === 'excluded'));
+});
+
+test('objective matched by normalized key passes despite punctuation differences', () => {
+  const p = loadPrototype(); const sub = readySub(p);
+  const r = p.startRun(sub, 'pass'); p.finishRun(r);
+  const objs = r.results.endpoints.find(e => e.id === 'objectiveAssessments');
+  const code = objs.records.flatMap(x => x.fields).find(f => f.path === 'identificationCode' && f.expected !== f.observed);
+  assert.ok(code, 'some observed code differs in punctuation'); assert.equal(code.st, 'pass');
+});
+
+test('reviewer exclusion requires a reason and stales earlier runs', () => {
+  const p = loadPrototype(); const sub = readySub(p);
+  const r = p.startRun(sub, 'pass'); p.finishRun(r);
+  assert.equal(p.isStale(sub, r), false);
+  assert.equal(p.setEndpointIncluded(sub, 'descriptor:GradeLevelDescriptor', false, '  ').ok, false);
+  assert.equal(p.isStale(sub, r), false);
+  assert.equal(p.setEndpointIncluded(sub, 'descriptor:GradeLevelDescriptor', false, 'District loads grades').ok, true);
+  assert.equal(p.isStale(sub, r), true);
+  assert.match(sub.history[0].what, /^Run scope: excluded descriptor:GradeLevelDescriptor/);
+});
+
+test('reviewer row adjustments change the effective scope', () => {
+  const p = loadPrototype(); const sub = readySub(p);
+  const rows = () => p.effectiveScope(sub).rows['ELA Diagnostic'];
+  const first = rows()[0];
+  assert.equal(p.removeScopeRow(sub, 'ELA Diagnostic', first.key, 'Duplicate of another row').ok, true);
+  assert.ok(!rows().some(x => x.index === first.index));
+  assert.equal(p.undoScopeRow(sub, 'ELA Diagnostic', first.key).ok, true);
+  assert.ok(rows().some(x => x.index === first.index));
 });

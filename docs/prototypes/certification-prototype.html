@@ -898,53 +898,6 @@ const DESCRIPTOR_VALUES = {
 /* A stable pseudo-random pick, so the same element always shows the same value. */
 const seedOf = s => { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return h; };
 /* Assessments validation content — deliberately seeds every failure kind RC2 requires. */
-const ASSESSMENT_RESULTS = [
-  {domain:'Assessment', resource:'assessments', elements:[
-    {el:'assessmentIdentifier', type:'String', expected:'ELA-BM-2026-01', observed:'ELA-BM-2026-01', st:'pass'},
-    {el:'namespace', type:'String', expected:'uri://vendor-b.example.com', observed:'uri://vendor-b.example.com', st:'pass'},
-    {el:'assessmentTitle', type:'String', expected:'ELA Benchmark 1', observed:'ELA Benchmark 1 ', st:'pass',
-      why:'Trailing whitespace trimmed before comparison (§9.1, String).'},
-    {el:'assessmentCategoryDescriptor', type:'Descriptor',
-      expected:'uri://ed-fi.org/AssessmentCategoryDescriptor#Benchmark test',
-      observed:'uri://ed-fi.org/AssessmentCategoryDescriptor#Benchmark test', st:'pass'},
-    {el:'academicSubjects[0].academicSubjectDescriptor', type:'Descriptor',
-      expected:'uri://ed-fi.org/AcademicSubjectDescriptor#English Language Arts',
-      observed:'uri://vendor-b.example.com/AcademicSubjectDescriptor#ELA', st:'fail-descriptor',
-      why:'Descriptor URI does not resolve to a legitimate Ed-Fi descriptor (D8).'},
-    {el:'maxRawScore', type:'Decimal', expected:'100', observed:'100.0', st:'pass',
-      why:'Parsed numerically before comparison (§9.1, Decimal).'}
-  ]},
-  {domain:'Assessment', resource:'objectiveAssessments', elements:[
-    {el:'identificationCode', type:'String', expected:'ELA-BM-2026-01-OA1', observed:'ELA-BM-2026-01-OA1', st:'pass'},
-    {el:'maxRawScore', type:'Decimal', expected:'85', observed:'87', st:'fail-value',
-      why:'Value mismatch after normalization — genuine difference, not formatting.'},
-    {el:'percentOfAssessment', type:'Decimal', expected:'40', observed:'"forty"', st:'fail-type',
-      why:'Observed value cannot be parsed as Decimal — reported as a type error, not a value mismatch (§9.1).'},
-    {el:'nomenclature', type:'String', expected:'Reading Informational Text', observed:'Reading Informational Text', st:'pass'}
-  ]},
-  {domain:'Student Assessment', resource:'studentAssessments', elements:[
-    {el:'studentReference.studentUniqueId', type:'String', expected:'604821', observed:'604821', st:'pass'},
-    {el:'administrationDate', type:'Date', expected:'9/14/2026', observed:'2026-09-14T00:00:00Z', st:'pass',
-      why:'Both sides parsed to an instant before comparison (§9.1, Date).'},
-    {el:'scoreResults[0].result', type:'Decimal', expected:'78', observed:'78', st:'pass'},
-    {el:'scoreResults[0].assessmentReportingMethodDescriptor', type:'Descriptor',
-      expected:'uri://ed-fi.org/AssessmentReportingMethodDescriptor#Raw score',
-      observed:'uri://ed-fi.org/AssessmentReportingMethodDescriptor#Raw score', st:'pass'},
-    {el:'performanceLevels[0].performanceLevelDescriptor', type:'Descriptor',
-      expected:'uri://ed-fi.org/PerformanceLevelDescriptor#Proficient',
-      observed:'uri://ed-fi.org/PerformanceLevelDescriptor#Proficient', st:'pass'},
-    {el:'reportedSchoolIdentifier', type:'String', expected:'255901107', observed:'(absent)', st:'fail-missing',
-      why:'Element declared in the mapping CSV but not present in the API response.'},
-    {el:'whenAssessedGradeLevelDescriptor', type:'Descriptor',
-      expected:'uri://ed-fi.org/GradeLevelDescriptor#Ninth grade', observed:'(absent)', st:'fail-missing',
-      why:'Element declared in the mapping CSV but not present in the API response.'}
-  ]},
-  {domain:'Student Assessment', resource:'studentAssessmentEducationOrganizationAssociations',
-   emptyResource:true, elements:[
-    {el:'educationOrganizationReference.educationOrganizationId', type:'String', expected:'255901107', observed:'—', st:'fail-empty'},
-    {el:'assessmentReportingMethodDescriptor', type:'Descriptor', expected:'uri://ed-fi.org/…#Raw score', observed:'—', st:'fail-empty'}
-  ]}
-];
 const ST_LABEL = {
   pass:['ok','Pass'],
   'fail-missing':['bad','Missing element'],
@@ -1918,7 +1871,7 @@ function hist(sub, what, who, when){
   mkRun({submissionId:s2.id, productId:'p2', model:'assessments', state:'completed', outcome:'failed',
     completeness:'Incomplete', pinned:{mapping:1, sample:1, docs:null},
     tag:MODELS.assessments.tag, sha:MODELS.assessments.sha, initiator:V2, env:'Vendor_B',
-    started:d(13,15,20), ended:d(13,15,26), results:assessmentResults('realistic')});
+    started:d(13,15,20), ended:d(13,15,26), results:null});
 
   mkRun({submissionId:f1.id, productId:'p4', model:'sis', state:'sealed', outcome:'passed',
     completeness:'Complete', pinned:{mapping:1, sample:1, docs:1},
@@ -1927,7 +1880,7 @@ function hist(sub, what, who, when){
   mkRun({submissionId:f2.id, productId:'p5', model:'assessments', state:'completed', outcome:'passed',
     completeness:'Complete', pinned:{mapping:1, sample:1, docs:1},
     tag:MODELS.assessments.tag, sha:MODELS.assessments.sha, initiator:'eng@northwind.example.com',
-    env:'Northwind_Cert', started:d(11,10,0), ended:d(11,10,7), results:assessmentResults('pass')});
+    env:'Northwind_Cert', started:d(11,10,0), ended:d(11,10,7), results:null});
   mkRun({submissionId:f3.id, productId:'p6', model:'mtss', state:'sealed', outcome:'infra-error',
     completeness:'Complete', pinned:{mapping:1, sample:1, docs:1},
     tag:MODELS.mtss.tag, sha:MODELS.mtss.sha, initiator:'ops@larkspur.example.com',
@@ -1935,7 +1888,7 @@ function hist(sub, what, who, when){
   mkRun({submissionId:f4.id, productId:'p4', model:'assessments', state:'completed', outcome:'passed',
     completeness:'Complete', pinned:{mapping:1, sample:1, docs:1},
     tag:MODELS.assessments.tag, sha:MODELS.assessments.sha, initiator:'dev@acme.example.com',
-    env:'Acme_Prod_Cert', started:d(6,11,0), ended:d(6,11,6), results:assessmentResults('pass')});
+    env:'Acme_Prod_Cert', started:d(6,11,0), ended:d(6,11,6), results:null});
 
   /* seeded history */
   s1.history = [
@@ -2165,17 +2118,6 @@ function seededBrunoResults(model, mode){
   });
   return run.results;
 }
-function assessmentResults(mode){
-  const groups = ASSESSMENT_RESULTS.map(g => ({
-    domain:g.domain, resource:g.resource,
-    emptyResource: mode === 'pass' ? false : !!g.emptyResource,
-    elements: g.elements.map(e => mode === 'pass'
-      ? Object.assign({}, e, {st:'pass', observed: e.st === 'pass' ? e.observed : e.expected,
-          why: e.st === 'pass' ? e.why : ''})
-      : Object.assign({}, e))
-  }));
-  return {kind:'assessments', groups};
-}
 function resultTally(r){
   if (!r) return {pass:0, fail:0, notAttempted:0, total:0, unit:'scenarios'};
   if (r.kind === 'bruno'){
@@ -2188,9 +2130,10 @@ function resultTally(r){
     });
     return {pass, fail, notAttempted, total:r.scenarios.length, unit:'scenarios'};
   }
-  let pass = 0, fail = 0;
-  r.groups.forEach(g => g.elements.forEach(e => e.st === 'pass' ? pass++ : fail++));
-  return {pass, fail, notAttempted:0, total:pass + fail, unit:'element checks'};
+  let pass = 0, fail = 0, excluded = 0;
+  (r.endpoints || []).forEach(e => e.records.forEach(rec => rec.fields.forEach(f =>
+    f.st === 'pass' ? pass++ : f.st === 'excluded' ? excluded++ : fail++)));
+  return {pass, fail, excluded, notAttempted:0, total:pass + fail, unit:'field checks'};
 }
 
 /* ---------- derived state ---------- */
@@ -2265,6 +2208,7 @@ function isStale(sub, r){
     const now = pinSamples(sub), was = r.pinned.samples;
     const keys = new Set(Object.keys(now).concat(Object.keys(was)));
     if ([...keys].some(k => now[k] !== was[k])) return true;
+    if (r.pinned.scope !== undefined && r.pinned.scope !== scopeSignature(effectiveScope(sub))) return true;
     return ['mapping', 'docs'].some(id => {
       const cur = currentVersion(sub, id);
       return (cur ? cur.v : null) !== (r.pinned[id] == null ? null : r.pinned[id]);
@@ -2359,6 +2303,7 @@ function uploadAssessmentsArtifact(sub, type, name, opts){
   hist(sub, (prior ? 'Artifact replaced: ' + label + ' → v' + entry.v + ' (' + name + ')'
     : 'Artifact uploaded: ' + label + ' v1 (' + name + ')') + ' — report: ' + verdictText(reportFor(sub)));
   sub.artifactsChangedAt = tick();
+  dropUnimpliedExclusions(sub);
   recomputeStatus(sub);
   return {ok:true};
 }
@@ -2377,7 +2322,314 @@ function loadFixtureSet(sub, setId, variant){
   return {ok:true};
 }
 
+/* ---------- run scope: reviewer-owned, per submission (design §7) ----------
+   Derived from the report's model: the endpoints the mapping implies and the
+   coverage rows. The reviewer can only narrow it — exclude endpoints, remove or
+   add rows — each with a reason that lands in history. A run pins the scope it
+   started with; changing the scope stales earlier runs. Ported from v1. */
+function runScopeOf(sub){
+  return sub.runScope || (sub.runScope = {excluded:{}, rowAdds:[], rowRemoves:[]});
+}
+function sameKey(a, b){ return a.studentId === b.studentId && a.activityId === b.activityId; }
+function keyLabel(key){ return key.studentId + ' (' + key.activityId + ')'; }
+function rowKeyAt(a, i){
+  const row = a.sample.rows[i];
+  return {studentId:cell(row, a.idColumns.student), activityId:cell(row, a.idColumns.activity)};
+}
+function effectiveScope(sub){
+  const rep = reportFor(sub);
+  const cur = currentVersion(sub, 'mapping');
+  const scope = {mapping:cur ? cur.v : null, samples:pinSamples(sub), endpoints:[], rows:{}, orphans:[]};
+  if (!rep || rep.verdict !== 'ready') return scope;
+  const rs = runScopeOf(sub);
+  scope.endpoints = deriveEndpoints(rep.model).map(e => rs.excluded[e.id]
+    ? {id:e.id, on:false, reason:rs.excluded[e.id].reason} : {id:e.id, on:true});
+  rep.model.assessments.filter(a => a.sample).forEach(a => {
+    const find = key => a.sample.rows.findIndex((_, i) => sameKey(rowKeyAt(a, i), key));
+    const removed = rs.rowRemoves.filter(x => x.assessment === a.type);
+    const list = selectRows(rep.model, a)
+      .map(r => ({index:r.index, key:r.key, why:r.why, origin:'coverage'}))
+      .filter(r => !removed.some(x => sameKey(x.key, r.key)));
+    rs.rowAdds.filter(x => x.assessment === a.type).forEach(x => {
+      const i = find(x.key);
+      if (i < 0) scope.orphans.push({assessment:a.type, key:x.key, kind:'add', reason:x.reason});
+      else if (!list.some(r => r.index === i))
+        list.push({index:i, key:x.key, why:'added by reviewer: ' + x.reason, origin:'added', reason:x.reason});
+    });
+    removed.forEach(x => { if (find(x.key) < 0) scope.orphans.push({assessment:a.type, key:x.key, kind:'remove', reason:x.reason}); });
+    scope.rows[a.type] = list.sort((x, y) => x.index - y.index);
+  });
+  return scope;
+}
+/* An exclusion goes with its endpoint: when a ready report no longer implies
+   it, it is dropped (and audited). A not-ready report implies nothing yet, so
+   exclusions wait for the next ready one. */
+function dropUnimpliedExclusions(sub){
+  const rs = runScopeOf(sub);
+  const rep = reportFor(sub);
+  if (!rep || rep.verdict !== 'ready') return;
+  const ids = deriveEndpoints(rep.model).map(e => e.id);
+  Object.keys(rs.excluded).forEach(id => {
+    if (ids.includes(id)) return;
+    delete rs.excluded[id];
+    hist(sub, 'Run scope: ' + id + ' is no longer implied by the mapping; exclusion dropped', 'Platform');
+  });
+}
+function scopeSignature(scope){
+  if (!scope) return '';
+  return JSON.stringify({e:scope.endpoints.map(e => [e.id, e.on]),
+    r:Object.keys(scope.rows).sort().map(k => [k, scope.rows[k].map(x => x.key.studentId + '|' + x.key.activityId)])});
+}
+function scopeChanged(sub, what){
+  sub.scopeChangedAt = tick();
+  hist(sub, 'Run scope: ' + what);
+}
+function setEndpointIncluded(sub, id, on, reason){
+  const rs = runScopeOf(sub);
+  if (!effectiveScope(sub).endpoints.some(e => e.id === id)) return {ok:false, error:'Unknown endpoint.'};
+  if (!on){
+    if (!String(reason || '').trim()) return {ok:false, error:'A reason is required.'};
+    rs.excluded[id] = {reason:String(reason).trim(), by:me(), at:tick()};
+    scopeChanged(sub, 'excluded ' + id + ' — "' + rs.excluded[id].reason + '"');
+  } else {
+    if (!rs.excluded[id]) return {ok:true};
+    delete rs.excluded[id];
+    scopeChanged(sub, 'included ' + id + ' again');
+  }
+  return {ok:true};
+}
+function addScopeRow(sub, assessment, key, reason){
+  if (!String(reason || '').trim()) return {ok:false, error:'A reason is required.'};
+  const rs = runScopeOf(sub);
+  rs.rowRemoves = rs.rowRemoves.filter(x => !(x.assessment === assessment && sameKey(x.key, key)));
+  rs.rowAdds.push({key, assessment, reason:String(reason).trim(), by:me(), at:tick()});
+  scopeChanged(sub, 'added row ' + keyLabel(key) + ' — "' + String(reason).trim() + '"');
+  return {ok:true};
+}
+function removeScopeRow(sub, assessment, key, reason){
+  if (!String(reason || '').trim()) return {ok:false, error:'A reason is required.'};
+  const rs = runScopeOf(sub);
+  const wasAdded = rs.rowAdds.some(x => x.assessment === assessment && sameKey(x.key, key));
+  rs.rowAdds = rs.rowAdds.filter(x => !(x.assessment === assessment && sameKey(x.key, key)));
+  if (!wasAdded) rs.rowRemoves.push({key, assessment, reason:String(reason).trim(), by:me(), at:tick()});
+  scopeChanged(sub, 'removed row ' + keyLabel(key) + ' — "' + String(reason).trim() + '"');
+  return {ok:true};
+}
+function undoScopeRow(sub, assessment, key){
+  const rs = runScopeOf(sub);
+  const match = x => x.assessment === assessment && sameKey(x.key, key);
+  if (!rs.rowAdds.some(match) && !rs.rowRemoves.some(match)) return {ok:true};
+  rs.rowAdds = rs.rowAdds.filter(x => !match(x));
+  rs.rowRemoves = rs.rowRemoves.filter(x => !match(x));
+  scopeChanged(sub, 'undid the change to row ' + keyLabel(key));
+  return {ok:true};
+}
+
+/* ---------- runs: simulated GETs compared with expected responses (design §7) ----------
+   The prototype has no Ed-Fi API, so the "response" is the expected payload with
+   harmless formatting differences and, for a realistic run, one fault of each
+   kind in endpoints the reviewer kept. Comparison applies the §9.1
+   normalization; objectives match on the normalized key. */
+function compareValue(type, expected, observed){
+  if (observed === undefined || observed === null)
+    return {st:'fail', kind:'value', why:'Present in the expected response but absent from the API response.'};
+  const e = String(expected), o = String(observed);
+  if (['Integer', 'Decimal', 'Percentile', 'Percentage'].includes(type)){
+    const en = Number(e.trim()), on = Number(o.trim());
+    if (o.trim() === '' || isNaN(on)) return {st:'fail', kind:'value', why:'Observed value isn\'t a ' + type + ' (§9.1).'};
+    if (en === on) return e.trim() === o.trim() ? {st:'pass'} : {st:'pass', why:'Parsed as numbers before comparing (§9.1).'};
+    return {st:'fail', kind:'value', why:'Different value after normalization — a real difference, not formatting.'};
+  }
+  if (type === 'Date'){
+    const at = s => Date.parse(s.length === 10 ? s + 'T00:00:00Z' : s);
+    if (isNaN(at(o))) return {st:'fail', kind:'value', why:'Observed value isn\'t a date (§9.1).'};
+    if (at(e) === at(o)) return e === o ? {st:'pass'} : {st:'pass', why:'Both sides compared as instants (§9.1).'};
+    return {st:'fail', kind:'value', why:'Different date after normalization.'};
+  }
+  if (type === 'Descriptor'){
+    const [ens, ecode] = e.split('#'), [ons, ocode] = o.split('#');
+    if (ocode === undefined || ens !== ons)
+      return {st:'fail', kind:'value', why:'Descriptor namespace or type differs from the expected one (D8).'};
+    if (sameText(ecode, ocode)) return ecode === ocode ? {st:'pass'} : {st:'pass', why:'Descriptor codes compare ignoring case.'};
+    return {st:'fail', kind:'value', why:'Descriptor resolves, but to a different value than the sample.'};
+  }
+  if (type === 'Code'){
+    if (normKey(e) === normKey(o)) return e === o ? {st:'pass'}
+      : {st:'pass', why:'Objective codes match on the normalized key (case, spacing and punctuation ignored).'};
+    return {st:'fail', kind:'value', why:'Objective code differs after normalization.'};
+  }
+  if (type === 'Boolean') return sameText(e, o) ? {st:'pass'} : {st:'fail', kind:'value', why:'Boolean differs.'};
+  if (e.trim() === o.trim()) return e === o ? {st:'pass'} : {st:'pass', why:'Whitespace trimmed before comparing (§9.1).'};
+  return {st:'fail', kind:'value', why:'Different value after normalization.'};
+}
+function leafType(key, siblings){
+  if (/Descriptor$/.test(key)) return 'Descriptor';
+  if (key === 'administrationDate') return 'Date';
+  if (key === 'identificationCode') return 'Code';
+  if (key === 'maxRawScore') return 'Decimal';
+  if (key === 'adaptiveAssessment') return 'Boolean';
+  if (key === 'result'){
+    const dt = String((siblings || {}).resultDatatypeTypeDescriptor || '').split('#')[1] || '';
+    if (['Integer', 'Decimal', 'Percentile', 'Percentage', 'Boolean'].includes(dt)) return dt;
+  }
+  return 'String';
+}
+/* Keyed collections are matched by key, not position. */
+function entryKey(item){
+  if (!item || typeof item !== 'object') return String(item);
+  if (item.assessmentReportingMethodDescriptor) return item.assessmentReportingMethodDescriptor.toLowerCase();
+  if (item.objectiveAssessmentReference) return normKey(item.objectiveAssessmentReference.identificationCode);
+  if (item.accommodationDescriptor) return item.accommodationDescriptor.toLowerCase();
+  return JSON.stringify(item);
+}
+function entryLabel(item){
+  if (item.assessmentReportingMethodDescriptor) return item.assessmentReportingMethodDescriptor.split('#').pop();
+  if (item.objectiveAssessmentReference) return item.objectiveAssessmentReference.identificationCode;
+  if (item.accommodationDescriptor) return item.accommodationDescriptor.split('#').pop();
+  return '?';
+}
+function compareRecord(expected, observed, prefix, out){
+  out = out || [];
+  Object.keys(expected).forEach(k => {
+    const ev = expected[k], ov = observed ? observed[k] : undefined, path = (prefix ? prefix + '.' : '') + k;
+    if (Array.isArray(ev)){
+      ev.forEach(item => {
+        const p2 = path + '[' + entryLabel(item) + ']';
+        const match = Array.isArray(ov) ? ov.find(x => entryKey(x) === entryKey(item)) : undefined;
+        if (!match){
+          out.push({path:p2, expected:entryLabel(item), observed:'(absent)', st:'fail', kind:'value',
+            why:'A collection entry in the expected response is missing from the API response.'});
+          return;
+        }
+        compareRecord(item, match, p2, out);
+      });
+    } else if (ev && typeof ev === 'object'){
+      compareRecord(ev, ov && typeof ov === 'object' ? ov : {}, path, out);
+    } else {
+      const c = compareValue(leafType(k, expected), ev, ov);
+      out.push(Object.assign({path, expected:String(ev), observed:ov == null ? '(absent)' : String(ov)}, c));
+    }
+  });
+  return out;
+}
+/* The report for the artifact versions a run pinned. */
+function reportAt(sub, scope){
+  const m = sub.artifacts.mapping.find(x => x.v === scope.mapping);
+  if (!m || !m.fixture) return null;
+  const fx = fixtureVariant(m.fixture);
+  const samples = {};
+  Object.keys(scope.samples || {}).forEach(type => {
+    const s = sub.artifacts.sample.find(x => sameText(x.assessment, type) && x.v === scope.samples[type]);
+    const sfx = s && fixtureVariant(s.fixture);
+    const key = sfx && Object.keys(sfx.samples).find(k => sameText(k, type));
+    if (key) samples[type] = sfx.samples[key];
+  });
+  return validateMapping(fx.workbook, samples);
+}
+function descriptorUrisIn(obj, type){
+  return [...new Set(JSON.stringify(obj).match(new RegExp('uri://[^"]*?/' + type + '#[^"]+', 'g')) || [])];
+}
+function simulateResponses(expected, mode, isOn){
+  const obs = JSON.parse(JSON.stringify(expected));
+  const recode = c => String(c).replace(/: /g, ' - ');
+  obs.assessments.forEach(r => {
+    if (r.payload.assessmentTitle) r.payload.assessmentTitle += ' ';
+    if (typeof r.payload.maxRawScore === 'number') r.payload.maxRawScore = r.payload.maxRawScore.toFixed(1);
+  });
+  obs.objectiveAssessments.forEach(r => { r.payload.identificationCode = recode(r.payload.identificationCode); });
+  obs.studentAssessments.forEach(r => {
+    if (r.payload.administrationDate) r.payload.administrationDate += 'T00:00:00Z';
+    (r.payload.studentObjectiveAssessments || []).forEach(o => {
+      o.objectiveAssessmentReference.identificationCode = recode(o.objectiveAssessmentReference.identificationCode);
+    });
+  });
+  if (mode !== 'realistic') return obs;
+  if (isOn('studentAssessments')){
+    /* 1: one integer score off by one; 2: the next selected row isn't returned. */
+    const i = obs.studentAssessments.findIndex(r => (r.payload.scoreResults || [])
+      .some(s => /#Integer$/.test(s.resultDatatypeTypeDescriptor || '') && /^\d+$/.test(s.result)));
+    if (i >= 0){
+      const s = obs.studentAssessments[i].payload.scoreResults
+        .find(x => /#Integer$/.test(x.resultDatatypeTypeDescriptor || '') && /^\d+$/.test(x.result));
+      s.result = String(+s.result + 1);
+      if (i + 1 < obs.studentAssessments.length) obs.studentAssessments[i + 1].missing = true;
+    }
+    obs.studentAssessments = obs.studentAssessments.filter(r => !r.missing);
+  }
+  /* 3: the last objective isn't loaded. */
+  if (isOn('objectiveAssessments') && obs.objectiveAssessments.length) obs.objectiveAssessments.pop();
+  /* 4: one vendor descriptor value isn't loaded, in an endpoint the reviewer kept. */
+  const id = Object.keys(obs.descriptors).find(x => isOn(x) && obs.descriptors[x].some(u => !/^uri:\/\/ed-fi\.org\//.test(u)));
+  if (id){
+    const uri = obs.descriptors[id].find(u => !/^uri:\/\/ed-fi\.org\//.test(u));
+    obs.descriptors[id] = obs.descriptors[id].filter(u => u !== uri);
+  }
+  return obs;
+}
+function runAssessmentChecks(sub, scope, mode){
+  const rep = scope ? reportAt(sub, scope) : null;
+  if (!rep || !rep.model) return {kind:'assessments', endpoints:[]};
+  const model = rep.model;
+  const eps = deriveEndpoints(model);
+  const stateOf = id => scope.endpoints.find(x => x.id === id) || {on:true};
+  const isOn = id => stateOf(id).on;
+  const expected = {assessments:[], objectiveAssessments:[], studentAssessments:[], descriptors:{}};
+  model.assessments.forEach(a => {
+    expected.assessments.push({key:a.identifier, label:a.title || a.type, payload:expectedAssessment(model, a)});
+    expectedObjectives(model, a).forEach(o => expected.objectiveAssessments.push({key:a.identifier + '/' + o.key,
+      label:(a.title || a.type) + ' › ' + o.code, payload:o.payload}));
+    if (!a.sample) return;
+    (scope.rows[a.type] || []).forEach(row => {
+      const i = a.sample.rows.findIndex((_, n) => sameKey(rowKeyAt(a, n), row.key));
+      if (i < 0) return;
+      expected.studentAssessments.push({key:row.key, label:keyLabel(row.key), why:row.why,
+        payload:expectedStudentAssessment(model, a, i)});
+    });
+  });
+  eps.filter(e => e.id.startsWith('descriptor:')).forEach(e => {
+    expected.descriptors[e.id] = descriptorUrisIn([expected.assessments, expected.objectiveAssessments,
+      expected.studentAssessments].map(l => l.map(x => x.payload)), e.descriptors[0]);
+  });
+  const observed = simulateResponses(expected, mode, isOn);
+  const asEndpoint = (e, records) => {
+    const st = stateOf(e.id);
+    return {id:e.id, resource:e.resource, excluded:!st.on, reason:st.reason || null,
+      records:st.on ? records : records.map(r => Object.assign({}, r, {fields:r.fields.map(f =>
+        ({path:f.path, expected:f.expected, observed:'—', st:'excluded', why:'Excluded by reviewer: "' + st.reason + '"'}))}))};
+  };
+  return {kind:'assessments', endpoints:eps.map(e => {
+    if (e.id === 'assessments') return asEndpoint(e, expected.assessments.map(x => ({label:x.label, key:x.key,
+      fields:compareRecord(x.payload, (observed.assessments.find(o => o.key === x.key) || {}).payload)})));
+    if (e.id === 'objectiveAssessments') return asEndpoint(e, expected.objectiveAssessments.map(x => {
+      const o = observed.objectiveAssessments.find(y => y.payload.assessmentReference.assessmentIdentifier ===
+        x.payload.assessmentReference.assessmentIdentifier && normKey(y.payload.identificationCode) === normKey(x.payload.identificationCode));
+      if (!o) return {label:x.label, key:x.key, fields:[{path:'(record)', expected:x.payload.identificationCode,
+        observed:'(not returned)', st:'fail', kind:'objective-notfound',
+        why:'No objectiveAssessment matches this code on the normalized key. Live codes: ' +
+          observed.objectiveAssessments.map(y => y.payload.identificationCode).join(', ') + '.'}]};
+      return {label:x.label, key:x.key, fields:compareRecord(x.payload, o.payload)};
+    }));
+    if (e.id === 'studentAssessments') return asEndpoint(e, expected.studentAssessments.map(x => {
+      const o = observed.studentAssessments.find(y => sameKey(y.key, x.key));
+      if (!o) return {label:x.label, key:x.key, why:x.why, fields:[{path:'(record)', expected:x.label,
+        observed:'(not returned)', st:'fail', kind:'notfound',
+        why:'GET studentAssessments?studentUniqueId=' + x.key.studentId + ' returned no record with ' +
+          'studentAssessmentIdentifier ' + x.key.activityId + '.'}]};
+      return {label:x.label, key:x.key, why:x.why, fields:compareRecord(x.payload, o.payload)};
+    }));
+    return asEndpoint(e, (expected.descriptors[e.id] || []).map(uri => ({label:uri.split('#').pop(), key:uri, fields:[
+      (observed.descriptors[e.id] || []).includes(uri)
+        ? {path:'codeValue', expected:uri, observed:uri, st:'pass'}
+        : {path:'codeValue', expected:uri, observed:'(not loaded)', st:'fail', kind:'notloaded',
+           why:'GET /ed-fi/' + e.resource + ' has no value with this namespace and code.'}]})));
+  })};
+}
+
 function startRun(sub, outcomeMode){
+  if (isAssessments(sub)){
+    const rep = reportFor(sub);
+    if (!rep || rep.verdict !== 'ready') return null;   /* design §7: only from a Ready report */
+  }
   const m = MODELS[sub.model];
   const r = {
     id:uid('run'), submissionId:sub.id, productId:sub.productId, model:sub.model,
@@ -2386,7 +2638,12 @@ function startRun(sub, outcomeMode){
     started:tick(), ended:null, results:null, mode:outcomeMode
   };
   ARTIFACTS.forEach(a => { const c = currentVersion(sub, a.id); r.pinned[a.id] = c ? c.v : null; });
-  if (isAssessments(sub)){ r.pinned.sample = null; r.pinned.samples = pinSamples(sub); }
+  if (isAssessments(sub)){
+    r.pinned.sample = null;
+    r.pinned.samples = pinSamples(sub);
+    r.scope = JSON.parse(JSON.stringify(effectiveScope(sub)));
+    r.pinned.scope = scopeSignature(r.scope);
+  }
   /* A Bruno run is worked through by the vendor, so it opens and waits. An
      Assessments run is a batch the platform executes, so it keeps its timers. */
   if (MODELS[sub.model].kind === 'bruno'){
@@ -2419,7 +2676,7 @@ function finishRun(r){
     hist(sub, 'Run ' + r.id + ' failed — authentication error (401 from environment ' + r.env + ')', 'Platform');
   } else {
     const mode = r.mode === 'pass' ? 'pass' : 'realistic';
-    r.results = assessmentResults(mode);   /* Bruno runs returned above */
+    r.results = runAssessmentChecks(sub, r.scope, mode);   /* Bruno runs returned above */
     const t = resultTally(r.results);
     r.outcome = t.fail === 0 ? 'passed' : 'failed';
     hist(sub, 'Run ' + r.id + ' completed — ' + r.completeness + ' — ' +
@@ -2999,10 +3256,7 @@ function vendorNewRun(id){
       ${mapping ? `<div class="muted" style="margin-bottom:12px">From
         <strong>${esc(mapping.name)}</strong> (v${mapping.v}, uploaded ${fmtShort(mapping.at)} by ${esc(mapping.by)}).</div>
       <table class="t"><thead><tr><th>Domain</th><th>Resource</th><th>Declared elements</th><th>Checks</th></tr></thead>
-        <tbody>${ASSESSMENT_RESULTS.map(g2 => `<tr>
-          <td>${esc(g2.domain)}</td><td class="mono">${esc(g2.resource)}</td>
-          <td>${g2.elements.length}</td>
-          <td class="muted">presence &middot; descriptor validity &middot; value reconciliation</td></tr>`).join('')}</tbody>
+        <tbody><tr><td colspan="4" class="muted">See the mapping validation report.</td></tr></tbody>
       </table>
       <div class="muted" style="margin-top:12px;font-size:12.5px">GET requests only; no writes or updates (§5).
         A declared resource the environment returns nothing for is a run <em>failure</em>, not a refusal to
@@ -3715,6 +3969,7 @@ function bind(){
         case 'startrun': {
           const mode = $('#outcomeSel') ? $('#outcomeSel').value : 'realistic';
           const r = startRun(sub, mode);
+          if (!r){ toast('This run can’t start: the mapping validation report isn’t ready.'); render(); break; }
           toast('Run <strong>' + r.id + '</strong> queued and stamped <strong>' + r.completeness +
             '</strong>. Completeness is fixed now and never recalculated.');
           go('#/run/' + r.id);
