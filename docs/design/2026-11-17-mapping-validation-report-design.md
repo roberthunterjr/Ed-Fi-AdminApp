@@ -424,3 +424,34 @@ Copy these, don't re-derive them, and adapt them to the fixture shape:
   ResultDatatypeType and the standard AssessmentReportingMethods the i-Ready workbook references)
 - the visual details of the checklist and the side-by-side view, within the prototype's existing styles
 - whether the converter writes into the HTML directly or prints a block to paste
+
+## 14. Deferred follow-ups (recorded 2026-11-18, after the final review)
+
+Built and reviewed on `certification-mapping-v2`; these were consciously left for later.
+
+**Not built from this design**
+- **Hover highlight in the side-by-side view (§6.2).** Hovering a sample value should highlight where it lands in the expected payload. The sample row is shown beside the payload, but nothing highlights.
+
+**Validator input handling**
+- Required headers are matched case-sensitively: a lowercase `code value` makes the workbook malformed, though links and Assessment Type matching ignore case.
+- An ElementDefinitions row holding only an Assessment Type becomes an element with a blank name; it should be reported as "Element is blank" and skipped.
+- A Product `Namespace` without a trailing `/` produces many "doesn't resolve" errors with no hint; validate it once with a clear finding.
+- Two sample rows with the same `Student ID` + `Activity Id` still pass; a warning would match "values as posted" (a real GET returns one record).
+
+**Run scope**
+- *Include again* and *Undo* take no reason, though §7 says every change needs one. Decide whether to require one.
+- `effectiveScope` lazily creates `sub.runScope` during render (impure; harmless).
+- A failed reason dialog re-renders and loses the typed reason.
+
+**Report and runs**
+- `APP.reportView` (expanded category/endpoint/record, side-by-side toggle) is global, so it carries over between submissions and between the vendor and reviewer pages; key it by submission.
+- The realistic run's *Record not found* fault depends on the value fault's row not being the last selected row; make each fault independent.
+- The run results page renders every record (~600 KB for a realistic run).
+- Descriptor endpoint records use the code as `shortDescription`; the workbook's Short Description isn't threaded through.
+
+**Converter (`tools/build-fixture.mjs`)**
+- Fixture JSON is written into a `<script>` without escaping `</script>` or `<!--`; escape `<` as `<`.
+
+**Still owed**
+- A human click-through of the report, start-a-run and reviewer screens in a browser (only a headless render was done).
+- Workgroup confirmation of D32–D36 and an answer to PRD OQ14 (partial-assessment certification).
