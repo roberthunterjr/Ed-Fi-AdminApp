@@ -1103,8 +1103,13 @@ const VENDORB_COLUMN_RENAMES = [
 const CORRECTIONS = {
   workbook:[
     {why:'ElementDefinitions now uses the Assessment Type names from the Assessments tab.',
-     apply:wb => wb.ElementDefinitions.forEach(r => {
-       r['Assessment Type'] = String(r['Assessment Type'] || '').replace(/^Vendor B /, ''); })},
+     apply:wb => {
+       const types = wb.Assessments.map(a => String(a['Assessment Type'] || '').trim()).filter(Boolean);
+       wb.ElementDefinitions.forEach(r => {
+         const v = String(r['Assessment Type'] || '').trim();
+         r['Assessment Type'] = types.find(x => v === x || v.endsWith(' ' + x)) || v;
+       });
+     }},
     {why:'Math Diagnostic is left out of this submission: there is no Math sample to certify it with.',
      apply:wb => {
        wb.Assessments = wb.Assessments.filter(r => !/Math/.test(r['Assessment Type']));
@@ -1167,11 +1172,19 @@ function fixtureVariant(id){
   else if (kind !== 'original') return null;
   return fx;
 }
+/* Seeded Northwind and Acme submissions use the same files under their names. */
+FIXTURES['northwind-original'] = renameFixture(FIXTURES['vendorb-original'],
+  [['Vendor B', 'Northwind'], ['vendorb', 'northwind'], ['VENDORB', 'NORTHWIND']]);
+FIXTURES['acme-original'] = renameFixture(FIXTURES['vendorb-original'],
+  [['Vendor B', 'Acme'], ['vendorb', 'acme'], ['VENDORB', 'ACME']]);
 /* The variants each slot of a fixture set offers in the upload modal. */
+const fixtureSet = (id, label) => ({label,
+  workbook:[id + '-original', id + '-corrected', id + '-malformed'],
+  samples:[id + '-original', id + '-corrected']});
 const FIXTURE_SETS = {
-  vendorb:{label:'Vendor B (fictitious test files)',
-    workbook:['vendorb-original', 'vendorb-corrected', 'vendorb-malformed'],
-    samples:['vendorb-original', 'vendorb-corrected']}
+  vendorb:fixtureSet('vendorb', 'Vendor B (fictitious test files)'),
+  northwind:fixtureSet('northwind', 'Northwind (the Vendor B files, renamed)'),
+  acme:fixtureSet('acme', 'Acme (the Vendor B files, renamed)')
 };
 
 /* ---------- mapping validation (design §3–§4) ----------
@@ -1750,8 +1763,9 @@ const me = () => APP.persona === 'vendor' ? APP.vendorUser : APP.reviewerUser;
 function artifactSet(list){
   const out = {};
   ARTIFACTS.forEach(a => out[a.id] = []);
-  (list||[]).forEach(([type, name, by, at]) => {
-    out[type].push({v:out[type].length+1, name, by, at});
+  (list||[]).forEach(([type, name, by, at, extra]) => {
+    const same = out[type].filter(x => !extra || !extra.assessment || x.assessment === extra.assessment);
+    out[type].push(Object.assign({v:same.length + 1, name, by, at}, extra || {}));
   });
   return out;
 }
@@ -1812,10 +1826,11 @@ function hist(sub, what, who, when){
   s1.artifactsChangedAt = d(8,11,2);
 
   /* p2 / Assessments v5 — product documentation missing: Submission Incomplete */
-  const s2 = mkSubmission({productId:'p2', model:'assessments', status:'incomplete',
+  const ELA = 'ELA Diagnostic';
+  const s2 = mkSubmission({productId:'p2', model:'assessments', status:'incomplete', fixtureSet:'vendorb',
     artifacts:artifactSet([
-      ['mapping','vendorb-assessments-mapping-v1.csv',V,d(9,10,15)],
-      ['sample','assessment-sample-data.csv',V2,d(9,10,52)]
+      ['mapping','vendorb-mapping-workbook.xlsx',V,d(9,10,15),{fixture:'vendorb-corrected'}],
+      ['sample','vendorb-ela-diagnostic-sample.csv',V2,d(9,10,52),{assessment:ELA, fixture:'vendorb-corrected'}]
     ]), created:d(9,10,0)});
 
   /* p3 / MTSS v5 — nothing uploaded: Draft */
@@ -1829,11 +1844,11 @@ function hist(sub, what, who, when){
       ['sample','acme-sample.json','dev@acme.example.com',d(11,8,20)],
       ['docs','Acme-SIS-Docs.pdf','dev@acme.example.com',d(11,8,35)]
     ]), created:d(10,9,0)});
-  const f2 = mkSubmission({productId:'p5', model:'assessments', status:'inreview',
+  const f2 = mkSubmission({productId:'p5', model:'assessments', status:'inreview', fixtureSet:'northwind',
     artifacts:artifactSet([
-      ['mapping','nw-assessments-mapping.csv','eng@northwind.example.com',d(4,13,0)],
-      ['mapping','nw-assessments-mapping-r2.csv','eng@northwind.example.com',d(14,9,45)],
-      ['sample','nw-sample-scores.csv','eng@northwind.example.com',d(4,13,20)],
+      ['mapping','northwind-mapping-workbook.xlsx','eng@northwind.example.com',d(4,13,0),{fixture:'northwind-corrected'}],
+      ['mapping','northwind-mapping-workbook-r2.xlsx','eng@northwind.example.com',d(14,9,45),{fixture:'northwind-corrected'}],
+      ['sample','northwind-ela-diagnostic-sample.csv','eng@northwind.example.com',d(4,13,20),{assessment:ELA, fixture:'northwind-corrected'}],
       ['docs','Northwind-Score-Report-Example.pdf','eng@northwind.example.com',d(4,13,30)]
     ]), created:d(4,12,0)});
   f2.reviewerSeenAt = d(12,10,0);
@@ -1846,10 +1861,10 @@ function hist(sub, what, who, when){
     ]), created:d(1,9,30)});
   f3.comments.push({by:R, at:d(9,14,10), text:'The StudentGoals mapping points at a descriptor namespace you own rather than the Ed-Fi one. Please correct the mapping and re-run.'});
   f3.reviewerSeenAt = d(9,14,10);
-  const f4 = mkSubmission({productId:'p4', model:'assessments', status:'approved',
+  const f4 = mkSubmission({productId:'p4', model:'assessments', status:'approved', fixtureSet:'acme',
     artifacts:artifactSet([
-      ['mapping','acme-assessments-mapping.csv','dev@acme.example.com',d(1,8,0)],
-      ['sample','acme-assessment-sample.csv','dev@acme.example.com',d(1,8,10)],
+      ['mapping','acme-mapping-workbook.xlsx','dev@acme.example.com',d(1,8,0),{fixture:'acme-corrected'}],
+      ['sample','acme-ela-diagnostic-sample.csv','dev@acme.example.com',d(1,8,10),{assessment:ELA, fixture:'acme-corrected'}],
       ['docs','Acme-Score-Report.pdf','dev@acme.example.com',d(1,8,20)]
     ]), created:d(1,7,30)});
   f4.decision = {kind:'approved', by:R, at:d(8,16,0), reason:''};
@@ -1857,6 +1872,17 @@ function hist(sub, what, who, when){
 
   /* seeded runs */
   const mkRun = o => { const r = Object.assign({id:uid('run'), results:null}, o); APP.runs.push(r); return r; };
+  /* An Assessments run pins the scope of the files it ran against (mapping version
+     `mappingV`, sample v1) and, unless it errored, carries real results. */
+  const asmRun = (sub, mappingV, mode, o) => {
+    const scope = JSON.parse(JSON.stringify(effectiveScope(sub)));
+    scope.mapping = mappingV;
+    const r = mkRun(Object.assign({submissionId:sub.id, productId:sub.productId, model:'assessments', state:'completed',
+      tag:MODELS.assessments.tag, sha:MODELS.assessments.sha, scope,
+      pinned:{mapping:mappingV, sample:null, docs:o.docs, samples:{[ELA]:1}, scope:scopeSignature(scope)}}, o));
+    if (mode) r.results = runAssessmentChecks(sub, scope, mode);
+    return r;
+  };
 
   mkRun({submissionId:s1.id, productId:'p1', model:'sis', state:'sealed', outcome:'failed',
     completeness:'Incomplete', pinned:{mapping:1, sample:1, docs:null},
@@ -1871,31 +1897,26 @@ function hist(sub, what, who, when){
     tag:MODELS.sis.tag, sha:MODELS.sis.sha, initiator:V, env:'Vendor_B',
     started:d(7,13,0), ended:d(7,13,9), results:seededBrunoResults('sis','pass')});
 
-  mkRun({submissionId:s2.id, productId:'p2', model:'assessments', state:'completed', outcome:'auth-error',
-    completeness:'Incomplete', pinned:{mapping:1, sample:null, docs:null},
-    tag:MODELS.assessments.tag, sha:MODELS.assessments.sha, initiator:V, env:'Vendor_B',
-    started:d(9,11,0), ended:d(9,11,1)});
-  mkRun({submissionId:s2.id, productId:'p2', model:'assessments', state:'completed', outcome:'failed',
-    completeness:'Incomplete', pinned:{mapping:1, sample:1, docs:null},
-    tag:MODELS.assessments.tag, sha:MODELS.assessments.sha, initiator:V2, env:'Vendor_B',
-    started:d(13,15,20), ended:d(13,15,26), results:null});
+  const s2auth = asmRun(s2, 1, null, {outcome:'auth-error', completeness:'Incomplete', docs:null,
+    initiator:V, env:'Vendor_B', started:d(9,11,0), ended:d(9,11,1)});
+  const s2failed = asmRun(s2, 1, 'realistic', {outcome:'failed', completeness:'Incomplete', docs:null,
+    initiator:V2, env:'Vendor_B', started:d(13,15,20), ended:d(13,15,26)});
+  /* Then Vendor B re-sent its full workbook (Math included) and the raw ELA export: v2 of both. */
+  s2.artifacts.mapping.push({v:2, name:'vendorb-mapping-workbook-full.xlsx', by:V, at:d(14,8,30), fixture:'vendorb-original'});
+  s2.artifacts.sample.push({v:2, name:'vendorb-ela-diagnostic-export.csv', by:V2, at:d(14,8,40), assessment:ELA, fixture:'vendorb-original'});
 
   mkRun({submissionId:f1.id, productId:'p4', model:'sis', state:'sealed', outcome:'passed',
     completeness:'Complete', pinned:{mapping:1, sample:1, docs:1},
     tag:MODELS.sis.tag, sha:MODELS.sis.sha, initiator:'dev@acme.example.com', env:'Acme_Prod_Cert',
     started:d(12,9,0), ended:d(12,9,8), results:seededBrunoResults('sis','pass')});
-  mkRun({submissionId:f2.id, productId:'p5', model:'assessments', state:'completed', outcome:'passed',
-    completeness:'Complete', pinned:{mapping:1, sample:1, docs:1},
-    tag:MODELS.assessments.tag, sha:MODELS.assessments.sha, initiator:'eng@northwind.example.com',
-    env:'Northwind_Cert', started:d(11,10,0), ended:d(11,10,7), results:null});
+  asmRun(f2, 1, 'pass', {outcome:'passed', completeness:'Complete', docs:1, initiator:'eng@northwind.example.com',
+    env:'Northwind_Cert', started:d(11,10,0), ended:d(11,10,7)});
   mkRun({submissionId:f3.id, productId:'p6', model:'mtss', state:'sealed', outcome:'infra-error',
     completeness:'Complete', pinned:{mapping:1, sample:1, docs:1},
     tag:MODELS.mtss.tag, sha:MODELS.mtss.sha, initiator:'ops@larkspur.example.com',
     env:'Larkspur_Cert', started:d(14,17,40), ended:d(14,17,41)});
-  mkRun({submissionId:f4.id, productId:'p4', model:'assessments', state:'completed', outcome:'passed',
-    completeness:'Complete', pinned:{mapping:1, sample:1, docs:1},
-    tag:MODELS.assessments.tag, sha:MODELS.assessments.sha, initiator:'dev@acme.example.com',
-    env:'Acme_Prod_Cert', started:d(6,11,0), ended:d(6,11,6), results:null});
+  asmRun(f4, 1, 'pass', {outcome:'passed', completeness:'Complete', docs:1, initiator:'dev@acme.example.com',
+    env:'Acme_Prod_Cert', started:d(6,11,0), ended:d(6,11,6)});
 
   /* seeded history */
   s1.history = [
@@ -1908,16 +1929,21 @@ function hist(sub, what, who, when){
     {what:'Artifact uploaded: Vendor mapping CSV v1 (structural validation passed)', who:V, at:d(2,9,14)},
     {what:'Submission created', who:V, at:d(2,9,10)}
   ];
+  const s2tally = resultTally(s2failed.results);
   s2.history = [
-    {what:'Run run-110 completed — Incomplete — 5 checks failed', who:'Platform', at:d(13,15,26)},
+    {what:'Artifact replaced: Sample data — ELA Diagnostic → v2 (vendorb-ela-diagnostic-export.csv) — report: ' +
+      verdictText(reportFor(s2)), who:V2, at:d(14,8,40)},
+    {what:'Artifact replaced: Mapping workbook → v2 (vendorb-mapping-workbook-full.xlsx) — report: Not ready', who:V, at:d(14,8,30)},
+    {what:'Run ' + s2failed.id + ' completed — Incomplete — ' + s2tally.fail + ' of ' + s2tally.total + ' field checks failed',
+      who:'Platform', at:d(13,15,26)},
     {what:'Run started — Assessments v5 — stamped Incomplete (Product documentation missing)', who:V2, at:d(13,15,20)},
-    {what:'Run run-109 failed — authentication error (401 from environment Vendor_B)', who:'Platform', at:d(9,11,1)},
-    {what:'Artifact uploaded: Sample data v1', who:V2, at:d(9,10,52)},
-    {what:'Artifact uploaded: Vendor mapping CSV v1 (structural validation passed)', who:V, at:d(9,10,15)},
+    {what:'Run ' + s2auth.id + ' failed — authentication error (401 from environment Vendor_B)', who:'Platform', at:d(9,11,1)},
+    {what:'Artifact uploaded: Sample data — ELA Diagnostic v1 (vendorb-ela-diagnostic-sample.csv) — report: Ready to run', who:V2, at:d(9,10,52)},
+    {what:'Artifact uploaded: Mapping workbook v1 (vendorb-mapping-workbook.xlsx) — report: Not ready', who:V, at:d(9,10,15)},
     {what:'Submission created', who:V, at:d(9,10,0)}
   ];
   f2.history = [
-    {what:'Artifact replaced: Vendor mapping CSV → v2', who:'eng@northwind.example.com', at:d(14,9,45)},
+    {what:'Artifact replaced: Mapping workbook → v2 (northwind-mapping-workbook-r2.xlsx) — report: Ready to run', who:'eng@northwind.example.com', at:d(14,9,45)},
     {what:'Status changed to In Review', who:R, at:d(12,10,0)},
     {what:'Status changed to Ready for Review (readiness gate met)', who:'Platform', at:d(11,10,8)},
     {what:'Submission created', who:'eng@northwind.example.com', at:d(4,12,0)}

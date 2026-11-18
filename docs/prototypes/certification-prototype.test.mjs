@@ -1112,3 +1112,33 @@ test('artifact card shows the report verdict badge', () => {
   const p = loadPrototype(); const sub = originalSub(p);
   assert.match(p.artifactCard(sub, false), /href="#\/report\/[^"]+"[^>]*>.*Not ready · \d+ errors/);
 });
+
+/* Task 9 — seeds from validated fixtures. */
+const seededAsm = (p, productId) => p.APP.submissions.find(s => s.model === 'assessments' && s.productId === productId);
+
+test('seeded Vendor B assessments submission is not ready', () => {
+  const p = loadPrototype(); const sub = seededAsm(p, 'p2');
+  assert.equal(p.reportFor(sub).verdict, 'not-ready');
+  assert.equal(sub.status, 'incomplete');
+  const runs = p.APP.runs.filter(r => r.submissionId === sub.id);
+  assert.deepEqual(runs.map(r => r.outcome), ['auth-error', 'failed']);
+  assert.ok(runs.every(r => p.isStale(sub, r)), 'runs pinned the v1 files');
+  assert.ok(runs[1].results.endpoints.length > 0);
+});
+
+test('seeded Northwind and Acme submissions are ready with passed runs', () => {
+  const p = loadPrototype();
+  [['p5', 'inreview', 'uri://northwind.example/'], ['p4', 'approved', 'uri://acme.example/']].forEach(([pid, status, ns]) => {
+    const sub = seededAsm(p, pid);
+    const rep = p.reportFor(sub);
+    assert.equal(rep.verdict, 'ready', pid); assert.equal(sub.status, status);
+    assert.equal(rep.model.product.namespace, ns);
+    const run = p.APP.runs.find(r => r.submissionId === sub.id);
+    assert.equal(run.outcome, 'passed'); assert.equal(p.resultTally(run.results).fail, 0);
+  });
+});
+
+test('seeded artifacts use the Assessments labels in history', () => {
+  const p = loadPrototype();
+  ['p2', 'p5', 'p4'].forEach(pid => assert.ok(!seededAsm(p, pid).history.some(h => /Vendor mapping CSV/.test(h.what)), pid));
+});
