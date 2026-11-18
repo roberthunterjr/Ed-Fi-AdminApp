@@ -4,8 +4,11 @@
 
    Usage:
      node build-fixture.mjs --name <id> --workbook <xlsx> \
-       --sample "<Assessment Type>=<csv>" [--sample …] \
+       --sample "<Assessment Type>=<csv or xlsx>" [--sample …] \
        [--rename "from=to" …] [--out <prototype.html>]
+
+   An .xlsx sample is read from its first sheet. One wide sample that holds
+   several assessments can be passed to each of their slots.
 
    With --out, the text between  FIXTURES:BEGIN <id>  and  FIXTURES:END <id>
    markers in the HTML is replaced; otherwise the fixture is printed.
@@ -48,14 +51,20 @@ const texts = xml => [...xml.matchAll(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>|<t(?:\s[^>
 const colIndex = ref => { let n = 0; for (const ch of ref.replace(/\d+$/, '')) n = n * 26 + ch.charCodeAt(0) - 64; return n - 1; };
 const colLetter = i => { let s = ''; i++; while (i){ const r = (i - 1) % 26; s = String.fromCharCode(65 + r) + s; i = Math.floor((i - 1) / 26); } return s; };
 
-export function readXlsx(buf){
+/* A numeric cell as Excel's General format shows it: tools that write .xlsx
+   often store 254 as "254.0" or 1435148917 as "1.435148917E9". Dates stay as
+   serial numbers (no number-format lookup). */
+const generalNumber = s => { const n = Number(s); return s.trim() !== '' && Number.isFinite(n) ? String(n) : s; };
+
+/* Every sheet as a grid of cell strings, in workbook order. */
+export function readXlsxGrids(buf){
   const files = unzip(buf);
   const str = n => files[n] ? files[n].toString('utf8') : '';
   const shared = [...str('xl/sharedStrings.xml').matchAll(/<si>([\s\S]*?)<\/si>/g)].map(m => texts(m[1]));
   const rels = {};
   for (const m of str('xl/_rels/workbook.xml.rels').matchAll(/<Relationship\b[^>]*>/g))
     rels[attr(m[0], 'Id')] = attr(m[0], 'Target');
-  const tabs = {};
+  const grids = {};
   for (const m of str('xl/workbook.xml').matchAll(/<sheet\b[^>]*>/g)){
     const name = attr(m[0], 'name');
     let target = rels[attr(m[0], 'r:id')] || '';
@@ -70,11 +79,29 @@ export function readXlsx(buf){
         let val = '';
         if (type === 's') val = shared[+v] || '';
         else if (type === 'inlineStr') val = texts(body);
-        else if (v != null) val = decode(v);
+        else if (v != null) val = type == null || type === 'n' ? generalNumber(decode(v)) : decode(v);
         cells[ref ? colIndex(ref) : cells.length] = val;
       }
       grid.push(cells);
     }
+    grids[name] = grid;
+  }
+  return grids;
+}
+
+/* A sample kept as a spreadsheet: its first sheet, read like a CSV. */
+export function sampleFromXlsx(buf){
+  const grid = Object.values(readXlsxGrids(buf))[0] || [];
+  const rows = grid.map(r => Array.from(r, v => v == null ? '' : String(v)))
+    .filter(r => r.some(v => v.trim() !== ''));
+  const [columns = [], ...rest] = rows;
+  rest.forEach(r => { while (r.length < columns.length) r.push(''); });
+  return {columns, rows:rest};
+}
+
+export function readXlsx(buf){
+  const tabs = {};
+  for (const [name, grid] of Object.entries(readXlsxGrids(buf))){
     const header = (grid[0] || []).map(h => (h || '').trim());
     tabs[name] = grid.slice(1)
       .filter(row => row.some(v => v != null && String(v).trim() !== ''))
@@ -145,7 +172,7 @@ function main(argv){
   opts.sample.forEach(s => {
     const i = s.indexOf('=');
     const type = s.slice(0, i), file = s.slice(i + 1);
-    const parsed = parseCsv(readFileSync(file, 'utf8'));
+    const parsed = /\.xlsx$/i.test(file) ? sampleFromXlsx(readFileSync(file)) : parseCsv(readFileSync(file, 'utf8'));
     samples[type] = {name:file.split(/[\\/]/).pop(), columns:parsed.columns, rows:parsed.rows};
   });
   const fx = renameAll(toFixture({name:opts.name, workbook, samples}), pairs);

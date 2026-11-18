@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import zlib from 'node:zlib';
-import { readXlsx, parseCsv, renameAll } from './build-fixture.mjs';
+import { readXlsx, sampleFromXlsx, parseCsv, renameAll } from './build-fixture.mjs';
 
 /* Builds a minimal .xlsx in memory: a zip of deflated XML parts with shared
    strings. Rows are arrays; a hole or undefined leaves the cell out. */
@@ -17,7 +17,10 @@ function makeXlsx(tabs){
       const cells = [];
       for (let ci = 0; ci < r.length; ci++){
         if (r[ci] === undefined) continue;
-        cells.push(`<c r="${col(ci)}${ri + 1}" t="s"><v>${si(r[ci])}</v></c>`);
+        /* {n:'254.0'} is a numeric cell stored the way a tool wrote it. */
+        cells.push(r[ci] && typeof r[ci] === 'object'
+          ? `<c r="${col(ci)}${ri + 1}"><v>${r[ci].n}</v></c>`
+          : `<c r="${col(ci)}${ri + 1}" t="s"><v>${si(r[ci])}</v></c>`);
       }
       return `<row r="${ri + 1}">${cells.join('')}</row>`;
     }).join('');
@@ -70,6 +73,19 @@ test('readXlsx names an unheaded column by its letter', () => {
   row[7] = '"x": "y"';
   const buf = makeXlsx({ElementDefinitions:[['Element'], row]});
   assert.equal(readXlsx(buf).ElementDefinitions[0].H, '"x": "y"');
+});
+
+test('numeric cells read as Excel General shows them', () => {
+  const buf = makeXlsx({Sheet1:[['Code', 'Score'], [{n:'1.435148917E9'}, {n:'254.0'}], [{n:'0.5'}, {n:'22'}]]});
+  assert.deepEqual(readXlsx(buf).Sheet1, [{Code:'1435148917', Score:'254'}, {Code:'0.5', Score:'22'}]);
+});
+
+test('sampleFromXlsx reads the first sheet like a CSV, keeping column order and blanks', () => {
+  const row = ['K', {n:'254.0'}];
+  row[3] = 'x';
+  const buf = makeXlsx({Sheet1:[['Grade', 'Score', 'Empty', 'Note'], row, []], Other:[['ignored']]});
+  assert.deepEqual(sampleFromXlsx(buf),
+    {columns:['Grade', 'Score', 'Empty', 'Note'], rows:[['K', '254', '', 'x']]});
 });
 
 test('parseCsv keeps quoted commas and strips a BOM', () => {

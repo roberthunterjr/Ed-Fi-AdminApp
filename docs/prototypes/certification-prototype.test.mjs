@@ -1168,3 +1168,67 @@ test('adding a row already in scope is refused, so a later remove takes effect',
   assert.ok(!rows().some(x => sameKeyT(x.key, first.key)));
 });
 const sameKeyT = (a, b) => a.studentId === b.studentId && a.activityId === b.activityId;
+
+/* Vendor C: a small vendor's files, converted by tools/build-fixture.mjs. */
+test('Vendor C original files are not ready, for the sample alone', () => {
+  const p = loadPrototype(); const r = validate(p, p.fixtureVariant('vendorc-original'));
+  assert.equal(r.verdict, 'not-ready');
+  const by = id => r.categories.find(c => c.id === id).errors;
+  assert.deepEqual([by('assessments'), by('links'), by('targets'), by('objectives')], [0, 0, 0, 0]);
+  assert.equal(by('prearranged'), 1);
+  assert.ok(r.findings.some(f => /`Incomplete`/.test(f.message)));
+  assert.ok(r.findings.every(f => f.file === 'Sample' || /^EnumerationItems/.test(f.where)));
+});
+
+test('Vendor C corrected comes from its own files, not the Vendor B corrections', () => {
+  const p = loadPrototype();
+  const fx = p.fixtureVariant('vendorc-corrected');
+  assert.equal(fx.name, 'vendorc-corrected');
+  assert.ok(fx.samples['Reading Benchmark'].columns.includes('Activity Id'));
+  const r = validate(p, fx);
+  assert.equal(r.verdict, 'ready');
+  assert.deepEqual(r.objectives['Reading Benchmark'], []);
+  assert.ok(!p.deriveEndpoints(r.model).some(e => e.id === 'objectiveAssessments'));
+});
+
+test('loading the Vendor C set switches the submission to its files', () => {
+  const p = loadPrototype(); const sub = freshAsm(p);
+  p.loadFixtureSet(sub, 'vendorc', 'corrected');
+  assert.equal(p.fixtureSetOf(sub), 'vendorc');
+  assert.deepEqual(p.sampleSlots(sub), ['Reading Benchmark']);
+  assert.equal(p.reportFor(sub).verdict, 'ready');
+});
+
+/* Vendor D: a real submission's shape with fictitious data, renamed. */
+test('Vendor D files as sent follow the published template and are rejected as malformed', () => {
+  const p = loadPrototype(); const r = validate(p, p.fixtureVariant('vendord-original'));
+  assert.equal(r.verdict, 'malformed');
+  assert.deepEqual(r.findings.map(f => f.message.match(/`(\w+)`/)[1]),
+    ['assessmentTitle', 'assessmentIdentifier', 'assessmentCategoryDescriptor']);
+});
+
+test('Vendor D example rework is ready, one sample per assessment', () => {
+  const p = loadPrototype(); const r = validate(p, p.fixtureVariant('vendord-corrected'));
+  assert.equal(r.verdict, 'ready');
+  assert.deepEqual(r.model.assessments.map(a => [a.type, a.identifier]), [['DIBELS 8th Edition', '1A'], ['Lectura', '2A']]);
+  assert.equal(r.model.product.namespace, 'uri://tea.texas.gov/assessment');
+});
+
+test('a rejected fixture-set workbook leaves the submission on its set', () => {
+  const p = loadPrototype(); const sub = freshAsm(p);
+  p.loadFixtureSet(sub, 'vendorc', 'corrected');
+  const res = p.loadFixtureSet(sub, 'vendord', 'original');
+  assert.equal(res.ok, false);
+  assert.equal(res.errors.length, 3);
+  assert.equal(p.fixtureSetOf(sub), 'vendorc');
+  assert.equal(p.reportFor(sub).verdict, 'ready');
+  assert.match(sub.history[0].what, /rejected — malformed workbook/);
+});
+
+test('the artifact card offers the other vendors\' files, not the current one', () => {
+  const p = loadPrototype(); const sub = freshAsm(p);
+  p.loadFixtureSet(sub, 'vendord', 'corrected');
+  const html = p.artifactCard(sub, false);
+  assert.match(html, /data-set="vendorc"/);
+  assert.doesNotMatch(html, /data-set="vendord"/);
+});
