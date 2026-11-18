@@ -140,6 +140,13 @@ table.t td.act{text-align:right;white-space:nowrap}
 .dotstate.ok i{background:var(--green)} .dotstate.bad i{background:var(--red)}
 .dotstate.warn i{background:var(--amber)}
 @keyframes pulse{50%{opacity:.25}}
+.sidebyside{display:grid;grid-template-columns:1fr 1.2fr;gap:14px;margin-top:10px}
+@media (max-width:760px){.sidebyside{grid-template-columns:1fr}}
+pre.json{background:#f6f8fa;border:1px solid var(--line);border-radius:6px;padding:10px;font-size:12px;overflow:auto;max-height:420px;margin:8px 0}
+ul.findings{margin:4px 0 8px 18px;padding:0}
+ul.findings li{margin:2px 0}
+.infoline{margin-top:8px}
+.infobody{margin:6px 0 0 18px;display:grid;gap:6px}
 .legend{margin-top:18px;padding-top:14px;border-top:1px solid var(--line-2);display:flex;gap:10px;flex-wrap:wrap}
 .legend .badge{font-weight:600}
 .tag{display:inline-block;font-family:ui-monospace,Consolas,monospace;font-size:12px;background:#f2f4f6;
@@ -2804,6 +2811,7 @@ function vendorScreen(route){
     case 'submission': return vendorSubmission(route.args[0]);
     case 'newrun':     return vendorNewRun(route.args[0]);
     case 'run':        return runResults(route.args[0], false);
+    case 'report':     return reportPage(route.args[0], false);
     case 'runs':       return vendorRunHistory();
     default:           return placeholder(route.name.charAt(0).toUpperCase() + route.name.slice(1));
   }
@@ -3060,7 +3068,9 @@ function assessmentsArtifactRows(sub){
   const rows = [{type:'mapping', label:'Mapping workbook', cur:currentVersion(sub, 'mapping'),
     versions:sub.artifacts.mapping.length,
     note:'The vendor’s filled Data Mapping Template — the source of truth for what is checked.',
-    validation:'Validated into the mapping validation report'}];
+    validation:'Validated into the mapping validation report',
+    validationHTML:currentVersion(sub, 'mapping') ? `<a href="#/report/${sub.id}"><span class="badge ${
+      (reportFor(sub) || {}).verdict === 'ready' ? 'b-green' : 'b-red'}">${esc(verdictText(reportFor(sub)))}</span></a>` : null}];
   if (!slots.length) rows.push({type:'sample', label:'Sample data', cur:null, versions:0, disabled:true,
     note:'One slot per assessment, named by the workbook. Upload the workbook first.',
     validation:'Checked against the workbook'});
@@ -3088,7 +3098,7 @@ function artifactCard(sub, reviewerView){
             : '<span class="badge b-amber">Missing</span>'}</td>
           <td class="muted">${cur ? esc(cur.by) : '—'}</td>
           <td class="muted nowrap">${cur ? fmtShort(cur.at) : '—'}</td>
-          <td class="muted">${esc(a.validation)}</td>
+          <td class="muted">${a.validationHTML || esc(a.validation)}</td>
           <td class="act">${reviewerView
             ? (cur ? '<button class="btn ghost sm" data-act="viewartifact">View</button>' : '<span class="muted">—</span>')
             : a.disabled ? '<span class="muted">—</span>'
@@ -3179,7 +3189,8 @@ function vendorNewRun(id){
   const p = product(sub.productId), m = MODELS[sub.model], g = gate(sub);
   const busy = busyEnv(product(sub.productId).env);
   const mapping = currentVersion(sub, 'mapping');
-  const assessmentsBlocked = m.kind === 'assessments' && !mapping;
+  const report = m.kind === 'assessments' ? reportFor(sub) : null;
+  const assessmentsBlocked = m.kind === 'assessments' && (!report || report.verdict !== 'ready');
   const stamp = wouldStamp(sub);
   const blocked = !!busy || assessmentsBlocked;
 
@@ -3190,11 +3201,11 @@ function vendorNewRun(id){
       ${esc(busy.initiator)} at ${fmtShort(busy.started)}) is ${esc(busy.state)}. Only one run per product may
       execute at a time, across all certification models (D22). Submissions may still be open concurrently.</p></div>`;
   } else if (assessmentsBlocked){
-    precondition = `<div class="banner red"><h3>Assessments validation needs a mapping CSV first</h3>
-      <p>This is not the generic artifact gate. The mapping CSV is the input that tells the validator
-      <em>which resources and elements to check</em>, so without it there is nothing to validate against (D15).
-      Sample data and product documentation are <strong>not</strong> required to start an Assessments run.</p>
-      <p><button class="btn sm" data-act="upload" data-sub="${sub.id}" data-type="mapping">Upload mapping CSV</button></p></div>`;
+    precondition = !mapping ? `<div class="banner red"><h3>Upload the mapping workbook first</h3>
+      <p>The workbook and the sample data are what the run is checked against. The mapping validation report is
+      built from them, and a run starts only from a report that is Ready to run (design §7).</p>
+      <p><button class="btn sm" data-act="upload" data-sub="${sub.id}" data-type="mapping">Upload mapping workbook</button></p></div>`
+      : verdictBannerHTML(report).replace('</div>', `<p><a class="btn sm" href="#/report/${sub.id}">Open the report</a></p></div>`);
   } else {
     precondition = `<div class="banner ${stamp === 'Complete' ? 'green' : 'amber'}">
       <h3>This run will be stamped ${completenessBadge(stamp)}</h3>
@@ -3204,8 +3215,11 @@ function vendorNewRun(id){
           '</strong>. Results will be real and fully displayed, but the run cannot make this submission ' +
           'Ready for Review. Uploading the missing artifacts later does not upgrade it (§8.1).'}</p>
       <p class="muted">The designation is assigned once, at start, and pinned to the artifact versions present
-      right now: ${ARTIFACTS.map(a => { const c = currentVersion(sub, a.id);
-        return esc(a.label) + ' ' + (c ? 'v' + c.v : '—'); }).join(' · ')}</p></div>`;
+      right now: ${(m.kind === 'assessments'
+        ? [['Mapping workbook', currentVersion(sub, 'mapping')]].concat(sampleSlots(sub).map(s => ['Sample data — ' + s, currentSample(sub, s)]),
+            [[ARTIFACTS.find(a => a.id === 'docs').label, currentVersion(sub, 'docs')]])
+        : ARTIFACTS.map(a => [a.label, currentVersion(sub, a.id)]))
+        .map(([label, c]) => esc(label) + ' ' + (c ? 'v' + c.v : '—')).join(' · ')}</p></div>`;
   }
 
   /* The Prepare panel is where a vendor actually works a scenario, so it needs an
@@ -3252,16 +3266,10 @@ function vendorNewRun(id){
         <select><option>Show 10</option><option>Show 25</option></select></div>
     </div>` : `
     <div class="card">
-      <h2>In-scope resources <span class="hint">Read from the mapping CSV — the platform does not derive the mapping (§5).</span></h2>
-      ${mapping ? `<div class="muted" style="margin-bottom:12px">From
-        <strong>${esc(mapping.name)}</strong> (v${mapping.v}, uploaded ${fmtShort(mapping.at)} by ${esc(mapping.by)}).</div>
-      <table class="t"><thead><tr><th>Domain</th><th>Resource</th><th>Declared elements</th><th>Checks</th></tr></thead>
-        <tbody><tr><td colspan="4" class="muted">See the mapping validation report.</td></tr></tbody>
-      </table>
-      <div class="muted" style="margin-top:12px;font-size:12.5px">GET requests only; no writes or updates (§5).
-        A declared resource the environment returns nothing for is a run <em>failure</em>, not a refusal to
-        run (D24).</div>`
-      : '<div class="empty">No mapping CSV uploaded, so no resources are in scope.</div>'}
+      <h2>In-scope resources <span class="hint">From the mapping validation report — the endpoints the run turns
+        on and what each should return.</span></h2>
+      ${endpointsHTML(sub, report, {readOnly:true})}
+      ${scopeNotesHTML(sub)}
     </div>`;
 
   return crumbs([['Home', '#/products'], ['My products', '#/products'],
@@ -3303,7 +3311,7 @@ function vendorNewRun(id){
         <button class="btn" data-act="startrun" data-sub="${sub.id}" ${blocked ? 'disabled' : ''}>
           Start ${esc(m.label)} run</button>
         ${blocked ? `<span class="muted">${busy ? 'Blocked: run ' + esc(busy.id) + ' is still executing.'
-          : 'Blocked: a valid mapping CSV is required.'}</span>` : ''}
+          : 'Blocked: the mapping validation report isn’t ready.'}</span>` : ''}
       </div>
     </div>
     ${APP.prepare && openRun && APP.prepare.run === openRun.id
@@ -3311,6 +3319,16 @@ function vendorNewRun(id){
           `<div style="margin:-6px 0 18px"><button class="linkish"
              data-act="closeprepare">Back to all scenarios</button></div>`
         : scenarioTable}`;
+}
+
+/* What the reviewer changed in the run scope, with reasons, for the vendor. */
+function scopeNotesHTML(sub){
+  const rs = runScopeOf(sub);
+  const notes = Object.keys(rs.excluded).map(id => 'Excluded ' + id + ' — “' + rs.excluded[id].reason + '”')
+    .concat(rs.rowAdds.map(x => 'Added row ' + keyLabel(x.key) + ' — “' + x.reason + '”'))
+    .concat(rs.rowRemoves.map(x => 'Removed row ' + keyLabel(x.key) + ' — “' + x.reason + '”'));
+  return notes.length ? `<div class="banner amber" style="margin-top:12px"><h3>Reviewer changes to the run scope</h3>
+    <ul>${notes.map(n => '<li>' + esc(n) + '</li>').join('')}</ul></div>` : '';
 }
 
 /* ---- run results ---- */
@@ -3606,45 +3624,273 @@ function brunoResultsHTML(r){
   </div>`;
 }
 
+/* ---------- mapping validation report (design §6) ----------
+   Top: the verdict and a readiness checklist; each category expands to its
+   findings grouped by where to fix them. Below, once ready: the endpoints the
+   run turns on and the expected response for each record, with a side-by-side
+   sample-row view. View state lives in APP.reportView. */
+const REPORT_ICON = {ok:'✅', warning:'⚠️', error:'❌'};
+function findingLine(f){
+  return (f.row ? 'Row ' + f.row + ': ' : '') + f.message + '.' + (f.hint ? ' ' + f.hint : '') +
+    (f.count > 1 ? ' ' + f.count + ' rows.' : '');
+}
+function verdictBannerHTML(report){
+  if (report && report.verdict === 'ready')
+    return `<div class="banner green"><h3>Ready to run</h3>
+      <p>The workbook and sample data produce valid expected responses. ${report.warnings
+        ? report.warnings + ' warning' + (report.warnings === 1 ? '' : 's') + ' — worth a look, but they don’t block the run.'
+        : 'No warnings.'}</p></div>`;
+  const n = report ? report.errors : 0;
+  return `<div class="banner red"><h3>Not ready to run: ${n} error${n === 1 ? '' : 's'}</h3>
+    <p>Fix these in the workbook or sample, then re-upload.</p></div>`;
+}
+function checklistHTML(report){
+  const view = APP.reportView || {};
+  return `<table class="t checklist"><tbody>${report.categories.map(c => {
+    const open = view.cat === c.id;
+    const counts = c.errors || c.warnings
+      ? [c.errors ? c.errors + ' error' + (c.errors === 1 ? '' : 's') : '', c.warnings ? c.warnings + ' warning' + (c.warnings === 1 ? '' : 's') : '']
+        .filter(Boolean).join(' · ')
+      : 'No issues';
+    const fs = report.findings.filter(f => f.category === c.id);
+    const groups = [];
+    fs.forEach(f => {
+      const where = f.file + ' › ' + f.where;
+      let g = groups.find(x => x.where === where);
+      if (!g) groups.push(g = {where, items:[]});
+      g.items.push(f);
+    });
+    return `<tr><td style="width:28px">${REPORT_ICON[c.status]}</td>
+      <td><strong>${esc(c.label)}</strong></td><td class="muted">${esc(counts)}</td>
+      <td class="act">${fs.length ? `<button class="linkish" data-act="reportcat" data-id="${c.id}">${open ? 'Hide' : 'Show'}</button>` : ''}</td></tr>
+      ${open && fs.length ? `<tr><td></td><td colspan="3">${groups.map(g => `
+        <div class="label" style="margin-top:8px">${esc(g.where)}</div>
+        <ul class="findings">${g.items.map(f => `<li>${f.severity === 'error' ? '❌' : '⚠️'} ${esc(findingLine(f))}</li>`).join('')}</ul>`).join('')}
+      </td></tr>` : ''}`;
+  }).join('')}</tbody></table>
+  ${infoLinesHTML(report)}`;
+}
+function infoLinesHTML(report){
+  const view = APP.reportView || {};
+  const notChecked = Object.entries(report.notChecked || {});
+  const objectives = Object.entries(report.objectives || {}).filter(([, l]) => l.length);
+  const line = (id, label, n, body) => `<div class="infoline">
+    <button class="linkish" data-act="reportinfo" data-id="${id}">${view.info === id ? '▾' : '▸'} ${esc(label)}</button>
+    <span class="muted">${n}</span>${view.info === id ? `<div class="infobody">${body}</div>` : ''}</div>`;
+  return (notChecked.length ? line('notchecked', 'Sample columns not checked',
+      notChecked.reduce((n, [, l]) => n + l.length, 0) + ' columns — vendors export more than they post',
+      notChecked.map(([a, cols]) => `<div><strong>${esc(a)}</strong>: ${cols.map(c => `<span class="tag">${esc(c)}</span>`).join(' ')}</div>`).join(''))
+    : '') +
+    (objectives.length ? line('objectives', 'Derived objective codes',
+      objectives.reduce((n, [, l]) => n + l.length, 0) + ' codes, matched to live data on the normalized key',
+      objectives.map(([a, l]) => `<div><strong>${esc(a)}</strong>: ${l.map(o => `<span class="tag">${esc(o.code)}</span>`).join(' ')}</div>`).join(''))
+    : '');
+}
+/* Expected JSON, with the pre-arranged identity fields tagged. */
+function payloadHTML(payload){
+  const pre = PREARRANGED_COLUMNS.map(pc => pc.field.split('.').pop());
+  return `<pre class="json">${JSON.stringify(payload, null, 2).split('\n').map(line => {
+    const m = line.match(/^\s*"(\w+)":/);
+    return esc(line) + (m && pre.includes(m[1]) ? ' <span class="badge b-indigo">Pre-arranged</span>' : '');
+  }).join('\n')}</pre>`;
+}
+function sampleRowHTML(a, index){
+  const row = a.sample.rows[index];
+  const cols = [];
+  PREARRANGED_COLUMNS.forEach(pc => {
+    const i = pc.path === 'studentAssessment.studentReference' ? a.idColumns.student : a.idColumns.activity;
+    if (i >= 0) cols.push([a.sample.columns[i], row[i], 'Pre-arranged']);
+  });
+  a.elements.filter(e => e.column >= 0).forEach(e => cols.push([a.sample.columns[e.column], row[e.column], '']));
+  return `<table class="t"><thead><tr><th>Sample column</th><th>Value</th></tr></thead><tbody>${cols.map(([c, v, tag]) =>
+    `<tr><td>${esc(c)}${tag ? ' <span class="badge b-indigo">' + tag + '</span>' : ''}</td>
+      <td class="mono">${v === '' || v == null ? '<span class="muted">(blank)</span>' : esc(v)}</td></tr>`).join('')}</tbody></table>`;
+}
+/* The records an endpoint shows: assessments and objectives from the workbook,
+   student assessments from the scope's rows, descriptor values by URI. */
+function endpointRecords(report, scope, e){
+  const m = report.model;
+  if (e.id === 'assessments')
+    return m.assessments.map(a => ({label:a.title || a.type, payload:expectedAssessment(m, a)}));
+  if (e.id === 'objectiveAssessments')
+    return [].concat(...m.assessments.map(a => expectedObjectives(m, a).map(o => ({label:(a.title || a.type) + ' › ' + o.code, payload:o.payload}))));
+  if (e.id === 'studentAssessments')
+    return [].concat(...m.assessments.filter(a => a.sample).map(a => (scope.rows[a.type] || []).map(r => ({
+      label:keyLabel(r.key) + ' — ' + r.why, payload:expectedStudentAssessment(m, a, r.index), a, index:r.index}))));
+  const type = e.descriptors[0];
+  const all = [].concat(...m.assessments.map(a => [expectedAssessment(m, a)].concat(expectedObjectives(m, a).map(o => o.payload))
+    .concat(a.sample ? (scope.rows[a.type] || []).map(r => expectedStudentAssessment(m, a, r.index)) : [])));
+  return descriptorUrisIn(all, type).map(uri => {
+    const [ns, code] = uri.split('#');
+    return {label:code, payload:{namespace:ns.replace(new RegExp(type + '$'), type), codeValue:code, shortDescription:code}};
+  });
+}
+function endpointsHTML(sub, report, opts){
+  opts = opts || {};
+  if (!report || report.verdict !== 'ready')
+    return `<div class="muted">Available once ready</div>`;
+  const view = APP.reportView || {};
+  const scope = effectiveScope(sub);
+  const eps = deriveEndpoints(report.model);
+  return `<table class="t"><tbody>${eps.map(e => {
+    const st = scope.endpoints.find(x => x.id === e.id) || {on:true};
+    const open = view.ep === e.id;
+    const recs = open ? endpointRecords(report, scope, e) : [];
+    const ri = Math.min(view.rec || 0, Math.max(recs.length - 1, 0));
+    const rec = recs[ri];
+    return `<tr><td><strong class="mono">GET ${esc(e.resource)}</strong>
+        ${st.on ? '' : `<span class="badge b-amber">Excluded by reviewer</span> <span class="muted">${esc(st.reason || '')}</span>`}</td>
+      <td class="muted">${e.recordCount} record${e.recordCount === 1 ? '' : 's'} · ${e.fieldCount} fields · ${e.descriptors.length} descriptor type${e.descriptors.length === 1 ? '' : 's'}</td>
+      <td class="act"><button class="linkish" data-act="reportep" data-id="${esc(e.id)}">${open ? 'Hide' : 'Expected response'}</button></td></tr>
+      ${open && rec ? `<tr><td colspan="3">
+        <div class="field"><label>Record</label>
+          <select data-act="reportrec">${recs.map((r, i) => `<option value="${i}"${i === ri ? ' selected' : ''}>${esc(r.label)}</option>`).join('')}</select></div>
+        ${e.id === 'studentAssessments' ? `<label class="muted"><input type="checkbox" data-act="reportside"${view.side ? ' checked' : ''} /> Show sample row</label>` : ''}
+        ${e.id === 'studentAssessments' && view.side
+          ? `<div class="sidebyside"><div><div class="label">Sample row ${rec.index + 2} — ${esc(rec.a.sample.name)}</div>${sampleRowHTML(rec.a, rec.index)}</div>
+             <div><div class="label">Expected response</div>${payloadHTML(rec.payload)}</div></div>`
+          : payloadHTML(rec.payload)}
+      </td></tr>` : ''}`;
+  }).join('')}</tbody></table>
+  ${opts.readOnly ? '' : `<div class="muted" style="font-size:12.5px;margin-top:8px">GET requests only. The run compares each
+    response with these expected responses after §9.1 normalization.</div>`}`;
+}
+function reportHTML(sub, report, opts){
+  opts = opts || {};
+  if (!report) return `<div class="empty">No mapping workbook uploaded, so there is no report yet.</div>`;
+  return `${verdictBannerHTML(report)}
+    <h2>Readiness checklist</h2>
+    ${checklistHTML(report)}
+    <h2 style="margin-top:22px">Endpoints and expected responses</h2>
+    ${endpointsHTML(sub, report, opts)}`;
+}
+function requiredColumnsHTML(){
+  return `<p>The template has no place for these identity values, so the platform fixes them by convention.
+    Every sample file must carry them (design §3.3).</p>
+    <table class="t"><thead><tr><th>Pre-arranged column</th><th>Ed-Fi field</th><th>Note</th></tr></thead><tbody>
+    ${PREARRANGED_COLUMNS.map(pc => `<tr><td><strong>${esc(pc.column)}</strong></td>
+      <td class="mono">${esc(pc.path.replace(/\.\w+$/, '') + '.' + pc.field)}</td>
+      <td class="muted">${pc.column === 'Student ID' ? 'If the header appears twice, the first one is used.' : 'One per administration.'}</td></tr>`).join('')}
+    <tr><td><em>The slot the file was uploaded to</em></td><td class="mono">studentAssessment.assessmentReference</td>
+      <td class="muted">Identifier from the Assessments tab, namespace from Product.</td></tr></tbody></table>`;
+}
+function reportPage(id, reviewerView){
+  const sub = submission(id);
+  if (!sub || !isAssessments(sub)) return placeholder('Mapping validation report');
+  const p = product(sub.productId);
+  const cur = currentVersion(sub, 'mapping');
+  const report = reportFor(sub);
+  const home = reviewerView ? '#/queue' : '#/products';
+  const back = reviewerView ? '#/review/' + sub.id : '#/submission/' + sub.id;
+  return crumbs([['Home', home], [p.name, back], ['Mapping validation report']]) + `
+    <div class="pagehead">
+      <div><h1>Mapping validation report</h1>
+        <div class="sub">${esc(p.name)} &middot; ${esc(MODELS[sub.model].label)}${cur ? ` &middot; workbook v${cur.v}
+          <span class="muted">${esc(cur.name)}</span>` : ''} &middot;
+          <a href="#" data-act="reqcols">Required sample columns</a></div></div>
+      <div class="acts"><a class="btn ghost sm" href="${back}">Back to submission</a></div>
+    </div>
+    <div class="card">${reportHTML(sub, report, {reviewerView})}</div>
+    ${reviewerView ? `<div class="card">${inScopePanelHTML(sub, true)}</div>` : ''}`;
+}
+
+/* ---------- run scope card (design §7; reviewer narrows, vendor sees why) ---------- */
+function inScopePanelHTML(sub, editable){
+  const scope = effectiveScope(sub);
+  const rep = reportFor(sub);
+  const rs = runScopeOf(sub);
+  if (!rep || rep.verdict !== 'ready')
+    return `<h2>Run scope</h2><div class="muted">Available once the mapping validation report is ready.</div>`;
+  const eps = deriveEndpoints(rep.model);
+  const changes = rs.rowAdds.map(x => ({kind:'Added', x})).concat(rs.rowRemoves.map(x => ({kind:'Removed', x})));
+  return `<h2>Run scope <span class="hint">${editable ? 'Narrow what the run checks. Every change needs a reason the vendor sees.'
+      : 'Set by the reviewer from the mapping validation report.'}</span></h2>
+    <table class="t"><thead><tr><th>Endpoint</th><th>Records</th><th>In scope</th>${editable ? '<th class="act">Action</th>' : ''}</tr></thead>
+      <tbody>${eps.map(e => {
+        const st = scope.endpoints.find(x => x.id === e.id) || {on:true};
+        return `<tr><td class="mono">GET ${esc(e.resource)}</td><td class="muted">${e.recordCount}</td>
+          <td>${st.on ? '<span class="badge b-green">Included</span>'
+            : `<span class="badge b-amber">Excluded</span> <span class="muted">${esc(st.reason || '')}</span>`}</td>
+          ${editable ? `<td class="act"><button class="btn ghost sm" data-act="scopetoggle" data-sub="${sub.id}" data-id="${esc(e.id)}">${
+            st.on ? 'Exclude' : 'Include'}</button></td>` : ''}</tr>`;
+      }).join('')}</tbody></table>
+    ${rep.model.assessments.filter(a => a.sample).map(a => `
+      <h3 style="margin-top:16px">Rows checked — ${esc(a.type)}</h3>
+      <table class="t"><thead><tr><th>Row</th><th>Student · administration</th><th>Why</th>${editable ? '<th class="act">Action</th>' : ''}</tr></thead>
+        <tbody>${(scope.rows[a.type] || []).map(r => `<tr><td class="muted">${r.index + 2}</td>
+          <td class="mono">${esc(keyLabel(r.key))}</td><td class="muted">${esc(r.why)}</td>
+          ${editable ? `<td class="act"><button class="btn ghost sm" data-act="scoperemoverow" data-sub="${sub.id}"
+            data-asm="${esc(a.type)}" data-sid="${esc(r.key.studentId)}" data-aid="${esc(r.key.activityId)}">Remove</button></td>` : ''}</tr>`).join('')}
+        </tbody></table>
+      ${editable ? `<div class="btnrow"><select id="scopeAddRow-${esc(normKey(a.type))}">${a.sample.rows.map((_, i) =>
+          `<option value="${i}">Row ${i + 2} — ${esc(keyLabel(rowKeyAt(a, i)))}</option>`).join('')}</select>
+        <button class="btn ghost sm" data-act="scopeaddrow" data-sub="${sub.id}" data-asm="${esc(a.type)}">Add row</button></div>` : ''}`).join('')}
+    ${changes.length ? `<h3 style="margin-top:16px">Reviewer changes</h3><ul>${changes.map(c => `<li>${c.kind}
+      <span class="mono">${esc(keyLabel(c.x.key))}</span> — “${esc(c.x.reason)}”${editable
+        ? ` <button class="linkish" data-act="scopeundo" data-sub="${sub.id}" data-asm="${esc(c.x.assessment)}"
+            data-sid="${esc(c.x.key.studentId)}" data-aid="${esc(c.x.key.activityId)}">Undo</button>` : ''}</li>`).join('')}</ul>` : ''}`;
+}
+function applyScopeChange(sub, change, reason){
+  if (change.op === 'exclude') return setEndpointIncluded(sub, change.id, false, reason);
+  if (change.op === 'add') return addScopeRow(sub, change.assessment, change.key, reason);
+  if (change.op === 'remove') return removeScopeRow(sub, change.assessment, change.key, reason);
+  return {ok:false, error:'Unknown change.'};
+}
+function scopeReasonModal(sub, change, error){
+  APP.pendingScope = change;
+  const what = change.op === 'exclude' ? 'Exclude ' + change.id
+    : (change.op === 'add' ? 'Add row ' : 'Remove row ') + keyLabel(change.key);
+  modal(esc(what), `
+    ${error ? `<div class="banner red"><p>${esc(error)}</p></div>` : ''}
+    <div class="field"><label>Reason <span class="muted">(the vendor sees this)</span></label>
+      <textarea id="scopeReason" rows="3"></textarea></div>
+    <div class="muted" style="font-size:12.5px">Changing the run scope marks earlier runs stale.</div>`,
+    `<button class="btn ghost" data-act="cancel">Cancel</button>
+     <button class="btn" data-act="doscope" data-sub="${sub.id}">Save change</button>`);
+}
+
+/* ---------- Assessments run results: endpoint → record → field (design §7) ---------- */
+const RESULT_KIND_LABEL = {value:'Value mismatch', notloaded:'Descriptor not loaded', notfound:'Record not found',
+  'objective-notfound':'Objective not found'};
 function assessmentResultsHTML(r){
+  if (!r.results || !r.results.endpoints) return `<div class="card"><div class="empty">No results recorded for this run.</div></div>`;
+  const fields = r.results.endpoints.flatMap(e => e.records.flatMap(rec => rec.fields));
   const kinds = {};
-  r.results.groups.forEach(g => g.elements.forEach(e => {
-    if (e.st !== 'pass') kinds[e.st] = (kinds[e.st] || 0) + 1; }));
+  fields.filter(f => f.st === 'fail').forEach(f => { kinds[f.kind] = (kinds[f.kind] || 0) + 1; });
+  const t = resultTally(r.results);
   return `<div class="card">
     <div class="cardhead"><h2>Validation results
-      <span class="hint">By domain, resource and element (FR10). GET requests only.</span></h2></div>
+      <span class="hint">By endpoint, record and field. Expected responses come from the mapping validation report.</span></h2></div>
     ${Object.keys(kinds).length ? `<div class="banner red"><h3>Failures by kind</h3>
-      <ul>${Object.entries(kinds).map(([k, n]) =>
-        `<li><strong>${esc(ST_LABEL[k][1])}</strong> &mdash; ${n}</li>`).join('')}</ul>
-      <p class="muted">A type error and a value mismatch mean different things to a vendor fixing them, so they
-      are reported separately (§9.1).</p></div>`
-      : `<div class="banner green"><h3>All element checks passed</h3>
-         <p>Every element declared in the mapping CSV was present and populated, every descriptor resolved to a
-         legitimate Ed-Fi URI, and every value reconciled to the submitted sample data (D8).</p></div>`}
-    ${r.results.groups.map(g => `
-      <h2 style="margin-top:22px">${esc(g.domain)} <span class="hint">/ <span class="mono">${esc(g.resource)}</span></span></h2>
-      ${g.emptyResource ? `<div class="banner amber"><h3>Declared resource returned no data</h3>
-        <p><span class="mono">GET /ed-fi/${esc(g.resource)}</span> returned <strong>200 with an empty
-        collection</strong>. The mapping declares this resource, so the run <em>fails loudly</em> rather than
-        refusing to start — "this resource returned nothing" is the actionable feedback (D24).</p></div>` : ''}
-      <table class="t">
-        <thead><tr><th>Element</th><th>Ed-Fi type</th><th>Expected (sample data)</th>
-          <th>Observed (API response)</th><th>Result</th></tr></thead>
-        <tbody>${g.elements.map(e => `<tr>
-          <td class="mono">${esc(e.el)}</td>
-          <td class="muted">${esc(e.type)}</td>
-          <td class="mono">${esc(e.expected)}</td>
-          <td class="mono ${e.st === 'pass' ? '' : 'err'}">${esc(e.observed)}</td>
-          <td><span class="dotstate ${ST_LABEL[e.st][0]}"><i></i>${esc(ST_LABEL[e.st][1])}</span>
-            ${e.why ? `<div class="muted" style="font-size:12px">${esc(e.why)}</div>` : ''}</td>
-        </tr>`).join('')}</tbody>
-      </table>`).join('')}
+      <ul>${Object.entries(kinds).map(([k, n]) => `<li><strong>${esc(RESULT_KIND_LABEL[k] || k)}</strong> &mdash; ${n}</li>`).join('')}</ul></div>`
+      : `<div class="banner green"><h3>All field checks passed</h3>
+         <p>${t.pass} field checks matched the expected responses after normalization${t.excluded
+           ? '; ' + t.excluded + ' were excluded by the reviewer' : ''}.</p></div>`}
+    ${r.results.endpoints.map(e => {
+      const ef = e.records.flatMap(x => x.fields);
+      const nf = ef.filter(f => f.st === 'fail').length;
+      return `<h2 style="margin-top:22px" class="mono">GET ${esc(e.resource)}
+        ${e.excluded ? `<span class="badge b-amber">Excluded by reviewer</span> <span class="hint">${esc(e.reason || '')}</span>`
+          : nf ? `<span class="badge b-red">${nf} failed</span>` : '<span class="badge b-green">Passed</span>'}</h2>
+        ${e.records.map(rec => {
+          const bad = rec.fields.filter(f => f.st === 'fail').length;
+          return `<details${bad ? ' open' : ''}><summary>${esc(rec.label)} <span class="muted">${rec.fields.length} fields${
+              bad ? ' · ' + bad + ' failed' : ''}</span></summary>
+            <table class="t"><thead><tr><th>Field</th><th>Expected</th><th>Observed</th><th>Result</th></tr></thead>
+              <tbody>${rec.fields.map(f => `<tr><td class="mono">${esc(f.path)}</td><td class="mono">${esc(f.expected)}</td>
+                <td class="mono ${f.st === 'fail' ? 'err' : ''}">${esc(f.observed)}</td>
+                <td><span class="dotstate ${f.st === 'pass' ? 'ok' : f.st === 'fail' ? 'bad' : 'warn'}"><i></i>${
+                  f.st === 'pass' ? 'Pass' : f.st === 'excluded' ? 'Excluded by reviewer' : esc(RESULT_KIND_LABEL[f.kind] || 'Fail')}</span>
+                  ${f.why ? `<div class="muted" style="font-size:12px">${esc(f.why)}</div>` : ''}</td></tr>`).join('')}</tbody></table>
+          </details>`;
+        }).join('')}`;
+    }).join('')}
     <div class="legend">
-      <span class="badge b-green">Pass</span><span class="badge b-red">Missing element</span>
-      <span class="badge b-red">Invalid descriptor</span><span class="badge b-red">Value mismatch</span>
-      <span class="badge b-red">Type error</span><span class="badge b-red">No data returned</span>
-      <span class="muted" style="font-size:12.5px">Normalization is applied symmetrically to both sides and is
-        versioned with the validator — never configurable per vendor (§9.1).</span>
+      <span class="badge b-green">Pass</span><span class="badge b-red">Value mismatch</span>
+      <span class="badge b-red">Descriptor not loaded</span><span class="badge b-red">Record not found</span>
+      <span class="badge b-red">Objective not found</span><span class="badge b-amber">Excluded by reviewer</span>
+      <span class="muted" style="font-size:12.5px">Normalization is applied to both sides and versioned with the
+        validator; objectives match on the normalized key (§9.1).</span>
     </div>
   </div>`;
 }
@@ -3656,6 +3902,7 @@ function reviewerScreen(route){
     case 'queue':     return reviewerQueue();
     case 'review':    return reviewerSubmission(route.args[0]);
     case 'run':       return runResults(route.args[0], true);
+    case 'report':    return reportPage(route.args[0], true);
     default:          return placeholder(route.name.charAt(0).toUpperCase() + route.name.slice(1));
   }
 }
@@ -3840,6 +4087,7 @@ function reviewerSubmission(id){
         <div><div class="k">Submitted</div><div class="v">${fmt(sub.created)}</div></div>
       </div>
       ${artifactCard(sub, true)}
+      ${isAssessments(sub) ? `<p style="margin-top:12px"><a class="btn ghost sm" href="#/report/${sub.id}">Open the mapping validation report</a></p>` : ''}
       <div class="banner" style="margin:18px 0 0">
         <h3>Reviewer judgment, not platform judgment</h3>
         <p>The platform has checked what it can check. Semantic alignment &mdash; whether this mapping is a
@@ -3848,6 +4096,8 @@ function reviewerSubmission(id){
         correctly. The platform never approves or rejects a certification.</p>
       </div>
     </div>
+
+    ${isAssessments(sub) ? `<div class="card">${inScopePanelHTML(sub, true)}</div>` : ''}
 
     ${sub.comments.length ? `<div class="card"><h2>Review comments</h2>
       <ul class="hist">${sub.comments.map(c => `<li><span class="when">${fmtShort(c.at)}</span>
@@ -3957,7 +4207,7 @@ function bind(){
 
   /* Most actions are clicks, but a typed parameter fires input and a filter
      checkbox fires change, so the event is chosen per action. */
-  const ACTION_EVENT = {setparam:'input', toggleopenruns:'change'};
+  const ACTION_EVENT = {setparam:'input', toggleopenruns:'change', reportrec:'change', reportside:'change'};
   main.querySelectorAll('[data-act]').forEach(node => {
     node.addEventListener(ACTION_EVENT[node.dataset.act] || 'click', ev => {
       const act = node.dataset.act;
@@ -3966,6 +4216,35 @@ function bind(){
         case 'upload': ev.preventDefault(); uploadModal(sub, node.dataset.type, node.dataset.assessment); break;
         case 'loadfixtures': ev.preventDefault(); loadFixtureSet(sub, fixtureSetOf(sub), node.dataset.variant); render(); break;
         case 'gotorun': go('#/newrun/' + sub.id); break;
+        case 'reqcols': ev.preventDefault(); modal('Required sample columns', requiredColumnsHTML(),
+          '<button class="btn ghost" data-act="cancel">Close</button>'); break;
+        case 'reportcat': case 'reportinfo': case 'reportep': {
+          const v = APP.reportView = APP.reportView || {};
+          const key = act === 'reportcat' ? 'cat' : act === 'reportinfo' ? 'info' : 'ep';
+          v[key] = v[key] === node.dataset.id ? null : node.dataset.id;
+          if (key === 'ep'){ v.rec = 0; }
+          render(); break;
+        }
+        case 'reportrec': (APP.reportView = APP.reportView || {}).rec = +node.value; render(); break;
+        case 'reportside': (APP.reportView = APP.reportView || {}).side = node.checked; render(); break;
+        case 'scopetoggle': {
+          const st = effectiveScope(sub).endpoints.find(x => x.id === node.dataset.id);
+          if (st && st.on) scopeReasonModal(sub, {op:'exclude', id:node.dataset.id});
+          else { setEndpointIncluded(sub, node.dataset.id, true); render(); }
+          break;
+        }
+        case 'scopeaddrow': {
+          const a = reportFor(sub).model.assessments.find(x => x.type === node.dataset.asm);
+          const sel = $('#scopeAddRow-' + normKey(node.dataset.asm));
+          scopeReasonModal(sub, {op:'add', assessment:a.type, key:rowKeyAt(a, +((sel || {}).value || 0))});
+          break;
+        }
+        case 'scoperemoverow':
+          scopeReasonModal(sub, {op:'remove', assessment:node.dataset.asm, key:{studentId:node.dataset.sid, activityId:node.dataset.aid}});
+          break;
+        case 'scopeundo':
+          undoScopeRow(sub, node.dataset.asm, {studentId:node.dataset.sid, activityId:node.dataset.aid});
+          render(); break;
         case 'startrun': {
           const mode = $('#outcomeSel') ? $('#outcomeSel').value : 'realistic';
           const r = startRun(sub, mode);
@@ -4087,6 +4366,17 @@ function bindOverlay(){
       const act = node.dataset.act;
       const sub = node.dataset.sub ? submission(node.dataset.sub) : null;
       if (act === 'cancel'){ closeModal(); return; }
+      if (act === 'reqcols'){ modal('Required sample columns', requiredColumnsHTML(),
+        '<button class="btn ghost" data-act="cancel">Close</button>'); return; }
+      if (act === 'doscope'){
+        const change = APP.pendingScope;
+        const r = applyScopeChange(sub, change, ($('#scopeReason') || {}).value || '');
+        if (!r.ok){ scopeReasonModal(sub, change, r.error); return; }
+        APP.pendingScope = null;
+        closeModal();
+        render();
+        return;
+      }
       if (act === 'douploadconfirm'){
         const type = node.dataset.type;
         const name = ($('#fileName') && $('#fileName').value.trim()) || 'upload.dat';

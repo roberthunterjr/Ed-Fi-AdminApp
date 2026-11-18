@@ -1024,3 +1024,91 @@ test('reviewer row adjustments change the effective scope', () => {
   assert.equal(p.undoScopeRow(sub, 'ELA Diagnostic', first.key).ok, true);
   assert.ok(rows().some(x => x.index === first.index));
 });
+
+/* Task 8 — report UI and where it appears. */
+const originalSub = p => { const sub = freshAsm(p); p.loadFixtureSet(sub, 'vendorb', 'original'); return sub; };
+
+test('not-ready report leads with the verdict and fix locations', () => {
+  const p = loadPrototype(); const sub = originalSub(p);
+  p.APP.reportView = {cat:'links'};
+  const h = p.reportHTML(sub, p.reportFor(sub), {});
+  assert.ok(h.indexOf('Not ready to run:') >= 0);
+  assert.ok(h.indexOf('Not ready to run:') < h.indexOf('Element ↔ column links'));
+  assert.match(h, /Fix these in the workbook or sample, then re-upload\./);
+  assert.match(h, /Available once ready/);
+  assert.match(h, /Workbook › ElementDefinitions/);
+  assert.match(h, /Did you mean `Most Recent Diagnostic YTD \(Y\/N\)`\?/);
+});
+
+test('ready report lists endpoints and tags pre-arranged fields', () => {
+  const p = loadPrototype(); const sub = readySub(p);
+  p.APP.reportView = {ep:'studentAssessments', rec:0};
+  const h = p.reportHTML(sub, p.reportFor(sub), {});
+  assert.match(h, /Ready to run/);
+  assert.match(h, /GET studentAssessments/);
+  assert.match(h, /Pre-arranged/);
+  assert.match(h, /Show sample row/);
+  assert.doesNotMatch(h, /Available once ready/);
+});
+
+test('show sample row renders the side-by-side view', () => {
+  const p = loadPrototype(); const sub = readySub(p);
+  p.APP.reportView = {ep:'studentAssessments', rec:0, side:true};
+  const h = p.reportHTML(sub, p.reportFor(sub), {});
+  const scope = p.effectiveScope(sub);
+  const row = scope.rows['ELA Diagnostic'][0];
+  assert.match(h, /class="sidebyside"/);
+  assert.ok(h.includes(row.key.activityId));
+  assert.match(h, /Rush Flag/);
+});
+
+test('report with no samples renders the checklist and a collapsed endpoint section', () => {
+  const p = loadPrototype(); const sub = freshAsm(p);
+  p.uploadArtifact(sub, 'mapping', 'wb.xlsx', false, {fixture:'vendorb-corrected'});
+  const h = p.reportHTML(sub, p.reportFor(sub), {});
+  assert.match(h, /Not ready to run:/); assert.match(h, /Available once ready/);
+  assert.match(h, /Pre-arranged columns/);
+});
+
+test('report escapes vendor strings', () => {
+  const p = loadPrototype(); const sub = readySub(p);
+  const fx = p.fixtureVariant('vendorb-corrected');
+  fx.workbook.ElementDefinitions[0].Element = '<b>&x"';
+  p.APP.reportView = {cat:'links'};
+  const h = p.reportHTML(sub, p.validateMapping(fx.workbook, fx.samples), {});
+  assert.ok(h.includes('&lt;b&gt;&amp;x'));
+  assert.ok(!h.includes('<b>&x'));
+});
+
+test('start-a-run is disabled while the report is not ready', () => {
+  const p = loadPrototype(); const sub = originalSub(p);
+  const h = p.vendorNewRun(sub.id);
+  assert.match(h, /Not ready to run: \d+ errors/);
+  assert.match(h, /data-act="startrun"[^>]*disabled/);
+  const h2 = p.vendorNewRun(readySub(p).id);
+  assert.doesNotMatch(h2, /data-act="startrun"[^>]*disabled/);
+  assert.match(h2, /GET studentAssessments/);
+});
+
+test('run results group by endpoint and record, with the new failure kinds', () => {
+  const p = loadPrototype(); const sub = readySub(p);
+  const r = p.startRun(sub, 'realistic'); p.finishRun(r);
+  const h = p.assessmentResultsHTML(r);
+  ['Value mismatch', 'Record not found', 'Objective not found', 'Descriptor not loaded'].forEach(k => assert.match(h, new RegExp(k)));
+  assert.match(h, /GET studentAssessments/);
+  const r2 = p.startRun(sub, 'pass'); p.finishRun(r2);
+  assert.match(p.assessmentResultsHTML(r2), /All field checks passed/);
+});
+
+test('reviewer gets a run scope card and the required columns reference exists', () => {
+  const p = loadPrototype(); const sub = readySub(p);
+  const h = p.inScopePanelHTML(sub, true);
+  assert.match(h, /Run scope/); assert.match(h, /data-act="scopetoggle"/); assert.match(h, /data-act="scoperemoverow"/);
+  assert.match(p.requiredColumnsHTML(), /Student ID[\s\S]*studentReference\.studentUniqueId/);
+  assert.match(p.requiredColumnsHTML(), /Activity Id/);
+});
+
+test('artifact card shows the report verdict badge', () => {
+  const p = loadPrototype(); const sub = originalSub(p);
+  assert.match(p.artifactCard(sub, false), /href="#\/report\/[^"]+"[^>]*>.*Not ready · \d+ errors/);
+});
