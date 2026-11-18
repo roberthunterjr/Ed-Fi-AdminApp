@@ -1237,7 +1237,7 @@ function validateMapping(workbook, samples){
      enumeration needed by two assessments) is reported once. */
   const add = f => {
     const o = Object.assign({severity:'error', row:null, hint:null, count:null}, f);
-    const dup = o.row == null && findings.find(x => x.row == null && x.file === o.file &&
+    const dup = o.row == null && o.file === 'Workbook' && findings.find(x => x.row == null && x.file === o.file &&
       x.where === o.where && x.message === o.message);
     if (dup) return dup;
     findings.push(o);
@@ -1406,9 +1406,9 @@ function validateMapping(workbook, samples){
     s.columns.forEach(c => {
       const k = c.toLowerCase();
       if (seen.has(k)){
-        if (!findings.some(f => f.severity === 'warning' && f.where === 'column `' + c + '`' && f.file === 'Sample'))
+        if (!findings.some(f => f.severity === 'warning' && f.where === a.type + ' › column `' + c + '`' && f.file === 'Sample'))
           add({severity:'warning', category:PREARRANGED_COLUMNS.some(p => sameText(p.column, c)) ? 'prearranged' : 'links',
-            file:'Sample', where:'column `' + c + '`',
+            file:'Sample', where:a.type + ' › column `' + c + '`',
             message:'`' + c + '` appears more than once; the first one is used'});
       } else seen.add(k);
     });
@@ -1426,7 +1426,7 @@ function validateMapping(workbook, samples){
       if (pc.path === 'studentAssessment.studentReference') a.idColumns.student = i;
       else a.idColumns.activity = i;
       const blanks = s.rows.filter(row => !String(row[i] == null ? '' : row[i]).trim()).length;
-      if (blanks) add({category:'prearranged', file:'Sample', where:'column `' + pc.column + '`',
+      if (blanks) add({category:'prearranged', file:'Sample', where:a.type + ' › column `' + pc.column + '`',
         message:'`' + pc.column + '` is blank', count:blanks});
     });
 
@@ -1452,18 +1452,18 @@ function validateMapping(workbook, samples){
       counts.forEach((count, v) => {
         if (isScore){
           const rule = RESULT_RULES[e.resultDatatype];
-          if (rule && !rule.ok(v)) add({category:'values', file:'Sample', where:'column `' + header + '`',
+          if (rule && !rule.ok(v)) add({category:'values', file:'Sample', where:a.type + ' › column `' + header + '`',
             message:'`' + v + '` isn\'t ' + rule.what, count});
         } else if (isDate){
-          if (!ISO_DATE(v)) add({category:'values', file:'Sample', where:'column `' + header + '`',
+          if (!ISO_DATE(v)) add({category:'values', file:'Sample', where:a.type + ' › column `' + header + '`',
             message:'`' + v + '` isn\'t an ISO 8601 date', hint:'expected YYYY-MM-DD', count});
         } else if (e.codes){
           if (!e.codes.some(c => sameText(c, v))){
             const vendor = e.descriptorSource === 'vendor';
             add({category:'values', file:vendor ? 'Workbook' : 'Sample',
-              where:vendor ? 'EnumerationItems (' + e.enumeration + ')' : 'column `' + header + '`',
+              where:vendor ? 'EnumerationItems (' + e.enumeration + ')' : a.type + ' › column `' + header + '`',
               message:vendor
-                ? 'sample value `' + v + '` in `' + header + '` isn\'t a code value'
+                ? 'sample value `' + v + '` in `' + header + '` (' + a.type + ') isn\'t a code value'
                 : '`' + v + '` isn\'t a ' + e.descriptorType,
               hint:closestHint(closestCode(v, e.codes, e.descriptorType)), count});
           }
@@ -2433,6 +2433,8 @@ function setEndpointIncluded(sub, id, on, reason){
 }
 function addScopeRow(sub, assessment, key, reason){
   if (!String(reason || '').trim()) return {ok:false, error:'A reason is required.'};
+  if ((effectiveScope(sub).rows[assessment] || []).some(r => sameKey(r.key, key)))
+    return {ok:false, error:'That row is already in scope.'};
   const rs = runScopeOf(sub);
   rs.rowRemoves = rs.rowRemoves.filter(x => !(x.assessment === assessment && sameKey(x.key, key)));
   rs.rowAdds.push({key, assessment, reason:String(reason).trim(), by:me(), at:tick()});

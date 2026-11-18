@@ -77,7 +77,7 @@ test('parseCsv keeps quoted commas and strips a BOM', () => {
 });
 
 test('renameAll replaces in every nested string', () => {
-  assert.deepEqual(renameAll({a:['i-Ready ELA'], b:{c:'uri://cainc.com/X'}},
-    [['i-Ready', 'Vendor B'], ['uri://cainc.com/', 'uri://vendorb.example/']]),
+  assert.deepEqual(renameAll({a:['RealVendor ELA'], b:{c:'uri://realvendor.example/X'}},
+    [['RealVendor', 'Vendor B'], ['uri://realvendor.example/', 'uri://vendorb.example/']]),
     {a:['Vendor B ELA'], b:{c:'uri://vendorb.example/X'}});
 });

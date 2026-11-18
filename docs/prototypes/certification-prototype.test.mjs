@@ -1142,3 +1142,29 @@ test('seeded artifacts use the Assessments labels in history', () => {
   const p = loadPrototype();
   ['p2', 'p5', 'p4'].forEach(pid => assert.ok(!seededAsm(p, pid).history.some(h => /Vendor mapping CSV/.test(h.what)), pid));
 });
+
+/* Final review fixes. */
+test('findings from two samples stay separate and name their sample', () => {
+  const p = loadPrototype(); const fx = linkAll(original(p));
+  /* Give Math the same sample, linked the same way, so both raise the same value findings. */
+  fx.workbook.ElementDefinitions.filter(r => r['Assessment Type'] === 'Math Diagnostic').forEach(r => { r['Assessment Type'] = 'X'; });
+  fx.workbook.ElementDefinitions.push(...fx.workbook.ElementDefinitions.filter(r => r['Assessment Type'] === 'ELA Diagnostic')
+    .map(r => Object.assign({}, r, {'Assessment Type':'Math Diagnostic'})));
+  fx.workbook.ElementDefinitions = fx.workbook.ElementDefinitions.filter(r => r['Assessment Type'] !== 'X');
+  fx.samples['Math Diagnostic'] = structuredClone(fx.samples['ELA Diagnostic']);
+  const r = validate(p, fx);
+  const grade3 = findings(r, x => x.category === 'values' && /`3`/.test(x.message));
+  assert.equal(grade3.length, 2);
+  assert.ok(grade3.some(x => /ELA Diagnostic/.test(x.where)) && grade3.some(x => /Math Diagnostic/.test(x.where)));
+  assert.equal(findings(r, x => x.severity === 'warning' && /Student ID/.test(x.message)).length, 2);
+});
+
+test('adding a row already in scope is refused, so a later remove takes effect', () => {
+  const p = loadPrototype(); const sub = readySub(p);
+  const rows = () => p.effectiveScope(sub).rows['ELA Diagnostic'];
+  const first = rows()[0];
+  assert.equal(p.addScopeRow(sub, 'ELA Diagnostic', first.key, 'Already there').ok, false);
+  assert.equal(p.removeScopeRow(sub, 'ELA Diagnostic', first.key, 'Not needed').ok, true);
+  assert.ok(!rows().some(x => sameKeyT(x.key, first.key)));
+});
+const sameKeyT = (a, b) => a.studentId === b.studentId && a.activityId === b.activityId;
