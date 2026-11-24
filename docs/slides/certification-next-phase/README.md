@@ -10,9 +10,16 @@ The outline it follows is
 Drafted with AI assistance. Review it before presenting, and say AI helped
 prepare it.
 
-## Layout
+## Files
 
-The files are in the format of a claude.ai Slides artifact:
+- **`certification-next-phase.pptx`**: the deck as an editable PowerPoint
+  file, with speaker notes. Start here.
+- **`content-outline.md`**: what each slide presents, with its talking points.
+- **`project/`**: the same deck in claude.ai Slides format (see below).
+
+## Slides artifact source
+
+The `project/` files are in the format of a claude.ai Slides artifact:
 
 - `project/deck.json`: title, slide order, sections and fonts
 - `project/deck.css`: the shared styles (palette, type scale, cards, chips)
