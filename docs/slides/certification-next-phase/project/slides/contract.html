@@ -1,0 +1,28 @@
+<section id="contract">
+<div class="head">
+<p class="eyebrow">The contract</p>
+<h2>The Bruno collection joins the two systems</h2>
+</div>
+<div class="cols2">
+<div class="card fade-up" style="--i:0">
+<h3>What it carries</h3>
+<ul>
+<li>The endpoints to call, in a fixed order</li>
+<li>The parameters for each request</li>
+<li>The expected response for each record</li>
+<li>Which fields are checked, and how values are compared</li>
+<li>A manifest and a readiness report</li>
+</ul>
+</div>
+<div class="card fade-up" style="--i:1">
+<h3>How Admin App runs it</h3>
+<ul>
+<li>Unchanged, exactly as uploaded</li>
+<li>Admin App supplies the API address and access token</li>
+<li>Uses the Bruno CLI version pinned in the manifest</li>
+<li>Sorts results by result kind: pass, value mismatch, record not found and others</li>
+</ul>
+</div>
+</div>
+<aside>The generator PRD owns the contract, contract terms C1 to C11. Admin App never edits or re-derives the collection; the token never lands in a file. A change to the contract is versioned on both sides.</aside>
+</section>

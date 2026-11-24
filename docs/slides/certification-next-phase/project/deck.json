@@ -1,0 +1,42 @@
+{
+  "v": 5,
+  "createdOnFiles": { "v": 1, "at": "2026-11-24T20:00:00Z" },
+  "lists": "css",
+  "format": { "v": 1, "shared": ["project/deck.css"] },
+  "title": "Certification Automation: Next Phase",
+  "order": [
+    "cover",
+    "where",
+    "baseline",
+    "why",
+    "approach",
+    "contract",
+    "adminapp",
+    "scripts",
+    "platform",
+    "generator",
+    "journey",
+    "enables",
+    "sequencing",
+    "decisions",
+    "appendix"
+  ],
+  "sections": {
+    "s1": { "description": "Where the shipped MVP leaves us.", "start": "cover" },
+    "s2": { "description": "Why and how the work splits into three PRDs joined by a Bruno contract.", "start": "why" },
+    "s3": { "description": "What each PRD covers.", "start": "adminapp" },
+    "s4": { "description": "The vendor path, what it enables, and how it is sequenced.", "start": "journey" },
+    "s5": { "description": "Open decisions and reference material.", "start": "decisions" }
+  },
+  "faces": {
+    "space-grotesk": {
+      "family": "Space Grotesk",
+      "href": "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&family=Inter:wght@400;600&display=swap"
+    },
+    "inter": {
+      "family": "Inter",
+      "href": "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&family=Inter:wght@400;600&display=swap"
+    }
+  },
+  "designSystems": []
+}

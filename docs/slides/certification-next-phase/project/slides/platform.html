@@ -1,0 +1,35 @@
+<section id="platform">
+<div class="head">
+<p class="eyebrow">Automation Platform</p>
+<h2>Scale out environments, shrink the VM</h2>
+</div>
+<div style="display:grid; grid-template-columns:3fr 2fr; gap:40px;">
+<div class="card fade-up" style="--i:0">
+<h3>Must have</h3>
+<ul>
+<li>Vendor ODS environments in their own containers</li>
+<li>One-action provisioning during onboarding</li>
+<li>Idle environments scale to zero (configurable)</li>
+<li>Smaller, always-on Admin App VM</li>
+<li>Entra ID sign-in; Keycloak kept for local use</li>
+<li>Blob artifact storage; runs in job containers</li>
+<li>GitHub Actions with infrastructure as code</li>
+</ul>
+</div>
+<div style="display:flex; flex-direction:column; gap:24px;">
+<div class="card amber fade-up" style="--i:1">
+<h3>Nice to have</h3>
+<p class="body">Admin App itself on Container Apps</p>
+</div>
+<div class="card muted fade-up" style="--i:2">
+<h3>Stretch</h3>
+<p class="body">Vendor-hosted environments</p>
+</div>
+<div class="card muted fade-up" style="--i:3">
+<h3>Deferred</h3>
+<p class="body">Automatic environment deletion</p>
+</div>
+</div>
+</div>
+<aside>4.2 does not wait for any of this; it runs in parallel and aims to finish as soon as possible. Bicep is the recommended infrastructure-as-code tool but not required. Ed-Fi still runs every environment.</aside>
+</section>

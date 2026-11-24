@@ -1,0 +1,30 @@
+<section id="approach">
+<div class="head">
+<p class="eyebrow">The approach</p>
+<h2>Three concerns, three PRDs</h2>
+</div>
+<div style="display:flex; align-items:center; gap:24px;">
+<div class="card amber fade-up" style="--i:0; flex:1;">
+<p class="tag">Generator PRD</p>
+<h3>Bruno Assertion Model Generator</h3>
+<p class="body">Offline tool run by an Ed-Fi representative</p>
+</div>
+<x-shape kind="arrow-right" style="width:72px; height:36px; background:#1F6F80;"></x-shape>
+<div class="card fade-up" style="--i:1; flex:1; background:#13233A; border-top:6px solid #E9A23B;">
+<p class="tag" style="color:#E9A23B;">The contract</p>
+<h3 style="color:#F5F4EF;">Bruno collection</h3>
+<p class="body" style="color:#BFD3DA;">Endpoints, parameters, expected responses</p>
+</div>
+<x-shape kind="arrow-right" style="width:72px; height:36px; background:#1F6F80;"></x-shape>
+<div class="card fade-up" style="--i:2; flex:1;">
+<p class="tag">Admin App 4.2 PRD</p>
+<h3>Admin App</h3>
+<p class="body">Runs, review and decisions</p>
+</div>
+</div>
+<div class="card muted fade-up" style="--i:3; flex-direction:row; align-items:center; gap:32px;">
+<p class="tag" style="min-width:min-content;">Automation Platform PRD</p>
+<p class="body">Underneath everything: hosting, identity, vendor environments, run execution, artifact storage</p>
+</div>
+<aside>Each PRD has one job. The generator turns a vendor’s mapping into a Bruno collection. Admin App runs that collection and handles review. The platform provides the infrastructure under Admin App. The collection is the only thing the generator and Admin App have to agree on.</aside>
+</section>
