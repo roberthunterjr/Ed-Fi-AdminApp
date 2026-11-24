@@ -66,7 +66,7 @@
    - A smaller, always-on Admin App VM.
    - Entra ID sign-in; Keycloak for local use.
    - Blob artifact storage.
-   - A GitHub Actions + Bicep pipeline.
+   - A GitHub Actions pipeline with infrastructure as code (Bicep recommended).
    - Runs execute in job containers.
    - Nice to have: Admin App on Container Apps.
    - Stretch: vendor-hosted environments.

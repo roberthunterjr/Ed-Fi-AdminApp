@@ -255,9 +255,9 @@ else worked on, \
   actor and a timestamp.
 - **FR-CERT-LOG-3:** For each executed step (SIS, MTSS) or execution
   (Assessments), reviewers SHALL be able to view and download the **raw Bruno
-  CLI output** (the JSON reporter output). It contains response bodies, so it
-  SHALL be encrypted, size-capped and kept like the existing response
-  snapshots. *Claude's call.*
+  CLI output** (the JSON reporter output). It contains response bodies, so
+  storage and encryption SHOULD follow the existing response snapshots
+  (encrypted, size-capped, same retention). This is recommended, not required.
 - **FR-CERT-LOG-4:** Raw output, timeline entries and snapshots SHALL never
   contain tokens, keys or secrets.
 - **FR-CERT-LOG-5:** Vendors SHALL see the timeline and raw output for their

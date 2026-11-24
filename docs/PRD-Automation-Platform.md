@@ -124,7 +124,7 @@ What the repository shows (`main`, commit `8401c92`):
 | P7 | **The Admin App host stays always on, and gets smaller.** The ODS load moves out (P3). |
 | P8 | **Entra ID is the identity provider for the hosted product**, through Admin App's existing generic OIDC support. Keycloak remains supported for local development and self-hosted Admin App. "Less reliance" means production no longer needs it, not that it is removed. |
 | P9 | **Artifacts live in Azure Blob Storage**, encrypted at rest. Metadata and checksums live in the Admin App database. Only the Admin App API reads or writes them. |
-| P10 | **Infrastructure is code (Bicep)**, deployed by GitHub Actions to dev, staging and prod. Prod deploys need a manual approval. *Claude's call: Bicep because the platform is Azure-only.* |
+| P10 | **Infrastructure is code**, deployed by GitHub Actions to dev, staging and prod. Prod deploys need a manual approval. The tool is the builder's choice; **Bicep is recommended**, because the platform is Azure-only. |
 | P11 | **Runs execute in short-lived job containers, one job each.** The token is passed in as a secret, never on a command line or in a log. This replaces in-process execution for the hosted product. |
 | P12 | **A security review is required before vendors get access** (carries MVP §4). |
 
@@ -220,7 +220,8 @@ What the repository shows (`main`, commit `8401c92`):
 
 - **PR-CD-1:** GitHub Actions SHALL build and test the Admin App images and
   publish them to a registry, tagged by commit and release.
-- **PR-CD-2:** All Azure resources SHALL be defined in Bicep in source control.
+- **PR-CD-2:** All Azure resources SHALL be defined as infrastructure-as-code in
+  source control (Bicep recommended, not required).
   No hand-made production resources.
 - **PR-CD-3:** There SHALL be dev, staging and prod environments. Prod deploys
   SHALL need a manual approval.
